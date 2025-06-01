@@ -15,11 +15,8 @@
     "tone": "^14.7.77"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.8",
-    "@vitejs/plugin-react": "^4.0.0",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.4",
-    "tailwindcss": "^4.1.8",
-    "vite": "^6.3.5"
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.0"
   }
 }
