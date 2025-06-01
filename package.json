@@ -15,8 +15,8 @@
     "tone": "^14.7.77"
   },
   "devDependencies": {
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.0",
-    "autoprefixer": "^10.4.0"
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^4.1.8"
   }
 }
