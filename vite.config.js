@@ -16,4 +16,12 @@ export default defineConfig({
       ],
     },
   },
+  resolve: {
+    alias: {
+      'node:path': 'path-browserify',
+      'node:fs': 'browserify-fs',
+      'node:util': 'util',
+      'node:process': 'process',
+    },
+  },
 });
