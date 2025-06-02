@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, lazy, Suspense, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, query, limit, addDoc, where, serverTimestamp, getDocs, deleteDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, where, serverTimestamp, getDocs, deleteDoc } from 'firebase/firestore';
 import * as Tone from 'tone';
 
 // Importation des composants séparés
