@@ -3,7 +3,21 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, where, serverTimestamp, getDocs, deleteDoc } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import * as Tone from 'tone'; // Import Tone.js
+import * as Tone from 'tone';
+
+// Au lieu de démarrer Tone.js automatiquement
+const startAudio = async () => {
+  try {
+    if (Tone.context.state !== 'running') {
+      await Tone.start();
+    }
+  } catch (error) {
+    console.log('Audio context failed to start:', error);
+  }
+};
+
+// Démarrez seulement après une interaction utilisateur
+document.addEventListener('click', startAudio, { once: true });
 
 // Initialisation de Firebase (les variables __app_id, __firebase_config, __initial_auth_token sont fournies par l'environnement Canvas)
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
