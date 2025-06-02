@@ -317,62 +317,79 @@ const HistoryView = ({
                 </label>
             </div>
 
-            <div className="grid grid-cols-1 gap-8 max-w-6xl mx-auto">
-                {daysToDisplay.map((day) => {
-                    const currentDayData = historyWorkouts.days?.[day];
-                    if (!currentDayData) {
-                        return <div key={day} className="text-center text-gray-500">Journée "{day}" non trouvée ou vide pour cette date.</div>;
-                    }
-
-                    const categoriesToIterate = Object.keys(currentDayData.categories || {});
-
-                    return (
-                        <div key={day} className={`bg-gray-800 rounded-xl shadow-2xl p-4 sm:p-6 border border-gray-700`}>
-                            <div className="flex flex-wrap justify-between items-center mb-6 gap-2">
-                                <h2 className={`text-2xl sm:text-3xl font-bold text-blue-400`}>{day}</h2>
-                            </div>
-
-                            {categoriesToIterate.map((category) => {
-                                const exercises = currentDayData.categories?.[category] || [];
-
-                                const exercisesToRender = showDeletedExercisesInHistory ? exercises : exercises.filter(ex => !ex.isDeleted);
-                                
-                                if (exercisesToRender.length === 0) {
-                                    return null;
+            {loadingHistory ? (
+                <div className="flex items-center justify-center min-h-[50vh] bg-gray-900 text-white">
+                    <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+                    <p className="ml-4 text-lg">Chargement de l'historique...</p>
+                </div>
+            ) : (
+                <>
+                    {daysToDisplay.length === 0 ? (
+                        <div className="text-center text-gray-400 text-lg mt-10">
+                            Aucune donnée d'entraînement trouvée pour cette date ou ce filtre de jour.
+                            <br />
+                            Veuillez sélectionner une autre date ou un autre jour.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 gap-8 max-w-6xl mx-auto">
+                            {daysToDisplay.map((day) => {
+                                const currentDayData = historyWorkouts.days?.[day];
+                                if (!currentDayData) {
+                                    return <div key={day} className="text-center text-gray-500">Journée "{day}" non trouvée ou vide pour cette date.</div>;
                                 }
 
+                                const categoriesToIterate = Object.keys(currentDayData.categories || {});
+
                                 return (
-                                    <div key={category} className={`mb-8 bg-gray-700 rounded-lg p-3 sm:p-5 shadow-inner border border-gray-700`}>
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className={`text-xl sm:text-2xl font-semibold text-green-300`}>{category}</h3>
+                                    <div key={day} className={`bg-gray-800 rounded-xl shadow-2xl p-4 sm:p-6 border border-gray-700`}>
+                                        <div className="flex flex-wrap justify-between items-center mb-6 gap-2">
+                                            <h2 className={`text-2xl sm:text-3xl font-bold text-blue-400`}>{day}</h2>
                                         </div>
-                                        <ul className="space-y-4">
-                                            {exercisesToRender.map((exercise) => (
-                                                <li key={exercise.id} className={`bg-gray-800 p-3 sm:p-4 rounded-md shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center transition-all duration-200 ${exercise.isDeleted ? 'opacity-50 line-through' : ''}`}>
-                                                    <div className="flex-grow mb-2 sm:mb-0">
-                                                        <p className={`text-base sm:text-lg font-medium text-white`}>{exercise.name}</p>
-                                                        <p className={`text-sm sm:text-base text-gray-300`}>{getSeriesDisplay(exercise)}</p>
-                                                        {personalBests[exercise.id] && ( <p className="text-xs sm:text-sm text-yellow-300 mt-1"> Meilleure Perf: {personalBests[exercise.id].maxWeight}kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}</p>)}
-                                                        {progressionInsights[exercise.id] && ( <p className="text-xs sm:text-sm text-cyan-300 mt-1"> Insight: {progressionInsights[exercise.id]} </p>)}
-                                                        {exercise.notes && ( <p className={`text-xs sm:text-sm text-gray-300 mt-2 italic`}> Notes: "{exercise.notes}"</p>)}
+
+                                        {categoriesToIterate.map((category) => {
+                                            const exercises = currentDayData.categories?.[category] || [];
+
+                                            const exercisesToRender = showDeletedExercisesInHistory ? exercises : exercises.filter(ex => !ex.isDeleted);
+                                            
+                                            if (exercisesToRender.length === 0) {
+                                                return null;
+                                            }
+
+                                            return (
+                                                <div key={category} className={`mb-8 bg-gray-700 rounded-lg p-3 sm:p-5 shadow-inner border border-gray-700`}>
+                                                    <div className="flex justify-between items-center mb-4">
+                                                        <h3 className={`text-xl sm:text-2xl font-semibold text-green-300`}>{category}</h3>
                                                     </div>
-                                                    <div className="flex space-x-1 sm:space-x-2 flex-wrap gap-1 mt-2 sm:mt-0"> 
-                                                        {exercise.isDeleted && ( <button onClick={() => handleReactivateExercise(day, category, exercise.id)} className="px-2 py-1 sm:px-3 sm:py-1 rounded-full bg-green-500 hover:bg-green-600 text-white font-bold transition transform hover:scale-105 shadow-lg text-xs" title="Réactiver l'exercice">Réactiver</button>)}
-                                                        {!exercise.isDeleted && (
-                                                             <button onClick={() => handleAnalyzeProgressionClick(exercise)} className="p-1 rounded-full bg-sky-500 hover:bg-sky-600 text-white transition transform hover:scale-110" title="Analyser la progression avec IA"> ✨ Analyser </button>
-                                                        )}
-                                                        <button onClick={() => openExerciseGraphModal(exercise)} className="p-1 rounded-full bg-purple-500 hover:bg-purple-600 text-white transition transform hover:scale-110" title="Voir le graphique"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" /></svg></button>
-                                                    </div>
-                                                </li>
-                                            ))}
-                                        </ul>
+                                                    <ul className="space-y-4">
+                                                        {exercisesToRender.map((exercise) => (
+                                                            <li key={exercise.id} className={`bg-gray-800 p-3 sm:p-4 rounded-md shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center transition-all duration-200 ${exercise.isDeleted ? 'opacity-50 line-through' : ''}`}>
+                                                                <div className="flex-grow mb-2 sm:mb-0">
+                                                                    <p className={`text-base sm:text-lg font-medium text-white`}>{exercise.name}</p>
+                                                                    <p className={`text-sm sm:text-base text-gray-300`}>{getSeriesDisplay(exercise)}</p>
+                                                                    {personalBests[exercise.id] && ( <p className="text-xs sm:text-sm text-yellow-300 mt-1"> Meilleure Perf: {personalBests[exercise.id].maxWeight}kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}</p>)}
+                                                                    {progressionInsights[exercise.id] && ( <p className="text-xs sm:text-sm text-cyan-300 mt-1"> Insight: {progressionInsights[exercise.id]} </p>)}
+                                                                    {exercise.notes && ( <p className={`text-xs sm:text-sm text-gray-300 mt-2 italic`}> Notes: "{exercise.notes}"</p>)}
+                                                                </div>
+                                                                <div className="flex space-x-1 sm:space-x-2 flex-wrap gap-1 mt-2 sm:mt-0"> 
+                                                                    {exercise.isDeleted && ( <button onClick={() => handleReactivateExercise(day, category, exercise.id)} className="px-2 py-1 sm:px-3 sm:py-1 rounded-full bg-green-500 hover:bg-green-600 text-white font-bold transition transform hover:scale-105 shadow-lg text-xs" title="Réactiver l'exercice">Réactiver</button>)}
+                                                                    {!exercise.isDeleted && (
+                                                                         <button onClick={() => handleAnalyzeProgressionClick(exercise)} className="p-1 rounded-full bg-sky-500 hover:bg-sky-600 text-white transition transform hover:scale-110" title="Analyser la progression avec IA"> ✨ Analyser </button>
+                                                                    )}
+                                                                    <button onClick={() => openExerciseGraphModal(exercise)} className="p-1 rounded-full bg-purple-500 hover:bg-purple-600 text-white transition transform hover:scale-110" title="Voir le graphique"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" /></svg></button>
+                                                                </div>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 );
                             })}
                         </div>
-                    );
-                })}
-            </div>
+                    )}
+                </>
+            )}
 
         </>
     );
