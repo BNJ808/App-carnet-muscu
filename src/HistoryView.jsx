@@ -10,7 +10,7 @@ import 'react-datepicker/dist/react-datepicker.css'; // Importez le CSS
  * Composant HistoryView pour afficher l'historique des entraînements.
  * Permet de naviguer entre les dates, de filtrer par jour et d'afficher les exercices supprimés.
  * @param {object} props - Les props du composant.
- * @param {object} props.workouts - L'objet contenant toutes les données d'entraînement.
+ * @param {Array<object>} props.workouts - Le tableau contenant toutes les données d'entraînement historiques (sessions).
  * @param {Date | null} props.selectedDateForHistory - La date sélectionnée pour l'historique.
  * @param {string | null} props.selectedHistoryDayFilter - Le jour sélectionné pour filtrer l'historique.
  * @param {boolean} props.showDeletedExercisesInHistory - Indique si les exercices supprimés doivent être affichés.
@@ -27,25 +27,27 @@ import 'react-datepicker/dist/react-datepicker.css'; // Importez le CSS
  * @param {object} props.personalBests - Les records personnels.
  * @param {object} props.progressionInsights - Les analyses de progression.
  * @param {boolean} props.isAdvancedMode - Indique si le mode avancé est activé.
- * @param {function} props.confirmDeleteWorkout - Fonction pour confirmer la suppression d'un entraînement.
- * @param {function} props.restoreWorkout - Fonction pour restaurer un entraînement supprimé.
- * @param {function} props.confirmClearAllWorkouts - Fonction pour confirmer la suppression de tous les entraînements.
  */
 const HistoryView = ({
-    workouts, selectedDateForHistory, selectedHistoryDayFilter, showDeletedExercisesInHistory,
-    handleDateChange, navigateHistory, setSelectedHistoryDayFilter, getAllUniqueDays,
+    workouts, // Ce sera maintenant historicalDataForGraphs de App.jsx
+    selectedDateForHistory, selectedHistoryDayFilter, showDeletedExercisesInHistory,
+    handleDateChange, navigateHistory, setSelectedHistoryDayFilter,
     formatDate, getSeriesDisplay, handleReactivateExercise, openExerciseGraphModal,
     handleOpenNotesModal, handleAnalyzeProgressionClick, personalBests, progressionInsights,
-    isAdvancedMode, confirmDeleteWorkout, restoreWorkout, confirmClearAllWorkouts
+    isAdvancedMode
 }) => {
 
-    const uniqueDates = Array.from(new Set(workouts.map(workout => workout.date?.toISOString().split('T')[0]))).filter(Boolean).sort().map(dateString => new Date(dateString));
+    // Assurez-vous que 'workouts' est toujours un tableau pour éviter l'erreur .map is not a function
+    const safeWorkouts = Array.isArray(workouts) ? workouts : [];
+
+    // Utilise session.timestamp pour les dates uniques
+    const uniqueDates = Array.from(new Set(safeWorkouts.map(session => session.timestamp?.toISOString().split('T')[0]))).filter(Boolean).sort().map(dateString => new Date(dateString));
 
     useEffect(() => {
         if (!selectedDateForHistory && uniqueDates.length > 0) {
             setSelectedDateForHistory(uniqueDates[uniqueDates.length - 1]); // Sélectionne la dernière date par défaut
         }
-    }, [workouts, uniqueDates, selectedDateForHistory, setSelectedDateForHistory]);
+    }, [safeWorkouts, uniqueDates, selectedDateForHistory, setSelectedDateForHistory]);
 
 
     // Fonction pour naviguer dans l'historique (jour précédent/suivant)
@@ -55,72 +57,68 @@ const HistoryView = ({
             date.toISOString().split('T')[0] === selectedDateForHistory.toISOString().split('T')[0]
         );
         if (direction === 'prev' && currentIndex > 0) {
-            setSelectedDateForHistory(uniqueDates[currentIndex - 1]);
+            navigateHistory(-1); // Appelle la fonction passée en prop dans App.jsx
         } else if (direction === 'next' && currentIndex < uniqueDates.length - 1) {
-            setSelectedDateForHistory(uniqueDates[currentIndex + 1]);
+            navigateHistory(1); // Appelle la fonction passée en prop dans App.jsx
         }
     };
 
-    // Fonction pour obtenir tous les noms de jours uniques des entraînements
+    // Fonction pour obtenir tous les noms de jours uniques des entraînements historiques
     const getAllUniqueDaysFromWorkouts = () => {
         const uniqueDays = new Set(['All']);
-        workouts.forEach(workout => {
-            if (workout.days && typeof workout.days === 'object') { // Vérification de day
-                Object.keys(workout.days).forEach(dayName => uniqueDays.add(dayName));
+        safeWorkouts.forEach(session => { // Itère sur les sessions historiques
+            if (session.workoutData && session.workoutData.days && typeof session.workoutData.days === 'object') {
+                Object.keys(session.workoutData.days).forEach(dayName => uniqueDays.add(dayName));
             }
         });
         return Array.from(uniqueDays);
     };
 
-    const filteredWorkouts = workouts.filter(workout => {
+    const filteredWorkouts = safeWorkouts.filter(session => { // Filtre les sessions historiques
         const matchesDate = !selectedDateForHistory ||
-            (workout.date && workout.date.toISOString().split('T')[0] === selectedDateForHistory.toISOString().split('T')[0]);
+            (session.timestamp && session.timestamp.toISOString().split('T')[0] === selectedDateForHistory.toISOString().split('T')[0]);
         const matchesDayFilter = selectedHistoryDayFilter === 'All' ||
-            (workout.days && typeof workout.days === 'object' && Object.keys(workout.days).some(dayName => dayName === selectedHistoryDayFilter)); // Vérification
-        const matchesDeletedStatus = showDeletedExercisesInHistory ? workout.deleted : !workout.deleted;
+            (session.workoutData && session.workoutData.days && typeof session.workoutData.days === 'object' && Object.keys(session.workoutData.days).some(dayName => dayName === selectedHistoryDayFilter));
 
-        return matchesDate && matchesDayFilter && matchesDeletedStatus;
+        return matchesDate && matchesDayFilter;
     });
 
     // Regroupe les entraînements filtrés par jour et catégorie
-    const groupedWorkouts = filteredWorkouts.reduce((acc, workout) => {
-        if (workout.workoutData && workout.workoutData.days && typeof workout.workoutData.days === 'object') { // Vérification de workoutData et days
-            Object.values(workout.workoutData.days).forEach(day => {
-                // S'assurer que 'day' est un objet valide et a un 'name'
-                if (day && typeof day === 'object' && day.name) {
-                    const dayKey = day.name;
+    const groupedWorkouts = filteredWorkouts.reduce((acc, session) => { // Réduit les sessions
+        if (session.workoutData && session.workoutData.days && typeof session.workoutData.days === 'object') {
+            Object.keys(session.workoutData.days).forEach(dayKey => { // Itère sur les clés de jour
+                const dayData = session.workoutData.days[dayKey];
+                if (dayData && typeof dayData === 'object' && dayData.categories) { // Vérifie dayData et ses catégories
                     if (!acc[dayKey]) {
                         acc[dayKey] = {
-                            dayId: day.id,
-                            dayName: day.name,
-                            dayOrder: day.dayOrder,
+                            dayName: dayKey, // Utilise dayKey comme dayName
                             categories: {},
-                            workouts: []
+                            sessions: [] // Stocke les sessions liées à ce jour
                         };
                     }
-                    acc[dayKey].workouts.push(workout);
+                    acc[dayKey].sessions.push(session); // Ajoute la session aux sessions du jour
 
-                    if (day.categories && typeof day.categories === 'object') { // Vérification de categories
-                        Object.values(day.categories).forEach(category => {
-                            // S'assurer que 'category' est un objet valide et a un 'name'
-                            if (category && typeof category === 'object' && category.name) {
-                                const categoryKey = category.name;
-                                if (!acc[dayKey].categories[categoryKey]) {
-                                    acc[dayKey].categories[categoryKey] = {
-                                        categoryId: category.id,
-                                        categoryName: category.name,
-                                        exercises: []
-                                    };
-                                }
-                                if (Array.isArray(category.exercises)) { // Vérification de exercises
-                                    category.exercises.forEach(exercise => {
-                                        const exerciseWithWorkoutId = { ...exercise, workoutId: workout.id };
-                                        acc[dayKey].categories[categoryKey].exercises.push(exerciseWithWorkoutId);
+                    Object.keys(dayData.categories).forEach(categoryKey => { // Itère sur les clés de catégorie
+                        const categoryExercises = dayData.categories[categoryKey];
+                        if (Array.isArray(categoryExercises)) { // S'assure que c'est un tableau d'exercices
+                            if (!acc[dayKey].categories[categoryKey]) {
+                                acc[dayKey].categories[categoryKey] = {
+                                    categoryName: categoryKey,
+                                    exercises: []
+                                };
+                            }
+                            categoryExercises.forEach(exercise => {
+                                // Ajoute seulement si non supprimé, ou si l'option "afficher supprimés" est activée
+                                if (showDeletedExercisesInHistory || !exercise.isDeleted) {
+                                    acc[dayKey].categories[categoryKey].exercises.push({
+                                        ...exercise,
+                                        sessionId: session.id, // Lie l'exercice à son ID de session
+                                        sessionTimestamp: session.timestamp // Lie l'exercice à son horodatage de session
                                     });
                                 }
-                            }
-                        });
-                    }
+                            });
+                        }
+                    });
                 }
             });
         }
@@ -144,7 +142,7 @@ const HistoryView = ({
                     </button>
                     <DatePicker
                         selected={selectedDateForHistory}
-                        onChange={(date) => handleDateChange({ target: { value: date?.toISOString().split('T')[0] } })} // Adapter pour DatePicker
+                        onChange={(date) => handleDateChange({ target: { value: date?.toISOString().split('T')[0] } })}
                         dateFormat="dd/MM/yyyy"
                         className="bg-gray-700 text-white p-2 rounded-lg text-center w-36 sm:w-48 cursor-pointer"
                         wrapperClassName="date-picker-wrapper"
@@ -160,7 +158,7 @@ const HistoryView = ({
 
                 {/* Day Filter */}
                 <select
-                    value={selectedHistoryDayFilter || 'All'} // Default to 'All'
+                    value={selectedHistoryDayFilter || 'All'}
                     onChange={(e) => setSelectedHistoryDayFilter(e.target.value)}
                     className="bg-gray-700 text-white p-2 rounded-lg w-full sm:w-auto"
                 >
@@ -181,89 +179,88 @@ const HistoryView = ({
                 </label>
             </div>
 
-            {/* Clear All Workouts Button */}
-            <button
+            {/* Le bouton "Tout Vider" est commenté car sa logique de "soft delete" complète doit être gérée dans App.jsx */}
+            {/* <button
                 onClick={confirmClearAllWorkouts}
                 className="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg shadow-md transition transform hover:scale-105 mb-4 w-full sm:w-auto"
             >
                 Tout Vider (soft delete)
-            </button>
+            </button> */}
 
             {Object.values(groupedWorkouts)
                 .sort((a, b) => {
-                    // Gère les cas où dayOrder est manquant ou non numérique
-                    const orderA = typeof a.dayOrder === 'number' ? a.dayOrder : Infinity;
-                    const orderB = typeof b.dayOrder === 'number' ? b.dayOrder : Infinity;
-                    return orderA - orderB;
+                    // Trie par nom de jour pour une cohérence visuelle
+                    return a.dayName.localeCompare(b.dayName);
                 })
                 .map((dayData) => {
-                    // Vérification de sécurité supplémentaire pour dayData
                     if (!dayData || typeof dayData !== 'object' || !dayData.categories) {
                         console.warn("Invalid dayData encountered in HistoryView:", dayData);
-                        return null; // Skip rendering this invalid day
+                        return null;
                     }
 
                     return (
-                        <div key={dayData.dayId || dayData.dayName} className="bg-gray-700 p-4 rounded-lg shadow-md mb-4 border border-gray-600">
+                        <div key={dayData.dayName} className="bg-gray-700 p-4 rounded-lg shadow-md mb-4 border border-gray-600">
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="text-xl sm:text-2xl font-semibold text-white">{dayData.dayName}</h3>
-                                {/* Bouton Editer le jour complet (associé au premier workout du jour) */}
-                                {dayData.workouts && dayData.workouts.length > 0 && (
+                                {/* Le bouton "Éditer l'entraînement" est commenté car sa logique doit être gérée dans App.jsx */}
+                                {/* {dayData.sessions && dayData.sessions.length > 0 && (
                                     <button
-                                        onClick={() => editWorkout(dayData.workouts[0])}
+                                        onClick={() => editWorkout(dayData.sessions[0])}
                                         className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-full transition transform hover:scale-110 shadow-md"
                                         title="Éditer l'entraînement"
                                     >
                                         <Pencil className="h-5 w-5" />
                                     </button>
-                                )}
+                                )} */}
                             </div>
                             <div className="space-y-3">
                                 {Object.values(dayData.categories).map((categoryData) => {
-                                    // Vérification de sécurité supplémentaire pour categoryData
                                     if (!categoryData || typeof categoryData !== 'object' || !Array.isArray(categoryData.exercises)) {
                                         console.warn("Invalid categoryData encountered in HistoryView:", categoryData);
-                                        return null; // Skip rendering this invalid category
+                                        return null;
                                     }
 
-                                    // Regroupe les exercices par nom et filtre les supprimés
-                                    const uniqueExercises = Array.from(new Map(
-                                        categoryData.exercises.filter(ex => showDeletedExercisesInHistory ? true : !ex.isDeleted) // Changed from .deleted to .isDeleted
-                                            .map(exercise => [exercise.name, exercise])
-                                    ).values());
+                                    // Filtre les exercices pour n'afficher que ceux pertinents selon showDeletedExercisesInHistory
+                                    const exercisesToDisplay = categoryData.exercises.filter(ex => showDeletedExercisesInHistory || !ex.isDeleted);
+
+                                    if (exercisesToDisplay.length === 0 && !showDeletedExercisesInHistory) {
+                                        return null; // Ne pas afficher les catégories vides, sauf si les supprimés sont affichés
+                                    }
 
                                     return (
-                                        <div key={categoryData.categoryId || categoryData.categoryName} className="bg-gray-600 p-3 rounded-lg shadow-sm border border-gray-500">
+                                        <div key={categoryData.categoryName} className="bg-gray-600 p-3 rounded-lg shadow-sm border border-gray-500">
                                             <h4 className="text-lg sm:text-xl font-medium text-white mb-2">{categoryData.categoryName}</h4>
                                             <ul className="space-y-2">
-                                                {uniqueExercises.map(exercise => (
+                                                {exercisesToDisplay.map(exercise => (
                                                     <li key={exercise.id} className={`bg-gray-500 p-3 rounded-lg flex justify-between items-center ${exercise.isDeleted ? 'opacity-50' : ''}`}>
                                                         <div>
                                                             <p className="text-white text-base sm:text-lg font-bold">{exercise.name}</p>
-                                                            <p className="text-gray-200 text-sm">{getSeriesDisplay(exercise)}</p>
+                                                            <p className="text-gray-200 text-sm">{getSeriesDisplay(exercise.series)}</p> {/* Passe exercise.series */}
                                                             {exercise.notes && (
                                                                 <p className="text-yellow-200 text-xs sm:text-sm italic mt-1">Notes: {exercise.notes}</p>
                                                             )}
-                                                            {isAdvancedMode && personalBests[exercise.id] && (
+                                                            {isAdvancedMode && personalBests[exercise.name] && ( // Utilise exercise.name pour la recherche PB
                                                                 <p className="text-yellow-300 text-xs mt-1">
-                                                                    PB: {personalBests[exercise.id].maxWeight}kg x {personalBests[exercise.id].reps} reps ({formatDate(personalBests[exercise.id].date)})
+                                                                    PB: {personalBests[exercise.name].weight}kg x {personalBests[exercise.name].reps} reps ({formatDate(personalBests[exercise.name].date)})
                                                                 </p>
                                                             )}
-                                                            {isAdvancedMode && progressionInsights[exercise.id] && (
+                                                            {isAdvancedMode && progressionInsights[exercise.name] && ( // Utilise exercise.name pour la recherche d'insights
                                                                 <p className="text-sky-300 text-xs mt-1">
-                                                                    Progression: {progressionInsights[exercise.id]}
+                                                                    Progression: {progressionInsights[exercise.name].hasImproved ? "Excellente progression !" : progressionInsights[exercise.name].hasRegressed ? "Baisse de performance." : "Progression stable."}
                                                                 </p>
                                                             )}
                                                         </div>
                                                         <div className="flex space-x-2">
                                                             {exercise.isDeleted ? (
-                                                                <button onClick={() => restoreWorkout(exercise.workoutId)} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition transform hover:scale-110" title="Restaurer l'entraînement">
+                                                                <button onClick={() => handleReactivateExercise(dayData.dayName, categoryData.categoryName, exercise.id)} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition transform hover:scale-110" title="Réactiver l'exercice">
                                                                     <RotateCcw className="h-4 w-4" />
                                                                 </button>
                                                             ) : (
-                                                                <button onClick={() => confirmDeleteWorkout(exercise.workoutId)} className="p-1 rounded-full bg-red-500 hover:bg-red-600 text-white transition transform hover:scale-110" title="Supprimer l'entraînement">
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </button>
+                                                                // Pas de suppression directe depuis l'historique, seulement réactivation ou visualisation
+                                                                // La fonction handleDeleteExercise dans App.jsx marque comme supprimé, ne supprime pas complètement.
+                                                                // Si l'utilisateur souhaite supprimer complètement de l'historique, il faut une fonction différente.
+                                                                // Pour l'instant, le bouton de suppression est retiré de la vue historique.
+                                                                null
                                                             )}
                                                             <button onClick={() => openExerciseGraphModal(exercise)} className="p-1 rounded-full bg-purple-500 hover:bg-purple-600 text-white transition transform hover:scale-110" title="Voir le graphique">
                                                                 <LineChartIcon className="h-4 w-4" />
