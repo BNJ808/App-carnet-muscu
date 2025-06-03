@@ -289,6 +289,8 @@ const App = () => {
                     confirmDeleteWorkout={confirmDeleteWorkout}
                     restoreWorkout={restoreWorkout}
                     confirmClearAllWorkouts={confirmClearAllWorkouts}
+                    openExerciseGraphModal={openExerciseGraphModal} // Assurez-vous que cette fonction existe et est définie dans App.jsx
+                    handleOpenNotesModal={handleOpenNotesModal} // Assurez-vous que cette fonction existe et est définie dans App.jsx
                 />
             ) : (
                 <MainWorkoutView

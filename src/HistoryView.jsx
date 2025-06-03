@@ -1,157 +1,245 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Pencil, Trash2, Sparkles, LineChart as LineChartIcon, NotebookText,
     RotateCcw
 } from 'lucide-react';
+import DatePicker from 'react-datepicker'; // Assurez-vous que react-datepicker est installé
+import 'react-datepicker/dist/react-datepicker.css'; // Importez le CSS
 
 /**
  * Composant HistoryView pour afficher l'historique des entraînements.
  * Permet de naviguer entre les dates, de filtrer par jour et d'afficher les exercices supprimés.
  * @param {object} props - Les props du composant.
- * @param {object} props.workouts - L'objet contenant toutes les données d'entraînement.
- * @param {Date | null} props.selectedDateForHistory - La date sélectionnée pour l'historique.
- * @param {string | null} props.selectedHistoryDayFilter - Le jour sélectionné pour filtrer l'historique.
- * @param {boolean} props.showDeletedExercisesInHistory - Indique si les exercices supprimés doivent être affichés.
- * @param {function} props.handleDateChange - Fonction pour gérer le changement de date.
- * @param {function} props.navigateHistory - Fonction pour naviguer dans l'historique (jour précédent/suivant).
- * @param {function} props.setSelectedHistoryDayFilter - Fonction pour définir le filtre de jour de l'historique.
- * @param {function} props.getAllUniqueDays - Fonction pour obtenir tous les noms de jours uniques.
- * @param {function} props.formatDate - Fonction utilitaire pour formater une date.
- * @param {function} props.getSeriesDisplay - Fonction utilitaire pour afficher les séries d'un exercice.
- * @param {function} props.handleReactivateExercise - Fonction pour réactiver un exercice supprimé.
- * @param {function} props.openExerciseGraphModal - Fonction pour ouvrir la modale du graphique d'exercice.
- * @param {function} props.handleOpenNotesModal - Fonction pour ouvrir la modale des notes.
- * @param {function} props.handleAnalyzeProgressionClick - Fonction pour analyser la progression avec l'IA.
- * @param {object} props.personalBests - Les records personnels des exercices.
- * @param {object} props.progressionInsights - Les insights de progression des exercices.
- * @param {boolean} props.isAdvancedMode - Indique si le mode avancé est activé.
+ * @param {Array<object>} props.workouts - La liste de tous les entraînements.
+ * @param {function} props.editWorkout - Fonction pour éditer un entraînement existant.
+ * @param {function} props.confirmDeleteWorkout - Fonction pour confirmer la suppression d'un entraînement.
+ * @param {function} props.restoreWorkout - Fonction pour restaurer un entraînement supprimé.
+ * @param {function} props.confirmClearAllWorkouts - Fonction pour confirmer la suppression de tous les entraînements.
  */
-const HistoryView = ({
-    workouts,
-    selectedDateForHistory,
-    selectedHistoryDayFilter,
-    showDeletedExercisesInHistory,
-    handleDateChange,
-    navigateHistory,
-    setSelectedHistoryDayFilter,
-    getAllUniqueDays,
-    formatDate,
-    getSeriesDisplay,
-    handleReactivateExercise,
-    openExerciseGraphModal,
-    handleOpenNotesModal,
-    handleAnalyzeProgressionClick,
-    personalBests,
-    progressionInsights,
-    isAdvancedMode,
-}) => {
-    const daysToDisplay = selectedHistoryDayFilter && Object.keys(workouts.days).includes(selectedHistoryDayFilter)
-        ? [selectedHistoryDayFilter]
-        : Object.keys(workouts.days); // Show selected day or all days if no specific day is selected
+const HistoryView = ({ workouts, editWorkout, confirmDeleteWorkout, restoreWorkout, confirmClearAllWorkouts }) => {
+    const [selectedDateForHistory, setSelectedDateForHistory] = useState(null);
+    const [selectedHistoryDayFilter, setSelectedHistoryDayFilter] = useState('All');
+    const [showDeletedExercisesInHistory, setShowDeletedExercisesInHistory] = useState(false);
+
+    // Fonction pour formater une date en chaîne lisible
+    const formatDate = (date) => {
+        if (!date) return '';
+        return date.toLocaleDateString('fr-FR', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+    };
+
+    // Fonction pour obtenir toutes les dates uniques des entraînements
+    const getAllUniqueDates = () => {
+        const uniqueDates = new Set();
+        workouts.forEach(workout => {
+            if (workout.date) {
+                uniqueDates.add(workout.date.toISOString().split('T')[0]);
+            }
+        });
+        return Array.from(uniqueDates).sort().map(dateString => new Date(dateString));
+    };
+
+    const uniqueDates = getAllUniqueDates();
+
+    useEffect(() => {
+        if (!selectedDateForHistory && uniqueDates.length > 0) {
+            setSelectedDateForHistory(uniqueDates[uniqueDates.length - 1]); // Sélectionne la dernière date par défaut
+        }
+    }, [workouts, uniqueDates, selectedDateForHistory]);
+
+
+    // Fonction pour naviguer dans l'historique (jour précédent/suivant)
+    const navigateHistory = (direction) => {
+        const currentIndex = uniqueDates.findIndex(date =>
+            date.toISOString().split('T')[0] === selectedDateForHistory.toISOString().split('T')[0]
+        );
+        if (direction === 'prev' && currentIndex > 0) {
+            setSelectedDateForHistory(uniqueDates[currentIndex - 1]);
+        } else if (direction === 'next' && currentIndex < uniqueDates.length - 1) {
+            setSelectedDateForHistory(uniqueDates[currentIndex + 1]);
+        }
+    };
+
+    // Fonction pour obtenir tous les noms de jours uniques des entraînements
+    const getAllUniqueDays = () => {
+        const uniqueDays = new Set(['All']);
+        workouts.forEach(workout => {
+            if (workout.days) {
+                workout.days.forEach(day => uniqueDays.add(day.name));
+            }
+        });
+        return Array.from(uniqueDays);
+    };
+
+    // Fonction utilitaire pour afficher les séries d'un exercice
+    const getSeriesDisplay = (sets) => {
+        return sets.map(set => `${set.reps}x${set.weight}kg`).join(' / ');
+    };
+
+    const filteredWorkouts = workouts.filter(workout => {
+        const matchesDate = !selectedDateForHistory ||
+            (workout.date && workout.date.toISOString().split('T')[0] === selectedDateForHistory.toISOString().split('T')[0]);
+        const matchesDayFilter = selectedHistoryDayFilter === 'All' ||
+            (workout.days && workout.days.some(day => day.name === selectedHistoryDayFilter));
+        const matchesDeletedStatus = showDeletedExercisesInHistory ? workout.deleted : !workout.deleted;
+
+        return matchesDate && matchesDayFilter && matchesDeletedStatus;
+    });
+
+    // Regroupe les entraînements filtrés par jour et catégorie
+    const groupedWorkouts = filteredWorkouts.reduce((acc, workout) => {
+        (workout.days || []).forEach(day => {
+            const dayKey = day.name; // Utilise le nom du jour comme clé
+            if (!acc[dayKey]) {
+                acc[dayKey] = {
+                    dayId: day.id, // Garde l'ID du jour original si besoin
+                    dayName: day.name,
+                    dayOrder: day.dayOrder, // Important pour le tri !
+                    categories: {},
+                    workouts: [] // Pour stocker les infos de l'entraînement global (date, etc.)
+                };
+            }
+            // Ajoutez l'entraînement au jour pour pouvoir éditer l'entraînement complet
+            acc[dayKey].workouts.push(workout);
+
+            (day.categories || []).forEach(category => {
+                const categoryKey = category.name;
+                if (!acc[dayKey].categories[categoryKey]) {
+                    acc[dayKey].categories[categoryKey] = {
+                        categoryId: category.id,
+                        categoryName: category.name,
+                        exercises: []
+                    };
+                }
+                (category.exercises || []).forEach(exercise => {
+                    const exerciseWithWorkoutId = { ...exercise, workoutId: workout.id };
+                    acc[dayKey].categories[categoryKey].exercises.push(exerciseWithWorkoutId);
+                });
+            });
+        });
+        return acc;
+    }, {});
+
 
     return (
-        <>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
-                <div className="flex items-center space-x-2">
-                    <button onClick={() => navigateHistory(-1)} className="px-3 py-2 sm:px-4 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition transform hover:scale-105 text-sm sm:text-base">
-                        {'< Précédent'}
+        <div className="w-full max-w-4xl bg-gray-800 p-4 sm:p-6 rounded-lg shadow-xl">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-blue-300">Historique des entraînements</h2>
+
+            {/* Date Navigation and Picker */}
+            <div className="flex flex-col sm:flex-row items-center justify-between mb-4 space-y-3 sm:space-y-0 sm:space-x-4">
+                <div className="flex items-center space-x-2 w-full sm:w-auto">
+                    <button
+                        onClick={() => navigateHistory('prev')}
+                        disabled={!selectedDateForHistory || uniqueDates.findIndex(date => date.toISOString().split('T')[0] === selectedDateForHistory.toISOString().split('T')[0]) === 0}
+                        className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full disabled:opacity-50"
+                    >
+                        &lt;
                     </button>
-                    <input
-                        type="date"
-                        value={selectedDateForHistory ? selectedDateForHistory.toISOString().split('T')[0] : ''}
-                        onChange={handleDateChange}
-                        className={`p-2 rounded-md bg-gray-700 text-white border border-gray-600 focus:ring-2 focus:ring-blue-500 text-sm sm:text-base`}
+                    <DatePicker
+                        selected={selectedDateForHistory}
+                        onChange={(date) => setSelectedDateForHistory(date)}
+                        dateFormat="dd/MM/yyyy"
+                        className="bg-gray-700 text-white p-2 rounded-lg text-center w-36 sm:w-48 cursor-pointer"
+                        wrapperClassName="date-picker-wrapper"
                     />
-                    <button onClick={() => navigateHistory(1)} className="px-3 py-2 sm:px-4 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition transform hover:scale-105 text-sm sm:text-base">
-                        {'Suivant >'}
+                    <button
+                        onClick={() => navigateHistory('next')}
+                        disabled={!selectedDateForHistory || uniqueDates.findIndex(date => date.toISOString().split('T')[0] === selectedDateForHistory.toISOString().split('T')[0]) === uniqueDates.length - 1}
+                        className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full disabled:opacity-50"
+                    >
+                        &gt;
                     </button>
                 </div>
+
+                {/* Day Filter */}
                 <select
-                    value={selectedHistoryDayFilter || ''}
-                    onChange={(e) => setSelectedHistoryDayFilter(e.target.value || null)}
-                    className={`p-2 rounded-md bg-gray-700 text-white border border-gray-600 focus:ring-2 focus:ring-blue-500 text-sm sm:text-base`}
+                    value={selectedHistoryDayFilter}
+                    onChange={(e) => setSelectedHistoryDayFilter(e.target.value)}
+                    className="bg-gray-700 text-white p-2 rounded-lg w-full sm:w-auto"
                 >
                     {getAllUniqueDays().map(day => (
                         <option key={day} value={day}>{day}</option>
                     ))}
                 </select>
-                <label className={`flex items-center space-x-2 text-gray-300 text-sm sm:text-base`}>
+
+                {/* Show Deleted Checkbox */}
+                <label className="flex items-center text-white text-sm sm:text-base">
                     <input
                         type="checkbox"
                         checked={showDeletedExercisesInHistory}
                         onChange={(e) => setShowDeletedExercisesInHistory(e.target.checked)}
-                        className="form-checkbox h-4 w-4 sm:h-5 sm:w-5 text-blue-600 rounded"
+                        className="form-checkbox h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded mr-2"
                     />
-                    <span>Afficher exos supprimés</span>
+                    Afficher supprimés
                 </label>
             </div>
 
-            <div className="grid grid-cols-1 gap-8 max-w-6xl mx-auto">
-                {daysToDisplay.map((day) => {
-                    const currentDayData = workouts.days?.[day];
-                    if (!currentDayData) {
-                        return <div key={day} className="text-center text-gray-500">Journée "{day}" non trouvée ou vide.</div>;
-                    }
+            {/* Clear All Workouts Button */}
+            <button
+                onClick={confirmClearAllWorkouts}
+                className="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg shadow-md transition transform hover:scale-105 mb-4 w-full sm:w-auto"
+            >
+                Tout Vider (soft delete)
+            </button>
 
-                    const categoriesToIterate = Object.keys(currentDayData.categories || {});
-
-                    return (
-                        <div key={day} className={`bg-gray-800 rounded-xl shadow-2xl p-4 sm:p-6 border border-gray-700`}>
-                            <div className="flex flex-wrap justify-between items-center mb-6 gap-2">
-                                <h2 className={`text-2xl sm:text-3xl font-bold text-blue-400`}>{day}</h2>
-                            </div>
-
-                            {categoriesToIterate.map((category) => {
-                                const exercises = currentDayData.categories?.[category] || [];
-
-                                let exercisesToRender = showDeletedExercisesInHistory ? exercises : exercises.filter(ex => !ex.isDeleted);
-
-                                if (exercisesToRender.length === 0) {
-                                    return null;
-                                }
+            {Object.values(groupedWorkouts)
+                .sort((a, b) => {
+                    // Gère les cas où dayOrder est manquant ou non numérique
+                    const orderA = typeof a.dayOrder === 'number' ? a.dayOrder : Infinity;
+                    const orderB = typeof b.dayOrder === 'number' ? b.dayOrder : Infinity;
+                    return orderA - orderB;
+                }) // <-- MODIFICATION ICI
+                .map((dayData) => (
+                    <div key={dayData.dayId || dayData.dayName} className="bg-gray-700 p-4 rounded-lg shadow-md mb-4 border border-gray-600">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-xl sm:text-2xl font-semibold text-white">{dayData.dayName}</h3>
+                            {/* Bouton Editer le jour complet (associé au premier workout du jour) */}
+                            {dayData.workouts && dayData.workouts.length > 0 && (
+                                <button
+                                    onClick={() => editWorkout(dayData.workouts[0])}
+                                    className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-full transition transform hover:scale-110 shadow-md"
+                                    title="Éditer l'entraînement"
+                                >
+                                    <Pencil className="h-5 w-5" />
+                                </button>
+                            )}
+                        </div>
+                        <div className="space-y-3">
+                            {Object.values(dayData.categories).map((categoryData) => {
+                                // Regroupe les exercices par nom et filtre les supprimés
+                                const uniqueExercises = Array.from(new Map(
+                                    categoryData.exercises.filter(ex => showDeletedExercisesInHistory ? true : !ex.deleted)
+                                        .map(exercise => [exercise.name, exercise])
+                                ).values());
 
                                 return (
-                                    <div key={category} className={`mb-8 bg-gray-700 rounded-lg p-3 sm:p-5 shadow-inner border border-gray-700 transition-all duration-300 ease-out`}>
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className={`text-xl sm:text-2xl font-semibold text-green-300`}>{category}</h3>
-                                        </div>
-                                        <ul className="space-y-4">
-                                            {exercisesToRender.map((exercise) => (
-                                                <li key={exercise.id} id={`exercise-item-${exercise.id}`} className={`bg-gray-800 p-3 sm:p-4 rounded-md shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center transition-all duration-200 ${exercise.isDeleted ? 'opacity-50 line-through' : ''}`}>
-                                                    <div className="flex-grow mb-2 sm:mb-0">
-                                                        <p className={`text-base sm:text-lg font-medium text-white`}>{exercise.name}</p>
-                                                        <p className={`text-sm sm:text-base text-gray-300`}>{getSeriesDisplay(exercise)}</p>
-                                                        {isAdvancedMode && personalBests[exercise.id] && (
-                                                            <p className="text-xs sm:text-sm text-yellow-300 mt-1">
-                                                                Meilleure Perf: {personalBests[exercise.id].maxWeight}kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}
-                                                            </p>
-                                                        )}
-                                                        {isAdvancedMode && progressionInsights[exercise.id] && (
-                                                            <p className="text-xs sm:text-sm text-cyan-300 mt-1">
-                                                                Insight: {progressionInsights[exercise.id]}
-                                                            </p>
-                                                        )}
+                                    <div key={categoryData.categoryId || categoryData.categoryName} className="bg-gray-600 p-3 rounded-lg shadow-sm border border-gray-500">
+                                        <h4 className="text-lg sm:text-xl font-medium text-white mb-2">{categoryData.categoryName}</h4>
+                                        <ul className="space-y-2">
+                                            {uniqueExercises.map(exercise => (
+                                                <li key={exercise.id} className={`bg-gray-500 p-3 rounded-lg flex justify-between items-center ${exercise.deleted ? 'opacity-50' : ''}`}>
+                                                    <div>
+                                                        <p className="text-white text-base sm:text-lg font-bold">{exercise.name}</p>
+                                                        <p className="text-gray-200 text-sm sm:text-base">{getSeriesDisplay(exercise.sets || [])}</p>
                                                         {exercise.notes && (
-                                                            <p className={`text-xs sm:text-sm text-gray-300 mt-2 italic`}>
-                                                                Notes: "{exercise.notes}"
-                                                            </p>
+                                                            <p className="text-yellow-200 text-xs sm:text-sm italic mt-1">Notes: {exercise.notes}</p>
                                                         )}
                                                     </div>
-                                                    <div className="flex space-x-1 sm:space-x-2 flex-wrap gap-1 mt-2 sm:mt-0">
-                                                        {exercise.isDeleted && (
-                                                            <button onClick={() => handleReactivateExercise(day, category, exercise.id)} className="px-2 py-1 sm:px-3 sm:py-1 rounded-full bg-green-500 hover:bg-green-600 text-white font-bold transition transform hover:scale-105 shadow-lg text-xs" title="Réactiver l'exercice">
-                                                                <RotateCcw className="h-4 w-4 inline-block mr-1" /> Réactiver
+                                                    <div className="flex space-x-2">
+                                                        {exercise.deleted ? (
+                                                            <button onClick={() => restoreWorkout(exercise.workoutId)} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition transform hover:scale-110" title="Restaurer l'entraînement">
+                                                                <RotateCcw className="h-4 w-4" />
                                                             </button>
-                                                        )}
-                                                        {isAdvancedMode && !exercise.isDeleted && (
-                                                            <button onClick={() => handleAnalyzeProgressionClick(exercise)} className="p-1 rounded-full bg-sky-500 hover:bg-sky-600 text-white transition transform hover:scale-110" title="Analyser la progression avec IA">
-                                                                <Sparkles className="h-4 w-4" />
+                                                        ) : (
+                                                            <button onClick={() => confirmDeleteWorkout(exercise.workoutId)} className="p-1 rounded-full bg-red-500 hover:bg-red-600 text-white transition transform hover:scale-110" title="Supprimer l'entraînement">
+                                                                <Trash2 className="h-4 w-4" />
                                                             </button>
                                                         )}
                                                         <button onClick={() => openExerciseGraphModal(exercise)} className="p-1 rounded-full bg-purple-500 hover:bg-purple-600 text-white transition transform hover:scale-110" title="Voir le graphique">
                                                             <LineChartIcon className="h-4 w-4" />
                                                         </button>
-                                                        <button onClick={() => handleOpenNotesModal(day, category, exercise.id, exercise.notes)} className="p-1 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition transform hover:scale-110" title="Notes de l'exercice">
+                                                        <button onClick={() => handleOpenNotesModal(dayData.dayName, categoryData.categoryName, exercise.id, exercise.notes)} className="p-1 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition transform hover:scale-110" title="Notes de l'exercice">
                                                             <NotebookText className="h-4 w-4" />
                                                         </button>
                                                     </div>
@@ -162,10 +250,14 @@ const HistoryView = ({
                                 );
                             })}
                         </div>
-                    );
-                })}
-            </div>
-        </>
+                    </div>
+                ))}
+            {filteredWorkouts.length === 0 && (
+                <p className="text-gray-400 text-center mt-8 text-lg sm:text-xl">
+                    Aucun entraînement trouvé pour cette date et ces filtres.
+                </p>
+            )}
+        </div>
     );
 };
 
