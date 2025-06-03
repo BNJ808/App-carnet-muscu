@@ -6,6 +6,9 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import {
     Undo2, Redo2, Settings, XCircle, CheckCircle
 } from 'lucide-react';
+// Import pour l'API Gemini
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
 
 // Import des composants refactorisés - Correction des chemins d'importation
 import Toast from './Toast.jsx';
@@ -74,20 +77,6 @@ const appStyles = `
         pointer-events: none; /* Empêche les clics supplémentaires */
     }
 `;
-
-// Au lieu de démarrer Tone.js automatiquement
-const startAudio = async () => {
-    try {
-        if (window.Tone && window.Tone.context.state !== 'running') { // Use window.Tone
-            await window.Tone.start(); // Use window.Tone
-        }
-    } catch (error) {
-        console.log('Audio context failed to start:', error);
-    }
-};
-
-// Démarrez seulement après une interaction utilisateur
-document.addEventListener('click', startAudio, { once: true });
 
 // Initialisation de Firebase (les variables __app_id, __firebase_config, __initial_auth_token sont fournies par l'environnement Canvas)
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -193,7 +182,7 @@ const baseInitialData = {
                     { id: 'pecs-1', name: 'D.Couché léger', series: [{ weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }], isDeleted: false, notes: '' },
                     { id: 'pecs-2', name: 'D.Couché lourd', series: [{ weight: '14', reps: '8' }, { weight: '14', reps: '8' }, { weight: '14', reps: '8' }, { weight: '14', reps: '8' }], isDeleted: false, notes: '' },
                     { id: 'pecs-3', name: 'D.Couché incliné léger', series: [{ weight: '10', reps: '' }, { weight: '10', reps: '' }, { weight: '10', reps: '' }], isDeleted: false, notes: '' },
-                    { id: 'pecs-4', name: 'D.Couché incl lourd', series: [{ weight: '10', reps: '' }, { weight: '10', reps: '' }, { weight: '10', reps: '' }], isDeleted: false, notes: '' },
+                    { id: 'pecs-4', name: 'D.Couché incl lourd', series: [{ weight: '10', reps: '' }, { weight: '10', reps: '10' }, { weight: '10', reps: '10' }], isDeleted: false, notes: '' },
                     { id: 'pecs-5', name: 'Ecartés Couchés', series: [{ weight: '6', reps: '' }, { weight: '6', reps: '6' }, { weight: '6', reps: '6' }], isDeleted: false, notes: '' },
                 ],
                 EPAULES: [
@@ -405,11 +394,7 @@ const useTimer = (initialSeconds = 60) => {
     const synthRef = useRef(null); 
 
     useEffect(() => {
-        if (window.Tone) { // Check if Tone is defined before using it
-            synthRef.current = new window.Tone.Synth().toDestination(); // Use window.Tone
-        } else {
-            console.warn("Tone.js not available for timer sounds.");
-        }
+        // Cleanup function for the synth
         return () => {
             if (synthRef.current) {
                 // Ensure dispose method exists before calling it
@@ -418,12 +403,33 @@ const useTimer = (initialSeconds = 60) => {
                 } else {
                     console.warn("synthRef.current.dispose is not a function. Tone.js stub might be incomplete.");
                 }
+                synthRef.current = null; // Clear the ref
             }
         };
     }, []);
 
-    const startTimer = () => {
+    const startTimer = async () => { // Make this function async
         if (seconds > 0) {
+            // Ensure audio context is started and synth is initialized
+            if (window.Tone) {
+                if (window.Tone.context.state !== 'running') {
+                    try {
+                        await window.Tone.start();
+                        console.log("Audio context started by timer.");
+                    } catch (error) {
+                        console.error("Failed to start audio context for timer:", error);
+                        // Optionally set a toast here if this is the only way audio starts
+                    }
+                }
+                // Initialize synth only if it hasn't been already
+                if (!synthRef.current) {
+                    synthRef.current = new window.Tone.Synth().toDestination();
+                    console.log("Tone.Synth initialized by timer start.");
+                }
+            } else {
+                console.warn("Tone.js not available for timer sounds.");
+            }
+
             setIsRunning(true);
             setIsFinishedState(false); // Reset isFinishedState when starting
             intervalRef.current = setInterval(() => {
@@ -432,10 +438,12 @@ const useTimer = (initialSeconds = 60) => {
                         clearInterval(intervalRef.current);
                         setIsRunning(false);
                         setIsFinishedState(true); // Set to true when timer finishes
-                        if (window.Tone && synthRef.current) { // Use window.Tone
+                        if (window.Tone && synthRef.current && typeof synthRef.current.triggerAttackRelease === 'function') {
                             for (let i = 0; i < 3; i++) {
                                 synthRef.current.triggerAttackRelease('G5', '8n', window.Tone.now() + (i * 0.5)); // Use window.Tone
                             }
+                        } else {
+                            console.warn("Synth not ready or triggerAttackRelease not a function. Cannot play sound.");
                         }
                         return 0;
                     }
@@ -443,27 +451,11 @@ const useTimer = (initialSeconds = 60) => {
                 });
             }, 1000);
         } else {
+            // If timer is at 0, reset and then start
             resetTimer(initialSeconds);
-            // Automatically start after reset if initialSeconds > 0
             if (initialSeconds > 0) {
-                 setIsRunning(true);
-                 setIsFinishedState(false); // Reset isFinishedState when starting
-                 intervalRef.current = setInterval(() => {
-                    setSeconds(prevSeconds => {
-                        if (prevSeconds <= 1) {
-                            clearInterval(intervalRef.current);
-                            setIsRunning(false);
-                            setIsFinishedState(true); // Set to true when timer finishes
-                            if (window.Tone && synthRef.current) { // Use window.Tone
-                                for (let i = 0; i < 3; i++) {
-                                    synthRef.current.triggerAttackRelease('G5', '8n', window.Tone.now() + (i * 0.5)); // Use window.Tone
-                                }
-                            }
-                            return 0;
-                        }
-                        return prevSeconds - 1;
-                    });
-                }, 1000);
+                // Call startTimer again after reset to initiate the countdown
+                startTimer(); 
             }
         }
     };
@@ -539,7 +531,7 @@ const App = () => {
     const [editingCategory, setEditingCategory] = useState(null);
     const [newCategoryName, setNewCategoryName] = useState('');
 
-    const [showDeletedExercisesInHistory, setShowDeletedExercisesInHistory] = useState(false);
+    const [showDeletedExercisesInHistory, setShowDeletedExercisesInHistory] = useState(false); // État pour afficher les exercices supprimés
 
     const [showAddDayModal, setShowAddDayModal] = useState(false);
     const [newDayNameInput, setNewDayNameInput] = useState('');
@@ -1797,7 +1789,8 @@ const App = () => {
             
             let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
             const payload = { contents: chatHistory };
-            const geminiApiKey = ""; 
+            // Utilisez la variable d'environnement pour la clé API Gemini
+            const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY; 
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
             
             const response = await fetch(apiUrl, {
@@ -1962,7 +1955,7 @@ const App = () => {
                     selectedDateForHistory={selectedDateForHistory}
                     selectedHistoryDayFilter={selectedHistoryDayFilter}
                     showDeletedExercisesInHistory={showDeletedExercisesInHistory}
-                    setShowDeletedExercisesInHistory={setShowDeletedExercisesInHistory}
+                    setShowDeletedExercisesInHistory={setShowDeletedExercisesInHistory} // <-- CORRECTION ICI
                     handleDateChange={handleDateChange}
                     navigateHistory={navigateHistory}
                     setSelectedHistoryDayFilter={setSelectedHistoryDayFilter}
