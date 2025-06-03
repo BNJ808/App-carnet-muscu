@@ -8,8 +8,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 
 const HistoryView = ({
     workouts,
-    selectedDateForHistory, selectedHistoryDayFilter, showDeletedExercisesInHistory,
-    handleDateChange, navigateHistory, setSelectedHistoryDayFilter,
+    selectedDateForHistory, selectedHistoryDayFilter, showDeletedExercisesInHistory, 
+    setShowDeletedExercisesInHistor, handleDateChange, navigateHistory, setSelectedHistoryDayFilter,
     formatDate, getSeriesDisplay, handleReactivateExercise, openExerciseGraphModal,
     handleOpenNotesModal, handleAnalyzeProgressionClick, personalBests, progressionInsights,
     isAdvancedMode

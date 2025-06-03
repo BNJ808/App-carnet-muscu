@@ -1962,6 +1962,7 @@ const App = () => {
                     selectedDateForHistory={selectedDateForHistory}
                     selectedHistoryDayFilter={selectedHistoryDayFilter}
                     showDeletedExercisesInHistory={showDeletedExercisesInHistory}
+                    setShowDeletedExercisesInHistory={setShowDeletedExercisesInHistory}
                     handleDateChange={handleDateChange}
                     navigateHistory={navigateHistory}
                     setSelectedHistoryDayFilter={setSelectedHistoryDayFilter}
