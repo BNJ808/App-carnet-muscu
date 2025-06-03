@@ -41,8 +41,7 @@ const firebaseConfig = {
     storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
     appId: import.meta.env.VITE_FIREBASE_APP_ID,
-    // Ajoutez measurementId si vous l'avez et l'utilisez
-    // measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 // Vérification pour le débogage (peut être retirée après que tout fonctionne)
