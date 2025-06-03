@@ -139,22 +139,37 @@ const generateUUID = () => {
 
 // Helper to create a workout snapshot for a given date
 const createWorkoutSnapshot = (date, baseData, modifications = {}) => {
-    const workoutCopy = JSON.parse(JSON.stringify(baseData));
+    console.log("createWorkoutSnapshot: baseData received:", baseData); // LOG POUR DÉBOGAGE
+    const workoutCopy = JSON.parse(JSON.stringify(baseData)); // Deep copy
+    console.log("createWorkoutSnapshot: workoutCopy after deep copy:", workoutCopy); // LOG POUR DÉBOGAGE
+
     // Ensure all exercises have unique IDs assigned initially
-    Object.values(workoutCopy.days).forEach(day => {
-        Object.values(day.categories).forEach(categoryExercises => {
-            categoryExercises.forEach(ex => {
-                if (!ex.id || (ex.id.length < 36 && !ex.id.includes('-'))) { // Check if ID is missing or not a proper UUID
-                    ex.id = generateUUID();
-                }
-            });
+    // Ajout d'une vérification pour s'assurer que workoutCopy.days est un objet avant d'itérer
+    if (workoutCopy && typeof workoutCopy === 'object' && workoutCopy.days && typeof workoutCopy.days === 'object') {
+        Object.values(workoutCopy.days).forEach(day => {
+            if (day && day.categories && typeof day.categories === 'object') {
+                Object.values(day.categories).forEach(categoryExercises => {
+                    if (Array.isArray(categoryExercises)) {
+                        categoryExercises.forEach(ex => {
+                            if (!ex.id || (ex.id.length < 36 && !ex.id.includes('-'))) { // Check if ID is missing or not a proper UUID
+                                ex.id = generateUUID();
+                            }
+                        });
+                    }
+                });
+            }
         });
-    });
+    } else {
+        console.error("createWorkoutSnapshot: workoutCopy or workoutCopy.days is not a valid object for iteration:", workoutCopy);
+        // Fallback to a safe structure if baseData is unexpectedly malformed
+        return { timestamp: date, workoutData: { days: {}, dayOrder: [] } };
+    }
+
 
     for (const dayKey in modifications) {
-        if (workoutCopy.days[dayKey]) {
+        if (workoutCopy.days && workoutCopy.days[dayKey]) { // Added safety check for workoutCopy.days
             for (const categoryKey in modifications[dayKey]) {
-                if (workoutCopy.days[dayKey].categories[categoryKey]) {
+                if (workoutCopy.days[dayKey].categories && workoutCopy.days[dayKey].categories[categoryKey]) { // Added safety check
                     modifications[dayKey][categoryKey].forEach(mod => {
                         const exerciseToModify = workoutCopy.days[dayKey].categories[categoryKey].find(ex => ex.name === mod.name);
                         if (exerciseToModify) {
@@ -772,7 +787,8 @@ const App = () => {
                 if (initialDocs.empty) {
                     console.log("Seeding historical data to Firestore...");
                     for (const session of historicalSessionsData) {
-                        // Ensure timestamp is a Firestore Timestamp object
+                        // LOG: Vérifier la structure de session.workoutData avant l'ajout
+                        console.log("Seeding: Adding workoutData to Firestore:", session.workoutData);
                         await addDoc(sessionsRef, {
                             timestamp: Timestamp.fromDate(session.timestamp),
                             workoutData: session.workoutData
@@ -800,7 +816,17 @@ const App = () => {
 
                 const unsubscribe = onSnapshot(q, async (snapshot) => {
                     if (!snapshot.empty) {
-                        const fetchedWorkoutData = snapshot.docs[0].data().workoutData;
+                        const fetchedWorkoutData = snapshot.docs[0]?.data()?.workoutData; // Utilisation de l'opérateur de chaînage optionnel
+                        console.log("onSnapshot: fetchedWorkoutData retrieved:", fetchedWorkoutData); // LOG POUR DÉBOGAGE
+
+                        // Vérification robuste de fetchedWorkoutData
+                        if (!fetchedWorkoutData || typeof fetchedWorkoutData !== 'object' || !fetchedWorkoutData.days) {
+                            console.error("Fetched workout data is invalid or missing 'days' property. Falling back to empty state.", fetchedWorkoutData);
+                            setWorkouts({ days: {}, dayOrder: [] }); // Fallback to empty state
+                            setLoading(false);
+                            return; // Exit early
+                        }
+
                         const sanitizedDays = fetchedWorkoutData.days || {};
                         const sanitizedDayOrder = fetchedWorkoutData.dayOrder && Array.isArray(fetchedWorkoutData.dayOrder) && fetchedWorkoutData.dayOrder.length > 0
                             ? fetchedWorkoutData.dayOrder
@@ -811,7 +837,7 @@ const App = () => {
                             if (sanitizedDays.hasOwnProperty(dayKey)) {
                                 const dayData = sanitizedDays[dayKey];
                                 const newCategories = {};
-                                if (dayData && dayData.categories) {
+                                if (dayData && dayData.categories && typeof dayData.categories === 'object') { // Vérification supplémentaire
                                     for (const categoryKey in dayData.categories) {
                                         if (dayData.categories.hasOwnProperty(categoryKey)) {
                                             const exercisesInCat = Array.isArray(dayData.categories[categoryKey])
@@ -851,6 +877,7 @@ const App = () => {
                     } else {
                         // If after seeding, still no data (e.g., seeding failed or edge case),
                         // fall back to a default empty structure.
+                        console.log("No workout data found in Firestore. Initializing with empty structure.");
                         setWorkouts({ days: {}, dayOrder: [] });
                         setSelectedDayFilter(null);
                     }
@@ -1211,6 +1238,12 @@ const App = () => {
         }
 
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
+        // Vérification de l'existence de la catégorie avant de pousser
+        if (!updatedWorkouts.days[selectedDayForAdd] || !updatedWorkouts.days[selectedDayForAdd].categories) {
+            setToast({ message: "Erreur: Jour ou catégorie sélectionné(e) introuvable.", type: 'error' });
+            setIsAddingExercise(false);
+            return;
+        }
         if (!updatedWorkouts.days[selectedDayForAdd].categories[selectedCategoryForAdd]) {
             updatedWorkouts.days[selectedDayForAdd].categories[selectedCategoryForAdd] = [];
         }
