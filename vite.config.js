@@ -16,6 +16,17 @@ export default defineConfig({
       ],
     },
   },
+  build: {
+    rollupOptions: {
+      external: [],
+      output: {
+        globals: {}
+      }
+    }
+  },
+  optimizeDeps: {
+    include: ['@google/generative-ai']
+  },
   resolve: {
     alias: {
       'node:path': 'path-browserify',
