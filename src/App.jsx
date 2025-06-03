@@ -3,9 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, where, serverTimestamp, getDocs, Timestamp } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import {
-    Undo2, Redo2, Settings, XCircle, CheckCircle
-} from 'lucide-react';
+import { Undo2, Redo2, Settings, XCircle, CheckCircle } from 'lucide-react';
 
 // Import des composants refactorisés
 import Toast from './Toast';
