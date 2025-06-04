@@ -126,53 +126,6 @@ const generateUUID = () => {
     });
 };
 
-// Helper to create a workout snapshot for a given date
-const createWorkoutSnapshot = (date, baseData, modifications = {}) => {
-    console.log("createWorkoutSnapshot: baseData received:", baseData); // LOG POUR DÉBOGAGE
-    const workoutCopy = JSON.parse(JSON.stringify(baseData)); // Deep copy
-    console.log("createWorkoutSnapshot: workoutCopy after deep copy:", workoutCopy); // LOG POUR DÉBOGAGE
-
-    // Ensure all exercises have unique IDs assigned initially
-    // Ajout d'une vérification pour s'assurer que workoutCopy.days est un objet avant d'itérer
-    if (workoutCopy && typeof workoutCopy === 'object' && workoutCopy.days && typeof workoutCopy.days === 'object') {
-        Object.values(workoutCopy.days).forEach(day => {
-            if (day && day.categories && typeof day.categories === 'object') {
-                Object.values(day.categories).forEach(categoryExercises => {
-                    if (Array.isArray(categoryExercises)) {
-                        categoryExercises.forEach(ex => {
-                            if (!ex.id || (ex.id.length < 36 && !ex.id.includes('-'))) { // Check if ID is missing or not a proper UUID
-                                ex.id = generateUUID();
-                            }
-                        });
-                    }
-                });
-            }
-        });
-    } else {
-        console.error("createWorkoutSnapshot: workoutCopy or workoutCopy.days is not a valid object for iteration:", workoutCopy);
-        // Fallback to a safe structure if baseData is unexpectedly malformed
-        return { timestamp: date, workoutData: { days: {}, dayOrder: [] } };
-    }
-
-
-    for (const dayKey in modifications) {
-        if (workoutCopy.days && workoutCopy.days[dayKey]) { // Added safety check for workoutCopy.days
-            for (const categoryKey in modifications[dayKey]) {
-                if (workoutCopy.days[dayKey].categories && workoutCopy.days[dayKey].categories[categoryKey]) { // Added safety check
-                    modifications[dayKey][categoryKey].forEach(mod => {
-                        const exerciseToModify = workoutCopy.days[dayKey].categories[categoryKey].find(ex => ex.name === mod.name);
-                        if (exerciseToModify) {
-                            exerciseToModify.series = mod.series;
-                        }
-                    });
-                }
-            }
-        }
-    }
-    return { timestamp: date, workoutData: workoutCopy }; // Pass date directly, it will be converted to Timestamp later
-};
-
-
 // Base structure for initial data
 const baseInitialData = {
     days: {
@@ -247,102 +200,8 @@ const baseInitialData = {
     dayOrder: ['Lundi + Jeudi', 'Mardi + Vendredi', 'Mercredi + Samedi'],
 };
 
-
-// Fictional Historical Data - Re-adding and ensuring unique IDs
-// Using absolute dates for consistent historical data regardless of when the app is run
-const today = new Date();
-today.setHours(0, 0, 0, 0); // Normalize to start of day
-
-const twoMonthsAgo = new Date(today);
-twoMonthsAgo.setMonth(today.getMonth() - 2);
-
-const fortyFiveDaysAgo = new Date(today);
-fortyFiveDaysAgo.setDate(today.getDate() - 45);
-
-const oneMonthAgo = new Date(today);
-oneMonthAgo.setMonth(today.getMonth() - 1);
-
-const fourteenDaysAgo = new Date(today);
-fourteenDaysAgo.setDate(today.getDate() - 14);
-
-const sevenDaysAgo = new Date(today);
-sevenDaysAgo.setDate(today.getDate() - 7);
-
-const yesterday = new Date(today);
-yesterday.setDate(today.getDate() - 1);
-
-
-const historicalSessionsData = [
-    // Session 1: 2 months ago - Baseline
-    createWorkoutSnapshot(twoMonthsAgo, baseInitialData, {
-        'Lundi + Jeudi': {
-            PECS: [{ name: 'D.Couché léger', series: [{ weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }] }],
-            EPAULES: [{ name: 'D.Epaules léger', series: [{ weight: '8', reps: '15' }, { weight: '8', reps: '15' }, { weight: '8', reps: '15' }, { weight: '8', reps: '15' }] }],
-        },
-        'Mardi + Vendredi': {
-            DOS: [{ name: 'R. Haltères Léger', series: [{ weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }] }],
-        }
-    }),
-    // Session 2: 1 month and 15 days ago - Slight improvement
-    createWorkoutSnapshot(fortyFiveDaysAgo, baseInitialData, {
-        'Lundi + Jeudi': {
-            PECS: [{ name: 'D.Couché léger', series: [{ weight: '11', reps: '12' }, { weight: '11', reps: '12' }, { weight: '11', reps: '12' }, { weight: '11', reps: '12' }] }],
-            EPAULES: [{ name: 'D.Epaules léger', series: [{ weight: '9', reps: '15' }, { weight: '9', reps: '15' }, { weight: '9', reps: '15' }, { weight: '9', reps: '15' }] }],
-        },
-        'Mardi + Vendredi': {
-            DOS: [{ name: 'R. Haltères Léger', series: [{ weight: '11', reps: '12' }, { weight: '11', reps: '12' }, { weight: '11', reps: '12' }, { weight: '11', reps: '12' }] }],
-        }
-    }),
-    // Session 3: 1 month ago - Plateau for some, improvement for others
-    createWorkoutSnapshot(oneMonthAgo, baseInitialData, {
-        'Lundi + Jeudi': {
-            PECS: [{ name: 'D.Couché léger', series: [{ weight: '12', reps: '12' }, { weight: '12', reps: '12' }, { weight: '12', reps: '12' }, { weight: '12', reps: '12' }] }], // Plateau
-            EPAULES: [{ name: 'D.Epaules léger', series: [{ weight: '10', reps: '15' }, { weight: '10', reps: '15' }, { weight: '10', reps: '15' }, { weight: '10', reps: '15' }] }],
-        },
-        'Mardi + Vendredi': {
-            DOS: [{ name: 'R. Haltères Léger', series: [{ weight: '12', reps: '12' }, { weight: '12', reps: '12' }, { weight: '12', reps: '12' }, { weight: '12', reps: '12' }] }],
-            BICEPS: [{ name: 'Curl Léger', series: [{ weight: '9', reps: '15' }, { weight: '9', reps: '15' }, { weight: '9', reps: '15' }, { weight: '9', reps: '15' }] }],
-        }
-    }),
-    // Session 4: 2 weeks ago - Slight regression on one, continued improvement on another
-    createWorkoutSnapshot(fourteenDaysAgo, baseInitialData, {
-        'Lundi + Jeudi': {
-            PECS: [{ name: 'D.Couché léger', series: [{ weight: '11', reps: '12' }, { weight: '11', reps: '12' }, { weight: '11', reps: '12' }, { weight: '11', reps: '12' }] }], // Regression
-            EPAULES: [{ name: 'D.Epaules léger', series: [{ weight: '10', reps: '16' }, { weight: '10', reps: '16' }, { weight: '10', reps: '16' }, { weight: '10', reps: '16' }] }], // Reps increase
-        },
-        'Mercredi + Samedi': {
-            LEGS: [{ name: 'S. de Terre Sumo', series: [{ weight: '18', reps: '15' }, { weight: '18', reps: '15' }, { weight: '18', reps: '15' }, { weight: '18', reps: '15' }] }],
-        }
-    }),
-    // Session 5: 1 week ago - Strong comeback
-    createWorkoutSnapshot(sevenDaysAgo, baseInitialData, {
-        'Lundi + Jeudi': {
-            PECS: [{ name: 'D.Couché léger', series: [{ weight: '13', reps: '12' }, { weight: '13', reps: '12' }, { weight: '13', reps: '12' }, { weight: '13', reps: '12' }] }], // Improvement
-            TRICEPS: [{ name: 'Haltere Front léger', series: [{ weight: '5', reps: '12' }, { weight: '5', reps: '12' }, { weight: '5', reps: '12' }, { weight: '5', reps: '12' }] }],
-        },
-        'Mardi + Vendredi': {
-            BICEPS: [{ name: 'Curl Léger', series: [{ weight: '10', reps: '15' }, { weight: '10', reps: '15' }, { weight: '10', reps: '15' }, { weight: '10', reps: '15' }] }],
-        }
-    }),
-    // Session 6: Yesterday - Current state (slight variations)
-    createWorkoutSnapshot(yesterday, baseInitialData, {
-        'Lundi + Jeudi': {
-            PECS: [{ name: 'D.Couché léger', series: [{ weight: '13', reps: '12' }, { weight: '13', reps: '12' }, { weight: '13', reps: '12' }, { weight: '13', reps: '12' }] }],
-            EPAULES: [{ name: 'D.Epaules léger', series: [{ weight: '10', reps: '15' }, { weight: '10', reps: '15' }, { weight: '10', reps: '15' }, { weight: '10', reps: '15' }] }],
-            TRICEPS: [{ name: 'Haltere Front léger', series: [{ weight: '5', reps: '12' }, { weight: '5', reps: '12' }, { weight: '5', reps: '12' }, { weight: '5', reps: '12' }] }],
-        },
-        'Mardi + Vendredi': {
-            DOS: [{ name: 'R. Haltères Léger', series: [{ weight: '12', reps: '12' }, { weight: '12', reps: '12' }, { weight: '12', reps: '12' }, { weight: '12', reps: '12' }] }],
-            BICEPS: [{ name: 'Curl Léger', series: [{ weight: '10', reps: '15' }, { weight: '10', reps: '15' }, { weight: '10', reps: '15' }, { weight: '10', reps: '15' }] }],
-            'AR . EPAULES + ABS': [{ name: 'Abdos', series: [{ weight: '', reps: '20' }, { weight: '', reps: '20' }, { weight: '', reps: '20' }, { weight: '', reps: '20' }] }],
-        },
-        'Mercredi + Samedi': {
-            LEGS: [{ name: 'S. de Terre Sumo', series: [{ weight: '18', reps: '15' }, { weight: '18', reps: '15' }, { weight: '18', reps: '15' }, { weight: '18', reps: '15' }] }],
-            MOLLETS: [{ name: 'Levées Léger uni', series: [{ weight: '10', reps: '20' }, { weight: '10', reps: '20' }, { weight: '10', reps: '20' }, { weight: '10', reps: '20' }] }],
-        }
-    }),
-];
-
+// Fictional Historical Data - REMOVED as per user request
+// const historicalSessionsData = []; // This array is now empty or removed
 
 // Helper function to calculate 1RM using different formulas
 const calculate1RM = (weight, reps) => {
@@ -408,8 +267,11 @@ const useTimer = (initialSeconds = 60) => {
         };
     }, []);
 
-    const startTimer = async () => { // Make this function async
-        if (seconds > 0) {
+    const startTimer = async (timeToSet = seconds) => { // Make this function async, accept optional timeToSet
+        const finalTime = timeToSet > 0 ? timeToSet : initialSeconds; // Use provided time or initialSeconds if current is 0
+        setSeconds(finalTime); // Set seconds to the desired value before starting
+
+        if (finalTime > 0) {
             // Ensure audio context is started and synth is initialized
             if (window.Tone) {
                 if (window.Tone.context.state !== 'running') {
@@ -432,6 +294,7 @@ const useTimer = (initialSeconds = 60) => {
 
             setIsRunning(true);
             setIsFinishedState(false); // Reset isFinishedState when starting
+            clearInterval(intervalRef.current); // Clear any existing interval before setting a new one
             intervalRef.current = setInterval(() => {
                 setSeconds(prevSeconds => {
                     if (prevSeconds <= 1) {
@@ -451,12 +314,8 @@ const useTimer = (initialSeconds = 60) => {
                 });
             }, 1000);
         } else {
-            // If timer is at 0, reset and then start
-            resetTimer(initialSeconds);
-            if (initialSeconds > 0) {
-                // Call startTimer again after reset to initiate the countdown
-                startTimer(); 
-            }
+            // If finalTime is 0 or less, just reset without starting
+            resetTimer(initialSeconds); // Reset to default
         }
     };
 
@@ -774,20 +633,19 @@ const App = () => {
                 setLoading(true);
                 const sessionsRef = collection(db, `artifacts/${appId}/users/${userId}/sessions`);
 
-                // Check if any data exists for the user
-                const initialDocs = await getDocs(query(sessionsRef, limit(1)));
-                if (initialDocs.empty) {
-                    console.log("Seeding historical data to Firestore...");
-                    for (const session of historicalSessionsData) {
-                        // LOG: Vérifier la structure de session.workoutData avant l'ajout
-                        console.log("Seeding: Adding workoutData to Firestore:", session.workoutData);
-                        await addDoc(sessionsRef, {
-                            timestamp: Timestamp.fromDate(session.timestamp),
-                            workoutData: session.workoutData
-                        });
-                    }
-                    setToast({ message: "Données historiques fictives chargées !", type: 'success' });
-                }
+                // REMOVED: Seeding of historical data. Data will now be fetched from Firestore only.
+                // const initialDocs = await getDocs(query(sessionsRef, limit(1)));
+                // if (initialDocs.empty) {
+                //     console.log("Seeding historical data to Firestore...");
+                //     for (const session of historicalSessionsData) {
+                //         console.log("Seeding: Adding workoutData to Firestore:", session.workoutData);
+                //         await addDoc(sessionsRef, {
+                //             timestamp: Timestamp.fromDate(session.timestamp),
+                //             workoutData: session.workoutData
+                //         });
+                //     }
+                //     setToast({ message: "Données historiques fictives chargées !", type: 'success' });
+                // }
 
                 // Now set up the real-time listener
                 let q;
@@ -867,11 +725,10 @@ const App = () => {
                             setSelectedDayFilter(sanitizedDayOrder[0]);
                         }
                     } else {
-                        // If after seeding, still no data (e.g., seeding failed or edge case),
-                        // fall back to a default empty structure.
-                        console.log("No workout data found in Firestore. Initializing with empty structure.");
-                        setWorkouts({ days: {}, dayOrder: [] });
-                        setSelectedDayFilter(null);
+                        // If no data found, initialize with base structure
+                        console.log("No workout data found in Firestore. Initializing with base structure.");
+                        setWorkouts(baseInitialData); // Use baseInitialData as default
+                        setSelectedDayFilter(baseInitialData.dayOrder[0]); // Select first day
                     }
                     setLoading(false);
                 }, (error) => {
@@ -934,12 +791,8 @@ const App = () => {
                 };
             });
             
-            // Combine fetched data with fictional historical data if no real data exists or for initial testing
-            // This part is now less critical as data should be seeded, but kept as a fallback if seeding fails or for local dev.
-            const combinedData = fetchedData.length > 0 ? fetchedData : historicalSessionsData.map(session => ({
-                ...session,
-                timestamp: session.timestamp // Ensure it's a Date object if coming from the local array
-            }));
+            // REMOVED: Combining with fictional historical data
+            const combinedData = fetchedData;
 
             setHistoricalDataForGraphs(combinedData); // Store all fetched data for insights
 
@@ -1021,6 +874,17 @@ const App = () => {
             setPersonalBests({});
         }
     }, [historicalDataForGraphs]);
+
+    // Effect to update the timer's internal seconds when restTimeInput changes
+    useEffect(() => {
+        // Only update if the timer is not running or if it's finished
+        if (!timerIsRunning && !timerIsFinished) {
+            // Ensure restTimeInput is a valid number before setting, default to DEFAULT_REST_TIME
+            const newTimerSeconds = parseInt(restTimeInput, 10);
+            setTimerSeconds(isNaN(newTimerSeconds) ? DEFAULT_REST_TIME : newTimerSeconds);
+        }
+    }, [restTimeInput, timerIsRunning, timerIsFinished, setTimerSeconds]);
+
 
     const saveWorkouts = async (updatedWorkoutsState, successMessage = "Données sauvegardées avec succès !", errorMessage = "Erreur lors de la sauvegarde des données.") => {
         if (userId && appId) { 
@@ -1664,9 +1528,11 @@ const App = () => {
         }
     };
 
-    const handleOpenNotesModal = (day, category, exerciseId, currentNotes) => {
+    const handleOpenNotesModal = (day, category, exerciseId) => { // Removed currentNotes parameter
         setExerciseForNotes({ day, category, exerciseId });
-        setCurrentNoteContent(currentNotes || '');
+        // Retrieve notes from the current workouts state
+        const currentExercise = workouts.days[day]?.categories[category]?.find(ex => ex.id === exerciseId);
+        setCurrentNoteContent(currentExercise?.notes || '');
         setShowNotesModal(true);
     };
 
@@ -1735,10 +1601,8 @@ const App = () => {
                 workoutData: doc.data().workoutData
             }));
 
-            const combinedDataForAnalysis = fetchedData.length > 0 ? fetchedData : historicalSessionsData.map(session => ({
-                ...session,
-                timestamp: session.timestamp 
-            }));
+            // Use only fetchedData, no historicalSessionsData
+            const combinedDataForAnalysis = fetchedData;
 
 
             const latestDailyWeightsIndividual = {};
@@ -1987,6 +1851,8 @@ const App = () => {
                     handleReorderCategories={handleReorderCategories}
                     handleReorderExercises={handleReorderExercises}
                     openAddCategoryModalForDay={openAddCategoryModalForDay}
+                    handleEditCategory={handleEditCategory} // Pass handleEditCategory
+                    handleDeleteCategory={handleDeleteCategory} // Pass handleDeleteCategory
                     isSavingExercise={isSavingExercise}
                     isDeletingExercise={isDeletingExercise}
                     isAddingExercise={isAddingExercise}
