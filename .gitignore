@@ -5,3 +5,4 @@ build
 .DS_Store      # macOS specific
 Thumbs.db     # Windows specific
 *.log
+favicon.ico
