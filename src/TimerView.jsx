@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, RotateCcw } => 'lucide-react';
+import { Play, Pause, RotateCcw } from 'lucide-react';
 
 /**
  * Composant TimerView pour afficher le minuteur de repos.
