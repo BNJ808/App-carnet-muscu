@@ -395,7 +395,7 @@ const App = () => {
     const [newDayNameInput, setNewDayNameInput] = useState('');
     const [showEditDayModal, setShowEditDayModal] = useState(false);
     const [editingDayName, setEditingDayName] = useState(null);
-    const [editedDayNewNameInput, setEditedDayNewNameInput] = useState('');
+    const [editedDayNewNameInput, setNewEditedDayNewNameInput] = useState(''); // Corrected state variable name
     const [showDeleteDayConfirm, setShowDeleteDayConfirm] = useState(false);
     const [dayToDeleteName, setDayToDeleteName] = useState(null);
 
@@ -775,7 +775,8 @@ const App = () => {
                         }
                         console.log("Setting workouts to:", { days: finalSanitizedDays, dayOrder: sanitizedDayOrder }); // Added log
                         setWorkouts({ days: finalSanitizedDays, dayOrder: sanitizedDayOrder });
-                        if (!selectedDayFilter && sanitizedDayOrder.length > 0) {
+                        // Only set selectedDayFilter if it's currently null or no longer exists
+                        if (!selectedDayFilter || !(sanitizedDayOrder || []).includes(selectedDayFilter)) {
                             setSelectedDayFilter(sanitizedDayOrder[0]);
                         }
                     } else {
@@ -1212,11 +1213,8 @@ const App = () => {
         applyChanges(updatedWorkouts, "Exercice ajouté avec succès !");
         setShowAddExerciseModal(false);
         setIsAddingExercise(false);
-        // Maintenir le jour sélectionné
+        // Maintenir le jour sélectionné après l'ajout
         setSelectedDayFilter(selectedDayForAdd);
-        if (currentView === 'history') {
-            setSelectedHistoryDayFilter(selectedDayForAdd);
-        }
     };
 
 
@@ -1290,16 +1288,18 @@ const App = () => {
         applyChanges(updatedWorkouts, `Jour "${newDayNameInput.trim()}" ajouté avec succès !`);
         setShowAddDayModal(false);
         setNewDayNameInput('');
-        // Maintenir le jour sélectionné
+        // Maintenir le jour sélectionné après l'ajout
         setSelectedDayFilter(newDayNameInput.trim());
+        // Si on est en vue historique, mettre à jour la date pour afficher le jour créé
         if (currentView === 'history') {
+            setSelectedDateForHistory(normalizeDateToStartOfDay(new Date()));
             setSelectedHistoryDayFilter(newDayNameInput.trim());
         }
     };
 
     const handleEditDay = (oldDayName) => {
         setEditingDayName(oldDayName);
-        setEditedDayNewNameInput(oldDayName);
+        setNewEditedDayNewNameInput(oldDayName); // Use the correct state setter
         setShowSelectDayForEditModal(false);
         setShowEditDayModal(true);
     };
@@ -1341,7 +1341,7 @@ const App = () => {
         applyChanges(updatedWorkouts, `Jour "${editingDayName}" renommé en "${editedDayNewNameInput.trim()}" avec succès !`);
         setShowEditDayModal(false);
         setEditingDayName(null);
-        setEditedDayNewNameInput('');
+        setNewEditedDayNewNameInput(''); // Clear the state
     };
 
     const handleDeleteDay = (dayName) => {
@@ -1404,11 +1404,8 @@ const App = () => {
         applyChanges(updatedWorkouts, `Groupe musculaire "${newCategoryNameInput.trim()}" ajouté avec succès !`);
         setShowAddCategoryModal(false);
         setNewCategoryNameInput('');
-        // Maintenir le jour sélectionné
+        // Maintenir le jour sélectionné après l'ajout
         setSelectedDayFilter(selectedDayForCategoryAdd);
-        if (currentView === 'history') {
-            setSelectedHistoryDayFilter(selectedDayForCategoryAdd);
-        }
     };
 
     const openAddCategoryModalForDay = (day) => {
@@ -1553,6 +1550,7 @@ const App = () => {
 
     useEffect(() => {
         if ((workouts.dayOrder || []).length > 0) {
+            // Only set if selectedDayFilter is null OR if the current selectedDayFilter is no longer in the orderedDays
             if (!selectedDayFilter || !(workouts.dayOrder || []).includes(selectedDayFilter)) {
                 setSelectedDayFilter((workouts.dayOrder || [])[0]);
             }
@@ -2114,7 +2112,7 @@ const App = () => {
                         <div className="space-y-3 sm:space-y-4">
                             <div>
                                 <label htmlFor="editedDayNewName" className={`block text-gray-300 text-sm font-bold mb-1 sm:mb-2`}>Nouveau nom du jour:</label>
-                                <input type="text" id="editedDayNewName" className={`shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 sm:py-3 sm:px-4 bg-gray-700 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base`} value={editedDayNewNameInput} onChange={(e) => setEditedDayNewNameInput(e.target.value)} />
+                                <input type="text" id="editedDayNewName" className={`shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 sm:py-3 sm:px-4 bg-gray-700 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base`} value={editedDayNewNameInput} onChange={(e) => setNewEditedDayNewNameInput(e.target.value)} />
                             </div>
                         </div>
                         <div className="flex justify-end space-x-3 sm:space-x-4 mt-6 sm:mt-8">

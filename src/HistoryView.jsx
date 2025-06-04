@@ -71,9 +71,11 @@ const HistoryView = ({
                         categories: Object.keys(dayData.categories).reduce((acc, categoryName) => {
                             const exercises = dayData.categories?.[categoryName]; // Use optional chaining
                             if (Array.isArray(exercises)) {
-                                acc[categoryName] = exercises.filter(exercise => 
-                                    showDeletedExercisesInHistory || !exercise.isDeleted
-                                );
+                                acc[categoryName] = exercises.filter(exercise => {
+                                    // Log for debugging deleted exercises
+                                    console.log(`Exercise: ${exercise.name}, isDeleted: ${exercise.isDeleted}, showDeletedExercisesInHistory: ${showDeletedExercisesInHistory}`);
+                                    return showDeletedExercisesInHistory || !exercise.isDeleted;
+                                });
                             } else {
                                 acc[categoryName] = []; // Ensure it's an array even if malformed
                             }
