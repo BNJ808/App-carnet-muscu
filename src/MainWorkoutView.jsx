@@ -91,9 +91,13 @@ const MainWorkoutView = ({
                         ? dayData.categoryOrder
                         : Object.keys(dayData.categories || {}).sort(); // Ensure Object.keys is called on an object
 
+                    // Applique la couleur de texte correspondante définie dans dayBorderAndTextColors pour tous les jours.
+                    // Cela garantit que le titre h2 aura la même couleur que le bouton du jour.
+                    const dayTitleColorClass = dayBorderAndTextColors[dayIndex % dayBorderAndTextColors.length].replace('border', 'text');
+
                     return (
                         <div key={dayName} className={`bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg border-2 ${dayBorderAndTextColors[dayIndex % dayBorderAndTextColors.length]}`}>
-                            <h2 className={`text-xl sm:text-3xl font-extrabold mb-6 text-center ${dayBorderAndTextColors[dayIndex % dayBorderAndTextColors.length].replace('border', 'text').replace('-700', '-400')}`}>
+                            <h2 className={`text-xl sm:text-3xl font-extrabold mb-6 text-center ${dayTitleColorClass}`}>
                                 {dayName}
                             </h2>
                             {isEditMode && (
