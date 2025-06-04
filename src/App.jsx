@@ -4,7 +4,7 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, where, serverTimestamp, getDocs, Timestamp, writeBatch, deleteDoc } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import {
-    Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ArrowUp, ArrowDown // Ajout de ChevronDown, ArrowUp, ArrowDown
+    Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown // Ajout de ChevronDown
 } from 'lucide-react';
 // Import pour l'API Gemini
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -137,8 +137,8 @@ const baseInitialData = {
                     { id: 'pecs-1', name: 'D.Couché léger', series: [{ weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }], isDeleted: false, notes: '' },
                     { id: 'pecs-2', name: 'D.Couché lourd', series: [{ weight: '14', reps: '8' }, { weight: '14', reps: '8' }, { weight: '14', reps: '8' }, { weight: '14', reps: '8' }], isDeleted: false, notes: '' },
                     { id: 'pecs-3', name: 'D.Couché incliné léger', series: [{ weight: '10', reps: '' }, { weight: '10', reps: '' }, { weight: '10', reps: '' }], isDeleted: false, notes: '' },
-                    { id: 'pecs-4', name: 'D.Couché incl lourd', series: [{ weight: '10', reps: '' }, { weight: '10', reps: '10' }, { weight: '10', reps: '10' }], isDeleted: false, notes: '' },
-                    { id: 'pecs-5', name: 'Ecartés Couchés', series: [{ weight: '6', reps: '' }, { weight: '6', reps: '6' }, { weight: '6', reps: '6' }], isDeleted: false, notes: '' },
+                    { id: 'pecs-4', name: 'D.Couché incl lourd', series: [{ weight: '10', reps: '10' }, { weight: '10', reps: '10' }, { weight: '10', reps: '10' }], isDeleted: false, notes: '' },
+                    { id: 'pecs-5', name: 'Ecartés Couchés', series: [{ weight: '6', reps: '6' }, { weight: '6', reps: '6' }, { weight: '6', reps: '6' }], isDeleted: false, notes: '' },
                 ],
                 EPAULES: [
                     { id: 'epaules-1', name: 'D.Epaules léger', series: [{ weight: '8', reps: '15' }, { weight: '8', reps: '15' }, { weight: '8', reps: '15' }, { weight: '8', reps: '15' }], isDeleted: false, notes: '' },
@@ -353,6 +353,26 @@ const useTimer = (initialSeconds = 60) => {
 };
 
 
+// Définition des couleurs pour les bordures et le texte des jours
+// Ces couleurs sont utilisées pour les boutons de jour et la bordure des blocs de jour
+const dayBorderAndTextColors = [
+    'border-blue-500 text-blue-700',   // Lundi + Jeudi
+    'border-green-500 text-green-700', // Mardi + Vendredi
+    'border-red-500 text-red-700',     // Mercredi + Samedi
+    'border-yellow-500 text-yellow-700', // Exemple pour un 4ème jour si ajouté
+    'border-purple-500 text-purple-700', // Exemple pour un 5ème jour si ajouté
+    'border-pink-500 text-pink-700',   // Exemple pour un 6ème jour si ajouté
+    'border-indigo-500 text-indigo-700', // Exemple pour un 7ème jour si ajouté
+];
+
+// Dérivation des couleurs spécifiques pour les titres des jours (h2)
+// Cela garantit que le titre h2 aura exactement la même couleur que le texte principal des boutons de jour
+const dayTitleColors = dayBorderAndTextColors.map(colorString => {
+    const match = colorString.match(/text-\w+-\d+/); // Trouve la classe de texte (ex: text-blue-700)
+    return match ? match[0] : 'text-gray-300'; // Retourne la classe trouvée ou une couleur par défaut
+});
+
+
 // Composant principal de l'application
 const App = () => {
     const [isAdvancedMode, setIsAdvancedMode] = useState(false);
@@ -372,7 +392,7 @@ const App = () => {
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [exerciseToDelete, setExerciseToDelete] = useState(null); // Corrected: useState(null)
+    const [exerciseToDelete, setExerciseToDelete] = useState(null); // Changed to null
     const [selectedDayFilter, setSelectedDayFilter] = useState(''); 
     const [graphTimeRange, setGraphTimeRange] = useState('90days'); 
     const [historicalDataForGraphs, setHistoricalDataForGraphs] = useState([]); 
@@ -456,26 +476,6 @@ const App = () => {
     const toggleAdvancedMode = () => {
         setIsAdvancedMode(prevMode => !prevMode);
     };
-
-    const dayButtonColors = [
-        'from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700',
-        'from-green-500 to-green-600 hover:from-green-600 hover:to-green-700',
-        'from-red-500 to-red-600 hover:from-red-700 hover:to-red-700',
-        'from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700',
-        'from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700',
-        'from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700',
-        'from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700',
-    ];
-
-    const dayBorderAndTextColors = [
-        'border-blue-500 text-blue-700',
-        'border-green-500 text-green-700',
-        'border-red-500 text-red-700',
-        'border-yellow-500 text-yellow-700',
-        'border-purple-500 text-purple-700',
-        'border-pink-500 text-pink-700',
-        'border-indigo-500 text-indigo-700',
-    ];
 
     const normalizeDateToStartOfDay = (date) => {
         const d = new Date(date);
@@ -842,25 +842,25 @@ const App = () => {
                 const sessionDays = session.workoutData?.days || {};
                 Object.keys(sessionDays).forEach(dayKey => {
                     const dayData = sessionDays[dayKey];
-                    // MODIFICATION: Ensure dayData.categories is an object before calling Object.keys
-                    const categories = dayData?.categories || {};
-                    Object.keys(categories).forEach(categoryKey => {
-                        (categories[categoryKey] || []).forEach(exItem => {
-                            if (exItem.id === exerciseForGraph.id) {
-                                const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
-                                const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
-                                if (maxWeightForDay > 0) {
-                                    if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
-                                        latestDailyWeightsIndividual[dateKey] = {
-                                            timestamp: session.timestamp,
-                                            weight: maxWeightForDay,
-                                            hasNewData: true
-                                        };
+                    if (dayData && dayData.categories) {
+                        Object.keys(dayData.categories).forEach(categoryKey => {
+                            (dayData.categories[categoryKey] || []).forEach(exItem => {
+                                if (exItem.id === exerciseForGraph.id) {
+                                    const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
+                                    const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
+                                    if (maxWeightForDay > 0) {
+                                        if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
+                                            latestDailyWeightsIndividual[dateKey] = {
+                                                timestamp: session.timestamp,
+                                                weight: maxWeightForDay,
+                                                hasNewData: true
+                                            };
+                                        }
                                     }
                                 }
-                            }
+                            });
                         });
-                    });
+                    }
                 });
             });
 
@@ -978,7 +978,6 @@ const App = () => {
                                         return { id: generateUUID(), name: '', series: [{ weight: '', reps: '' }], isDeleted: false, notes: '' };
                                     }
 
-                                    // Ensure series is an array
                                     let sanitizedSeries = Array.isArray(exercise.series)
                                         ? exercise.series
                                         : [{ weight: '', reps: '' }];
@@ -1048,7 +1047,7 @@ const App = () => {
             setRedoStack(prev => prev.slice(0, prev.length - 1));
             setUndoStack(prev => [...prev, workouts]);
             setWorkouts(nextState);
-            setToast({ message: "Rien à rétablir.", type: 'error' }); // Message was "Rien à rétablir." - corrected
+            setToast({ message: "Rien à rétablir.", type: 'error' });
         } else {
             setToast({ message: "Rien à rétablir.", type: 'error' });
         }
@@ -1383,7 +1382,7 @@ const App = () => {
             updatedWorkouts.days[selectedDayForCategoryAdd] = { categories: {}, categoryOrder: [] };
         }
         if (!updatedWorkouts.days[selectedDayForCategoryAdd].categories) {
-            updatedWorkouts.days[selectedDayForAdd].categories = {}; // Corrected: selectedDayForCategoryAdd
+            updatedWorkouts.days[selectedDayForAdd].categories = {};
         }
         if (!Array.isArray(updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder)) {
             updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder = [];
@@ -1440,14 +1439,13 @@ const App = () => {
         const categories = updatedWorkouts.days?.[day]?.categories;
         const categoryOrder = updatedWorkouts.days?.[day]?.categoryOrder;
 
-        // MODIFICATION: Ensure categoryOrder is an array before using indexOf or splice
-        if (categories && Array.isArray(categoryOrder)) {
+        if (categories && categoryOrder) {
             categories[newCatUpper] = categories[oldCategoryName]; 
             delete categories[oldCategoryName];
 
             const oldIndex = categoryOrder.indexOf(oldCategoryName); 
             if (oldIndex !== -1) {
-                categoryOrder.splice(oldIndex, 1, newCatUpper); // Replace item at index
+                categoryOrder[oldIndex] = newCatUpper;
             }
             applyChanges(updatedWorkouts, `Groupe musculaire "${oldCategoryName}" renommé en "${newCategoryName.trim()}" avec succès !`);
         } else {
@@ -1599,7 +1597,7 @@ const App = () => {
 
         const newIndex = index + direction;
         if (newIndex >= 0 && newIndex < exercises.length) {
-            const [removed] = exercises.splice(index, 1);
+            const [removed] = exercises.splice(currentIndex, 1);
             exercises.splice(newIndex, 0, removed);
             updatedWorkouts.days[dayName].categories[categoryName] = exercises;
             applyChanges(updatedWorkouts, "Ordre des exercices mis à jour !");
@@ -1689,24 +1687,24 @@ const App = () => {
                 const sessionDays = session.workoutData?.days || {};
                 Object.keys(sessionDays).forEach(dayKey => {
                     const dayData = sessionDays[dayKey];
-                    // MODIFICATION: Ensure dayData.categories is an object before calling Object.keys
-                    const categories = dayData?.categories || {};
-                    Object.keys(categories).forEach(categoryKey => {
-                        (categories[categoryKey] || []).forEach(exItem => {
-                            if (exItem.id === exercise.id) {
-                                const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
-                                const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
-                                if (maxWeightForDay > 0) {
-                                    if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
-                                        latestDailyWeightsIndividual[dateKey] = {
-                                            timestamp: session.timestamp,
-                                            weight: maxWeightForDay,
-                                        };
+                    if (dayData && dayData.categories) {
+                        Object.keys(dayData.categories).forEach(categoryKey => {
+                            (dayData.categories[categoryKey] || []).forEach(exItem => {
+                                if (exItem.id === exercise.id) {
+                                    const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
+                                    const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
+                                    if (maxWeightForDay > 0) {
+                                        if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
+                                            latestDailyWeightsIndividual[dateKey] = {
+                                                timestamp: session.timestamp,
+                                                weight: maxWeightForDay,
+                                            };
+                                        }
                                     }
                                 }
-                            }
+                            });
                         });
-                    });
+                    }
                 });
             });
             
@@ -1910,6 +1908,7 @@ const App = () => {
                     isAddingExercise={isAddingExercise}
                     dayButtonColors={dayButtonColors}
                     dayBorderAndTextColors={dayBorderAndTextColors}
+                    dayTitleColors={dayTitleColors} // Pass the new prop here
                     formatDate={formatDate}
                     getSeriesDisplay={getSeriesDisplay}
                     // Timer props are now passed only to TimerView

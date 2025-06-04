@@ -30,6 +30,7 @@ import {
  * @param {boolean} props.isAddingExercise - Indique si un exercice est en cours d'ajout.
  * @param {string[]} props.dayButtonColors - Couleurs pour les boutons de jour.
  * @param {string[]} props.dayBorderAndTextColors - Couleurs de bordure et de texte pour les jours.
+ * @param {string[]} props.dayTitleColors - NOUVEAU : Couleurs spécifiques pour les titres des jours (h2).
  * @param {function} props.formatDate - Fonction pour formater une date.
  * @param {function} props.getSeriesDisplay - Fonction pour afficher les séries d'un exercice.
  */
@@ -56,6 +57,7 @@ const MainWorkoutView = ({
     isAddingExercise,
     dayButtonColors,
     dayBorderAndTextColors,
+    dayTitleColors, // AJOUT DE LA NOUVELLE PROP
     formatDate,
     getSeriesDisplay,
 }) => {
@@ -91,9 +93,8 @@ const MainWorkoutView = ({
                         ? dayData.categoryOrder
                         : Object.keys(dayData.categories || {}).sort(); // Ensure Object.keys is called on an object
 
-                    // Applique la couleur de texte correspondante définie dans dayBorderAndTextColors pour tous les jours.
-                    // Cela garantit que le titre h2 aura la même couleur que le bouton du jour.
-                    const dayTitleColorClass = dayBorderAndTextColors[dayIndex % dayBorderAndTextColors.length].replace('border', 'text');
+                    // Utilise directement la prop dayTitleColors passée depuis App.jsx
+                    const dayTitleColorClass = dayTitleColors[dayIndex % dayTitleColors.length];
 
                     return (
                         <div key={dayName} className={`bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg border-2 ${dayBorderAndTextColors[dayIndex % dayBorderAndTextColors.length]}`}>
