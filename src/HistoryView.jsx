@@ -48,82 +48,82 @@ const HistoryView = ({
 
                 const workoutData = session.workoutData;
 
-                if (workoutData && workoutData.days) {
-                    Object.values(workoutData.days).forEach(dayData => {
-                        if (dayData && dayData.categories) {
-                            Object.values(dayData.categories).forEach(categoryExercises => {
-                                if (Array.isArray(categoryExercises)) {
-                                    categoryExercises.forEach(exercise => {
-                                        if (!exercise.id) return; // Skip if no ID
+                // MODIFICATION: Ensure workoutData.days is an object before calling Object.values
+                const days = workoutData?.days || {};
+                Object.values(days).forEach(dayData => {
+                    // MODIFICATION: Ensure dayData.categories is an object before calling Object.values
+                    const categories = dayData?.categories || {};
+                    Object.values(categories).forEach(categoryExercises => {
+                        if (Array.isArray(categoryExercises)) {
+                            categoryExercises.forEach(exercise => {
+                                if (!exercise.id) return; // Skip if no ID
 
-                                        if (!exerciseMap[exercise.id]) {
-                                            exerciseMap[exercise.id] = {
-                                                id: exercise.id,
-                                                name: exercise.name,
-                                                allSeries: [],
-                                                lastPerformance: null,
-                                                personalBest: { weight: 0, reps: 0, date: null },
-                                                isDeleted: exercise.isDeleted, // Track latest deletion status
-                                                // Store day and category name for notes modal if needed, or reactivate
-                                                dayName: '', // Will be updated by the last session it appears in
-                                                categoryName: '' // Will be updated by the last session it appears in
-                                            };
-                                        }
+                                if (!exerciseMap[exercise.id]) {
+                                    exerciseMap[exercise.id] = {
+                                        id: exercise.id,
+                                        name: exercise.name,
+                                        allSeries: [],
+                                        lastPerformance: null,
+                                        personalBest: { weight: 0, reps: 0, date: null },
+                                        isDeleted: exercise.isDeleted, // Track latest deletion status
+                                        // Store day and category name for notes modal if needed, or reactivate
+                                        dayName: '', // Will be updated by the last session it appears in
+                                        categoryName: '' // Will be updated by the last session it appears in
+                                    };
+                                }
 
-                                        // Update latest deletion status and last known day/category
-                                        exerciseMap[exercise.id].isDeleted = exercise.isDeleted;
-                                        // This assumes the exercise name and structure is consistent across days/categories
-                                        // If an exercise can move, this will store the last day/category it was found in.
-                                        // For reactivating, we'll search globally in App.jsx anyway.
-                                        // Find the actual dayName and categoryName from the original workoutData structure
-                                        // This is a bit inefficient but necessary if we need these specific names for the modal.
-                                        for (const dName in workoutData.days) {
-                                            if (workoutData.days[dName] === dayData) {
-                                                exerciseMap[exercise.id].dayName = dName;
-                                                break;
-                                            }
-                                        }
-                                        for (const cName in dayData.categories) {
-                                            if (dayData.categories[cName] === categoryExercises) {
-                                                exerciseMap[exercise.id].categoryName = cName;
-                                                break;
-                                            }
-                                        }
+                                // Update latest deletion status and last known day/category
+                                exerciseMap[exercise.id].isDeleted = exercise.isDeleted;
+                                // This assumes the exercise name and structure is consistent across days/categories
+                                // If an exercise can move, this will store the last day/category it was found in.
+                                // For reactivating, we'll search globally in App.jsx anyway.
+                                // Find the actual dayName and categoryName from the original workoutData structure
+                                // This is a bit inefficient but necessary if we need these specific names for the modal.
+                                for (const dName in days) { // Use the already defined 'days'
+                                    if (days[dName] === dayData) {
+                                        exerciseMap[exercise.id].dayName = dName;
+                                        break;
+                                    }
+                                }
+                                for (const cName in categories) { // Use the already defined 'categories'
+                                    if (categories[cName] === categoryExercises) {
+                                        exerciseMap[exercise.id].categoryName = cName;
+                                        break;
+                                    }
+                                }
 
 
-                                        // Aggregate all series for this exercise
-                                        if (Array.isArray(exercise.series)) {
-                                            exercise.series.forEach(s => {
-                                                const weight = parseFloat(s.weight);
-                                                const reps = parseInt(s.reps);
-                                                if (!isNaN(weight) && !isNaN(reps)) {
-                                                    exerciseMap[exercise.id].allSeries.push({
-                                                        date: sessionDate,
-                                                        weight: weight,
-                                                        reps: reps
-                                                    });
-
-                                                    // Update last performance (based on session date)
-                                                    if (!exerciseMap[exercise.id].lastPerformance || sessionDate > exerciseMap[exercise.id].lastPerformance.date) {
-                                                        exerciseMap[exercise.id].lastPerformance = { date: sessionDate, weight, reps };
-                                                    }
-
-                                                    // Update personal best (simple max weight for now)
-                                                    if (weight > exerciseMap[exercise.id].personalBest.weight) {
-                                                        exerciseMap[exercise.id].personalBest = { weight, reps, date: sessionDate };
-                                                    } else if (weight === exerciseMap[exercise.id].personalBest.weight && reps > exerciseMap[exercise.id].personalBest.reps) {
-                                                        // If same weight, check for more reps
-                                                        exerciseMap[exercise.id].personalBest = { weight, reps, date: sessionDate };
-                                                    }
-                                                }
+                                // Aggregate all series for this exercise
+                                if (Array.isArray(exercise.series)) {
+                                    exercise.series.forEach(s => {
+                                        const weight = parseFloat(s.weight);
+                                        const reps = parseInt(s.reps);
+                                        if (!isNaN(weight) && !isNaN(reps)) {
+                                            exerciseMap[exercise.id].allSeries.push({
+                                                date: sessionDate,
+                                                weight: weight,
+                                                reps: reps
                                             });
+
+                                            // Update last performance (based on session date)
+                                            if (!exerciseMap[exercise.id].lastPerformance || sessionDate > exerciseMap[exercise.id].lastPerformance.date) {
+                                                exerciseMap[exercise.id].lastPerformance = { date: sessionDate, weight, reps };
+                                            }
+
+                                            // Update personal best (simple max weight for now)
+                                            if (weight > exerciseMap[exercise.id].personalBest.weight) {
+                                                exerciseMap[exercise.id].personalBest = { weight, reps, date: sessionDate };
+                                            } else if (weight === exerciseMap[exercise.id].personalBest.weight && reps > exerciseMap[exercise.id].personalBest.reps) {
+                                                // If same weight, check for more reps
+                                                exerciseMap[exercise.id].personalBest = { weight, reps, date: sessionDate };
+                                            }
                                         }
                                     });
                                 }
                             });
                         }
                     });
-                }
+                });
             });
 
             // Convert map to array and sort by name

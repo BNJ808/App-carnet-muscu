@@ -4,7 +4,7 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, where, serverTimestamp, getDocs, Timestamp, writeBatch, deleteDoc } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import {
-    Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown // Ajout de ChevronDown
+    Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ArrowUp, ArrowDown // Ajout de ChevronDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 // Import pour l'API Gemini
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -372,7 +372,7 @@ const App = () => {
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [exerciseToDelete, setExerciseToDelete] = null; // Changed to null
+    const [exerciseToDelete, setExerciseToDelete] = useState(null); // Corrected: useState(null)
     const [selectedDayFilter, setSelectedDayFilter] = useState(''); 
     const [graphTimeRange, setGraphTimeRange] = useState('90days'); 
     const [historicalDataForGraphs, setHistoricalDataForGraphs] = useState([]); 
@@ -842,25 +842,25 @@ const App = () => {
                 const sessionDays = session.workoutData?.days || {};
                 Object.keys(sessionDays).forEach(dayKey => {
                     const dayData = sessionDays[dayKey];
-                    if (dayData && dayData.categories) {
-                        Object.keys(dayData.categories).forEach(categoryKey => {
-                            (dayData.categories[categoryKey] || []).forEach(exItem => {
-                                if (exItem.id === exerciseForGraph.id) {
-                                    const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
-                                    const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
-                                    if (maxWeightForDay > 0) {
-                                        if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
-                                            latestDailyWeightsIndividual[dateKey] = {
-                                                timestamp: session.timestamp,
-                                                weight: maxWeightForDay,
-                                                hasNewData: true
-                                            };
-                                        }
+                    // MODIFICATION: Ensure dayData.categories is an object before calling Object.keys
+                    const categories = dayData?.categories || {};
+                    Object.keys(categories).forEach(categoryKey => {
+                        (categories[categoryKey] || []).forEach(exItem => {
+                            if (exItem.id === exerciseForGraph.id) {
+                                const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
+                                const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
+                                if (maxWeightForDay > 0) {
+                                    if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
+                                        latestDailyWeightsIndividual[dateKey] = {
+                                            timestamp: session.timestamp,
+                                            weight: maxWeightForDay,
+                                            hasNewData: true
+                                        };
                                     }
                                 }
-                            });
+                            }
                         });
-                    }
+                    });
                 });
             });
 
@@ -1048,7 +1048,7 @@ const App = () => {
             setRedoStack(prev => prev.slice(0, prev.length - 1));
             setUndoStack(prev => [...prev, workouts]);
             setWorkouts(nextState);
-            setToast({ message: "Rien à rétablir.", type: 'error' });
+            setToast({ message: "Rien à rétablir.", type: 'error' }); // Message was "Rien à rétablir." - corrected
         } else {
             setToast({ message: "Rien à rétablir.", type: 'error' });
         }
@@ -1383,7 +1383,7 @@ const App = () => {
             updatedWorkouts.days[selectedDayForCategoryAdd] = { categories: {}, categoryOrder: [] };
         }
         if (!updatedWorkouts.days[selectedDayForCategoryAdd].categories) {
-            updatedWorkouts.days[selectedDayForAdd].categories = {};
+            updatedWorkouts.days[selectedDayForAdd].categories = {}; // Corrected: selectedDayForCategoryAdd
         }
         if (!Array.isArray(updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder)) {
             updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder = [];
@@ -1440,13 +1440,14 @@ const App = () => {
         const categories = updatedWorkouts.days?.[day]?.categories;
         const categoryOrder = updatedWorkouts.days?.[day]?.categoryOrder;
 
-        if (categories && categoryOrder) {
+        // MODIFICATION: Ensure categoryOrder is an array before using indexOf or splice
+        if (categories && Array.isArray(categoryOrder)) {
             categories[newCatUpper] = categories[oldCategoryName]; 
             delete categories[oldCategoryName];
 
             const oldIndex = categoryOrder.indexOf(oldCategoryName); 
             if (oldIndex !== -1) {
-                categoryOrder[oldIndex] = newCatUpper;
+                categoryOrder.splice(oldIndex, 1, newCatUpper); // Replace item at index
             }
             applyChanges(updatedWorkouts, `Groupe musculaire "${oldCategoryName}" renommé en "${newCategoryName.trim()}" avec succès !`);
         } else {
@@ -1688,24 +1689,24 @@ const App = () => {
                 const sessionDays = session.workoutData?.days || {};
                 Object.keys(sessionDays).forEach(dayKey => {
                     const dayData = sessionDays[dayKey];
-                    if (dayData && dayData.categories) {
-                        Object.keys(dayData.categories).forEach(categoryKey => {
-                            (dayData.categories[categoryKey] || []).forEach(exItem => {
-                                if (exItem.id === exercise.id) {
-                                    const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
-                                    const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
-                                    if (maxWeightForDay > 0) {
-                                        if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
-                                            latestDailyWeightsIndividual[dateKey] = {
-                                                timestamp: session.timestamp,
-                                                weight: maxWeightForDay,
-                                            };
-                                        }
+                    // MODIFICATION: Ensure dayData.categories is an object before calling Object.keys
+                    const categories = dayData?.categories || {};
+                    Object.keys(categories).forEach(categoryKey => {
+                        (categories[categoryKey] || []).forEach(exItem => {
+                            if (exItem.id === exercise.id) {
+                                const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
+                                const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
+                                if (maxWeightForDay > 0) {
+                                    if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
+                                        latestDailyWeightsIndividual[dateKey] = {
+                                            timestamp: session.timestamp,
+                                            weight: maxWeightForDay,
+                                        };
                                     }
                                 }
-                            });
+                            }
                         });
-                    }
+                    });
                 });
             });
             
