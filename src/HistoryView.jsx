@@ -53,7 +53,8 @@ const HistoryView = ({
 
     // Filter workouts based on selected date and day filter
     const filteredWorkouts = {};
-    if (workouts && workouts.days) {
+    const safeWorkoutsDays = workouts?.days || {}; // Ensure workouts.days is an object
+    if (workouts && safeWorkoutsDays) {
         // Find the workout data for the selected date
         // Note: The workouts prop here is the LATEST workout data from App.jsx's onSnapshot.
         // For history, we are relying on App.jsx to fetch the correct historical snapshot
@@ -61,14 +62,14 @@ const HistoryView = ({
         // state of the workout plan at 'selectedDateForHistory'.
         
         // Apply day filter
-        Object.keys(workouts.days).forEach(dayName => {
+        Object.keys(safeWorkoutsDays).forEach(dayName => {
             if (!selectedHistoryDayFilter || dayName === selectedHistoryDayFilter) {
-                const dayData = workouts.days[dayName];
-                if (dayData && dayData.categories) {
+                const dayData = safeWorkoutsDays[dayName];
+                if (dayData && typeof dayData === 'object' && dayData.categories && typeof dayData.categories === 'object') {
                     filteredWorkouts[dayName] = {
                         ...dayData,
                         categories: Object.keys(dayData.categories).reduce((acc, categoryName) => {
-                            const exercises = dayData.categories[categoryName];
+                            const exercises = dayData.categories?.[categoryName]; // Use optional chaining
                             if (Array.isArray(exercises)) {
                                 acc[categoryName] = exercises.filter(exercise => 
                                     showDeletedExercisesInHistory || !exercise.isDeleted
@@ -84,7 +85,7 @@ const HistoryView = ({
         });
     }
 
-    const orderedDays = workouts.dayOrder || [];
+    const orderedDays = workouts?.dayOrder || []; // Ensure workouts.dayOrder is an array
 
     return (
         <div className="history-view bg-gray-900 p-4 sm:p-6 rounded-xl shadow-lg">
@@ -99,7 +100,7 @@ const HistoryView = ({
                 </button>
                 <DatePicker
                     selected={selectedDateForHistory}
-                    onChange={(date) => handleDateChange({ target: { value: date.toISOString().split('T')[0] } })}
+                    onChange={handleDateChange} // Pass the date object directly
                     dateFormat="dd/MM/yyyy"
                     className="p-2 rounded-md bg-gray-700 text-white border border-gray-600 text-center text-sm sm:text-base"
                     maxDate={new Date()} // Prevent selecting future dates
@@ -150,19 +151,19 @@ const HistoryView = ({
             </div>
 
             {orderedDays.filter(dayName => Object.keys(filteredWorkouts).includes(dayName)).map((dayName, dayIndex) => {
-                const dayData = filteredWorkouts[dayName];
-                if (!dayData || !dayData.categories) {
+                const dayData = filteredWorkouts?.[dayName]; // Use optional chaining
+                if (!dayData || typeof dayData !== 'object' || !dayData.categories || typeof dayData.categories !== 'object') {
                     console.warn(`Données de jour invalides pour l'historique: ${dayName}`, dayData);
                     return null;
                 }
 
                 const categoryOrder = Array.isArray(dayData.categoryOrder)
                     ? dayData.categoryOrder
-                    : Object.keys(dayData.categories).sort();
+                    : Object.keys(dayData.categories || {}).sort(); // Ensure Object.keys is called on an object
 
                 // Check if there are any exercises to display for this day based on filters
                 const hasExercisesToDisplay = categoryOrder.some(categoryName => {
-                    const exercises = dayData.categories[categoryName];
+                    const exercises = dayData.categories?.[categoryName]; // Use optional chaining
                     return Array.isArray(exercises) && exercises.length > 0;
                 });
 
@@ -175,7 +176,7 @@ const HistoryView = ({
                         <h3 className="text-xl sm:text-3xl font-extrabold text-blue-300 mb-6 text-center">{dayName}</h3>
                         <div className="space-y-6">
                             {categoryOrder.map((categoryName, categoryIndex) => {
-                                const exercises = dayData.categories[categoryName];
+                                const exercises = dayData.categories?.[categoryName]; // Use optional chaining
                                 if (!Array.isArray(exercises) || exercises.length === 0) {
                                     return null; // Skip rendering empty or invalid categories
                                 }

@@ -379,7 +379,7 @@ const App = () => {
     const [selectedHistoryDayFilter, setSelectedHistoryDayFilter] = useState(null);
     const [graphTimeRange, setGraphTimeRange] = useState('90days'); 
     const [historicalDataForGraphs, setHistoricalDataForGraphs] = useState([]); 
-    const [processedGraphData, setProcessedGraphData] = {}; // Initialisation avec un objet vide
+    const [processedGraphData, setProcessedGraphData] = useState({}); // Initialisation avec un objet vide
 
     const [showExerciseGraphModal, setShowExerciseGraphModal] = useState(false); 
     const [exerciseForGraph, setExerciseForGraph] = useState(null); 
@@ -502,7 +502,7 @@ const App = () => {
 
         const exerciseHistory = {};
         if (!Array.isArray(historicalSessions)) {
-            console.warn("calculateInsights: historicalSessions is not an array.", historicalSessions);
+            console.warn("calculateInsights: historicalSessions is not an array. Returning empty insights and pbs.");
             return { insights: {}, pbs: {} };
         }
 
@@ -511,11 +511,13 @@ const App = () => {
             const workoutData = session.workoutData;
 
             // Ensure workoutData and workoutData.days are valid objects before calling Object.values
-            if (workoutData && typeof workoutData === 'object' && workoutData.days && typeof workoutData.days === 'object') {
-                Object.values(workoutData.days).forEach(dayData => {
+            const days = workoutData?.days;
+            if (days && typeof days === 'object') {
+                Object.values(days).forEach(dayData => {
                     // Ensure dayData and dayData.categories are valid objects before calling Object.values
-                    if (dayData && typeof dayData === 'object' && dayData.categories && typeof dayData.categories === 'object') {
-                        Object.values(dayData.categories).forEach(categoryExercises => {
+                    const categories = dayData?.categories;
+                    if (categories && typeof categories === 'object') {
+                        Object.values(categories).forEach(categoryExercises => {
                             // Ensure categoryExercises is an array before iterating
                             if (Array.isArray(categoryExercises)) {
                                 categoryExercises.forEach(exercise => {
@@ -659,7 +661,7 @@ const App = () => {
                 setSelectedHistoryDayFilter(workouts.dayOrder[0]);
             }
         }
-    }, [currentView]);
+    }, [currentView, workouts.dayOrder]);
 
 
     useEffect(() => {
@@ -690,7 +692,7 @@ const App = () => {
                         const fetchedWorkoutData = snapshot.docs[0]?.data()?.workoutData; // Utilisation de l'opérateur de chaînage optionnel
                         console.log("onSnapshot: fetchedWorkoutData retrieved:", fetchedWorkoutData); // LOG POUR DÉBOGAGE
 
-                        // Ensure fetchedWorkoutData is a valid object before proceeding
+                        // Ensure fetchedWorkoutData is a valid object, otherwise fall back to a safe empty structure
                         if (!fetchedWorkoutData || typeof fetchedWorkoutData !== 'object') {
                             console.warn("Fetched workout data is invalid or missing. Falling back to empty state.", fetchedWorkoutData);
                             setWorkouts({ days: {}, dayOrder: [] });
@@ -698,54 +700,80 @@ const App = () => {
                             return;
                         }
 
+                        // Ensure days is an object
                         const sanitizedDays = fetchedWorkoutData.days && typeof fetchedWorkoutData.days === 'object'
                             ? fetchedWorkoutData.days
                             : {};
 
+                        // Ensure dayOrder is an array. If not, derive from sanitizedDays keys.
                         const sanitizedDayOrder = Array.isArray(fetchedWorkoutData.dayOrder)
                             ? fetchedWorkoutData.dayOrder
-                            : Object.keys(sanitizedDays).sort(); // Ensure Object.keys is called on an object
+                            : Object.keys(sanitizedDays).sort();
 
                         const finalSanitizedDays = {};
-                        for (const dayKey in sanitizedDays) {
-                            if (Object.prototype.hasOwnProperty.call(sanitizedDays, dayKey)) { // More robust hasOwnProperty check
-                                const dayData = sanitizedDays[dayKey];
-                                const newCategories = {};
-                                const currentCategoryOrder = Array.isArray(dayData.categoryOrder)
-                                    ? dayData.categoryOrder
-                                    : []; // Ensure categoryOrder is an array, even if empty
+                        // Iterate over the order, ensuring existing days are processed
+                        for (const dayKey of sanitizedDayOrder) { 
+                            const dayData = sanitizedDays[dayKey];
 
-                                if (dayData && typeof dayData === 'object' && dayData.categories && typeof dayData.categories === 'object') {
-                                    for (const categoryKey in dayData.categories) {
-                                        if (Object.prototype.hasOwnProperty.call(dayData.categories, categoryKey)) { // More robust hasOwnProperty check
-                                            const exercisesInCat = Array.isArray(dayData.categories[categoryKey])
-                                                ? dayData.categories[categoryKey]
-                                                : [];
-                                            newCategories[categoryKey] = exercisesInCat.map(exercise => {
-                                                const sanitizedSeries = Array.isArray(exercise.series)
-                                                    ? exercise.series.map(s => ({
-                                                        weight: s.weight !== undefined ? String(s.weight) : '',
-                                                        reps: s.reps !== undefined ? String(s.reps) : ''
-                                                    }))
-                                                    : [{ weight: '', reps: '' }]; // Always ensure series is an array of objects
-                                                return {
-                                                    ...exercise,
-                                                    id: exercise.id || generateUUID(),
-                                                    series: sanitizedSeries,
-                                                    isDeleted: typeof exercise.isDeleted === 'boolean' ? exercise.isDeleted : false,
-                                                    notes: typeof exercise.notes === 'string' ? exercise.notes : ''
-                                                };
-                                            });
-                                        }
-                                    }
-                                }
-                                finalSanitizedDays[dayKey] = {
-                                    ...dayData, // Keep other properties if any
-                                    categories: newCategories,
-                                    categoryOrder: currentCategoryOrder.length > 0 ? currentCategoryOrder : Object.keys(newCategories).sort()
-                                };
+                            // Ensure dayData is an object, or create an empty one
+                            if (!dayData || typeof dayData !== 'object') {
+                                finalSanitizedDays[dayKey] = { categories: {}, categoryOrder: [] };
+                                continue;
                             }
+
+                            // Ensure categories is an object
+                            const newCategories = dayData.categories && typeof dayData.categories === 'object'
+                                ? dayData.categories
+                                : {};
+
+                            // Ensure categoryOrder is an array. If not, derive from newCategories keys.
+                            const currentCategoryOrder = Array.isArray(dayData.categoryOrder)
+                                ? dayData.categoryOrder
+                                : Object.keys(newCategories).sort();
+
+                            const finalCategoriesForDay = {};
+                            // Iterate over the category order
+                            for (const categoryKey of currentCategoryOrder) { 
+                                let exercisesInCat = newCategories[categoryKey];
+
+                                // Ensure exercisesInCat is an array, or create an empty one
+                                if (!Array.isArray(exercisesInCat)) {
+                                    exercisesInCat = [];
+                                }
+
+                                finalCategoriesForDay[categoryKey] = exercisesInCat.map(exercise => {
+                                    // Ensure exercise is an object, or create a default one
+                                    if (!exercise || typeof exercise !== 'object') {
+                                        return { id: generateUUID(), name: '', series: [{ weight: '', reps: '' }], isDeleted: false, notes: '' };
+                                    }
+
+                                    // Ensure series is an array of objects
+                                    let sanitizedSeries = Array.isArray(exercise.series)
+                                        ? exercise.series
+                                        : [{ weight: '', reps: '' }];
+
+                                    sanitizedSeries = sanitizedSeries.map(s => ({
+                                        weight: s && s.weight !== undefined ? String(s.weight) : '',
+                                        reps: s && s.reps !== undefined ? String(s.reps) : ''
+                                    }));
+
+                                    return {
+                                        id: exercise.id || generateUUID(),
+                                        name: typeof exercise.name === 'string' ? exercise.name : '',
+                                        series: sanitizedSeries,
+                                        isDeleted: typeof exercise.isDeleted === 'boolean' ? exercise.isDeleted : false,
+                                        notes: typeof exercise.notes === 'string' ? exercise.notes : ''
+                                    };
+                                });
+                            }
+
+                            finalSanitizedDays[dayKey] = {
+                                ...dayData, // Keep other properties if any
+                                categories: finalCategoriesForDay,
+                                categoryOrder: currentCategoryOrder // Use the derived or original category order
+                            };
                         }
+                        console.log("Setting workouts to:", { days: finalSanitizedDays, dayOrder: sanitizedDayOrder }); // Added log
                         setWorkouts({ days: finalSanitizedDays, dayOrder: sanitizedDayOrder });
                         if (!selectedDayFilter && sanitizedDayOrder.length > 0) {
                             setSelectedDayFilter(sanitizedDayOrder[0]);
@@ -1058,9 +1086,9 @@ const App = () => {
 
         const { day, category, exerciseId } = editingExercise;
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        const exerciseIndex = updatedWorkouts.days[day].categories[category].findIndex(ex => ex.id === exerciseId);
+        const exerciseIndex = updatedWorkouts.days?.[day]?.categories?.[category]?.findIndex(ex => ex.id === exerciseId);
 
-        if (exerciseIndex !== -1) {
+        if (exerciseIndex !== -1 && updatedWorkouts.days?.[day]?.categories?.[category]) {
             const weightNum = parseFloat(newWeight);
             const setsNum = parseInt(newSets);
             const repsNum = parseInt(newReps);
@@ -1166,7 +1194,7 @@ const App = () => {
 
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
         // Vérification de l'existence de la catégorie avant de pousser
-        if (!updatedWorkouts.days[selectedDayForAdd] || !updatedWorkouts.days[selectedDayForAdd].categories) {
+        if (!updatedWorkouts.days?.[selectedDayForAdd]?.categories) {
             setToast({ message: "Erreur: Jour ou catégorie sélectionné(e) introuvable.", type: 'error' });
             setIsAddingExercise(false);
             return;
@@ -1200,7 +1228,7 @@ const App = () => {
         const { day, category, exerciseId } = exerciseToDelete;
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
 
-        if (updatedWorkouts.days[day] && updatedWorkouts.days[day].categories && updatedWorkouts.days[day].categories[category]) {
+        if (updatedWorkouts.days?.[day]?.categories?.[category]) {
             const exerciseIndex = updatedWorkouts.days[day].categories[category].findIndex(
                 (ex) => ex.id === exerciseId
             );
@@ -1222,7 +1250,7 @@ const App = () => {
 
     const handleReactivateExercise = (day, category, exerciseId) => {
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        if (updatedWorkouts.days[day] && updatedWorkouts.days[day].categories && updatedWorkouts.days[day].categories[category]) {
+        if (updatedWorkouts.days?.[day]?.categories?.[category]) {
             const exerciseIndex = updatedWorkouts.days[day].categories[category].findIndex(
                 (ex) => ex.id === exerciseId
             );
@@ -1243,7 +1271,7 @@ const App = () => {
             setToast({ message: "Le nom du jour ne peut pas être vide.", type: 'error' });
             return;
         }
-        if (workouts.days[newDayNameInput.trim()]) {
+        if (workouts.days?.[newDayNameInput.trim()]) {
             setToast({ message: "Ce jour existe déjà.", type: 'error' });
             return;
         }
@@ -1253,7 +1281,7 @@ const App = () => {
             categories: {},
             categoryOrder: []
         };
-        updatedWorkouts.dayOrder.push(newDayNameInput.trim());
+        updatedWorkouts.dayOrder = Array.isArray(updatedWorkouts.dayOrder) ? [...updatedWorkouts.dayOrder, newDayNameInput.trim()] : [newDayNameInput.trim()];
         applyChanges(updatedWorkouts, `Jour "${newDayNameInput.trim()}" ajouté avec succès !`);
         setShowAddDayModal(false);
         setNewDayNameInput('');
@@ -1276,19 +1304,21 @@ const App = () => {
             setEditingDayName(null);
             return;
         }
-        if (workouts.days[editedDayNewNameInput.trim()]) {
+        if (workouts.days?.[editedDayNewNameInput.trim()]) {
             setToast({ message: "Un jour avec ce nom existe déjà.", type: 'error' });
             return;
         }
 
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        const oldDayData = updatedWorkouts.days[editingDayName];
-        delete updatedWorkouts.days[editingDayName];
-        updatedWorkouts.days[editedDayNewNameInput.trim()] = oldDayData;
-
-        updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.map(dayName =>
+        const oldDayData = updatedWorkouts.days?.[editingDayName];
+        if (oldDayData) {
+            delete updatedWorkouts.days[editingDayName];
+            updatedWorkouts.days[editedDayNewNameInput.trim()] = oldDayData;
+        }
+        
+        updatedWorkouts.dayOrder = Array.isArray(updatedWorkouts.dayOrder) ? updatedWorkouts.dayOrder.map(dayName =>
             dayName === editingDayName ? editedDayNewNameInput.trim() : dayName
-        );
+        ) : [];
 
         if (selectedDayFilter === editingDayName) {
             setSelectedDayFilter(updatedWorkouts.dayOrder.length > 0 ? editedDayNewNameInput.trim() : null);
@@ -1314,8 +1344,10 @@ const App = () => {
         if (!dayToDeleteName) return;
 
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        delete updatedWorkouts.days[dayToDeleteName];
-        updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(day => day !== dayToDeleteName);
+        if (updatedWorkouts.days?.[dayToDeleteName]) {
+            delete updatedWorkouts.days[dayToDeleteName];
+        }
+        updatedWorkouts.dayOrder = Array.isArray(updatedWorkouts.dayOrder) ? updatedWorkouts.dayOrder.filter(day => day !== dayToDeleteName) : [];
 
         if (selectedDayFilter === dayToDeleteName) {
             setSelectedDayFilter(updatedWorkouts.dayOrder.length > 0 ? updatedWorkouts.dayOrder[0] : null);
@@ -1338,16 +1370,23 @@ const App = () => {
             setToast({ message: "Le nom du groupe musculaire est obligatoire.", type: 'error' });
             return;
         }
-        const existingCategories = Object.keys(workouts.days[selectedDayForCategoryAdd]?.categories || {});
+        const existingCategories = Object.keys(workouts.days?.[selectedDayForCategoryAdd]?.categories || {});
         if (existingCategories.some(cat => cat.toUpperCase() === newCategoryNameInput.trim().toUpperCase())) {
             setToast({ message: "Ce groupe musculaire existe déjà pour ce jour.", type: 'error' });
             return;
         }
 
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        if (!updatedWorkouts.days[selectedDayForCategoryAdd]) {
+        if (!updatedWorkouts.days?.[selectedDayForCategoryAdd]) {
             updatedWorkouts.days[selectedDayForCategoryAdd] = { categories: {}, categoryOrder: [] };
         }
+        if (!updatedWorkouts.days[selectedDayForCategoryAdd].categories) {
+            updatedWorkouts.days[selectedDayForCategoryAdd].categories = {};
+        }
+        if (!Array.isArray(updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder)) {
+            updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder = [];
+        }
+
         const newCategoryKey = newCategoryNameInput.trim().toUpperCase(); 
         updatedWorkouts.days[selectedDayForCategoryAdd].categories[newCategoryKey] = [];
         updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder.push(newCategoryKey);
@@ -1387,25 +1426,29 @@ const App = () => {
             setEditingCategory(null);
             return;
         }
-        if (workouts.days[editingCategory.day]?.categories[newCatUpper]) {
+        if (workouts.days?.[editingCategory.day]?.categories?.[newCatUpper]) {
             setToast({ message: "Un groupe musculaire avec ce nom existe déjà pour ce jour.", type: 'error' });
             return;
         }
 
         const { day, oldCategoryName } = editingCategory;
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        const categories = updatedWorkouts.days[day].categories;
-        const categoryOrder = updatedWorkouts.days[day].categoryOrder;
+        const categories = updatedWorkouts.days?.[day]?.categories;
+        const categoryOrder = updatedWorkouts.days?.[day]?.categoryOrder;
 
-        categories[newCatUpper] = categories[oldCategoryName]; 
-        delete categories[oldCategoryName];
+        if (categories && categoryOrder) {
+            categories[newCatUpper] = categories[oldCategoryName]; 
+            delete categories[oldCategoryName];
 
-        const oldIndex = categoryOrder.indexOf(oldCategoryName); 
-        if (oldIndex !== -1) {
-            categoryOrder[oldIndex] = newCatUpper;
+            const oldIndex = categoryOrder.indexOf(oldCategoryName); 
+            if (oldIndex !== -1) {
+                categoryOrder[oldIndex] = newCatUpper;
+            }
+            applyChanges(updatedWorkouts, `Groupe musculaire "${oldCategoryName}" renommé en "${newCategoryName.trim()}" avec succès !`);
+        } else {
+            setToast({ message: "Erreur: Données de jour ou de catégorie introuvables pour la modification.", type: 'error' });
         }
 
-        applyChanges(updatedWorkouts, `Groupe musculaire "${oldCategoryName}" renommé en "${newCategoryName.trim()}" avec succès !`);
         setShowEditCategoryModal(false);
         setEditingCategory(null);
         setNewCategoryName('');
@@ -1421,13 +1464,13 @@ const App = () => {
 
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
 
-        if (updatedWorkouts.days[categoryToDelete.day] && updatedWorkouts.days[categoryToDelete.day].categories) {
+        if (updatedWorkouts.days?.[categoryToDelete.day]?.categories) {
             const exercisesInCat = updatedWorkouts.days[categoryToDelete.day].categories[categoryToDelete.categoryName];
             if (Array.isArray(exercisesInCat)) {
                 exercisesInCat.forEach(ex => ex.isDeleted = true); // Mark all exercises in category as deleted
             }
             // Remove the category from the display order, but keep its data for history
-            updatedWorkouts.days[categoryToDelete.day].categoryOrder = updatedWorkouts.days[categoryToDelete.day].categoryOrder.filter(cat => cat !== categoryToDelete.categoryName);
+            updatedWorkouts.days[categoryToDelete.day].categoryOrder = Array.isArray(updatedWorkouts.days[categoryToDelete.day].categoryOrder) ? updatedWorkouts.days[categoryToDelete.day].categoryOrder.filter(cat => cat !== categoryToDelete.categoryName) : [];
             
             applyChanges(updatedWorkouts, `Groupe musculaire "${categoryToDelete.categoryName}" et ses exercices marqués comme supprimés avec succès !`);
         } else {
@@ -1450,19 +1493,19 @@ const App = () => {
         if (dateString instanceof Date) {
             return dateString.toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' });
         }
-        const parts = dateString.split('-');
+        const parts = String(dateString).split('-'); // Ensure dateString is treated as a string
         if (parts.length === 3) {
             const [year, month, day] = parts;
             const date = new Date(year, month - 1, day);
             return date.toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' });
         }
-        return dateString; 
+        return String(dateString); 
     };
 
     // Removed toggleHistoryView as navigation is now handled by BottomNavigationBar
 
-    const handleDateChange = (e) => {
-        const newSelectedDate = normalizeDateToStartOfDay(new Date(e.target.value));
+    const handleDateChange = (date) => { // Directly receive date object from DatePicker
+        const newSelectedDate = normalizeDateToStartOfDay(date);
         const today = normalizeDateToStartOfDay(new Date());
 
         if (newSelectedDate > today) {
@@ -1515,7 +1558,7 @@ const App = () => {
 
 
     const handleReorderDays = (dayName, direction) => {
-        const currentOrder = [...reorderingDayOrder];
+        const currentOrder = [...(reorderingDayOrder || [])];
         const index = currentOrder.indexOf(dayName);
         if (index === -1) return;
 
@@ -1553,7 +1596,11 @@ const App = () => {
 
     const handleReorderCategories = (dayName, categoryName, direction) => {
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        const categoryOrder = updatedWorkouts.days[dayName].categoryOrder;
+        const categoryOrder = updatedWorkouts.days?.[dayName]?.categoryOrder;
+        if (!Array.isArray(categoryOrder)) {
+            console.warn(`Category order for day ${dayName} is not an array.`);
+            return;
+        }
         const index = categoryOrder.indexOf(categoryName);
         if (index === -1) return;
 
@@ -1568,7 +1615,11 @@ const App = () => {
 
     const handleReorderExercises = (dayName, categoryName, exerciseId, direction) => {
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        const exercises = updatedWorkouts.days[dayName].categories[categoryName];
+        const exercises = updatedWorkouts.days?.[dayName]?.categories?.[categoryName];
+        if (!Array.isArray(exercises)) {
+            console.warn(`Exercises for category ${categoryName} in day ${dayName} are not an array.`);
+            return;
+        }
         const index = exercises.findIndex(ex => ex.id === exerciseId);
         if (index === -1) return;
 
@@ -1584,7 +1635,7 @@ const App = () => {
     const handleOpenNotesModal = (day, category, exerciseId) => { // Removed currentNotes parameter
         setExerciseForNotes({ day, category, exerciseId });
         // Retrieve notes from the current workouts state
-        const currentExercise = workouts.days[day]?.categories[category]?.find(ex => ex.id === exerciseId);
+        const currentExercise = workouts.days?.[day]?.categories?.[category]?.find(ex => ex.id === exerciseId);
         setCurrentNoteContent(currentExercise?.notes || '');
         setShowNotesModal(true);
     };
@@ -1594,9 +1645,9 @@ const App = () => {
 
         const { day, category, exerciseId } = exerciseForNotes;
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        const exerciseIndex = updatedWorkouts.days[day].categories[category].findIndex(ex => ex.id === exerciseId);
+        const exerciseIndex = updatedWorkouts.days?.[day]?.categories?.[category]?.findIndex(ex => ex.id === exerciseId);
 
-        if (exerciseIndex !== -1) {
+        if (exerciseIndex !== -1 && updatedWorkouts.days?.[day]?.categories?.[category]) {
             updatedWorkouts.days[day].categories[category][exerciseIndex].notes = currentNoteContent;
             applyChanges(updatedWorkouts, "Note sauvegardée avec succès !");
             setShowNotesModal(false);
@@ -1612,9 +1663,9 @@ const App = () => {
 
         const { day, category, exerciseId } = exerciseForNotes;
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        const exerciseIndex = updatedWorkouts.days[day].categories[category].findIndex(ex => ex.id === exerciseId);
+        const exerciseIndex = updatedWorkouts.days?.[day]?.categories?.[category]?.findIndex(ex => ex.id === exerciseId);
 
-        if (exerciseIndex !== -1) {
+        if (exerciseIndex !== -1 && updatedWorkouts.days?.[day]?.categories?.[category]) {
             updatedWorkouts.days[day].categories[category][exerciseIndex].notes = ''; 
             applyChanges(updatedWorkouts, "Note supprimée avec succès !");
             setShowNotesModal(false);
@@ -1752,6 +1803,8 @@ const App = () => {
         );
     }
 
+    // Log the workouts state before rendering
+    console.log("Workouts state before rendering:", workouts);
     const orderedDays = workouts.dayOrder || []; 
 
     return (
@@ -1996,7 +2049,7 @@ const App = () => {
                     style={{ opacity: showDeleteConfirm ? 1 : 0 }}>
                     <div className={`p-6 sm:p-8 rounded-lg shadow-2xl w-full max-w-sm sm:max-w-md border border-gray-700 bg-gray-800 transition-all duration-300 ease-out transform ${showDeleteConfirm ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                         <h2 className={`text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-white text-center`}>Confirmer la suppression</h2>
-                        <p className={`text-gray-300 text-sm sm:text-base text-center mb-4 sm:mb-6`}> Êtes-vous sûr de vouloir supprimer l'exercice "{workouts.days[exerciseToDelete?.day]?.categories[exerciseToDelete?.category]?.find(ex => ex.id === exerciseToDelete?.exerciseId)?.name}" ? Il sera marqué comme supprimé. </p>
+                        <p className={`text-gray-300 text-sm sm:text-base text-center mb-4 sm:mb-6`}> Êtes-vous sûr de vouloir supprimer l'exercice "{workouts.days?.[exerciseToDelete?.day]?.categories?.[exerciseToDelete?.category]?.find(ex => ex.id === exerciseToDelete?.exerciseId)?.name}" ? Il sera marqué comme supprimé. </p>
                         <div className="flex justify-end space-x-3 sm:space-x-4 mt-6 sm:mt-8">
                             <button onClick={() => setShowDeleteConfirm(false)} disabled={isDeletingExercise} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base"> Annuler </button>
                             <button onClick={confirmDeleteExercise} disabled={isDeletingExercise} className={`bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base ${isDeletingExercise ? 'button-deleting' : ''}`}> Supprimer </button>
@@ -2178,7 +2231,7 @@ const App = () => {
                     <div className={`p-6 sm:p-8 rounded-lg shadow-2xl w-full max-w-sm sm:max-w-md border border-gray-700 bg-gray-800 transition-all duration-300 ease-out transform ${showReorderDaysModal ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                         <h2 className={`text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-white text-center`}>Réorganiser les jours</h2>
                         <ul className="space-y-3">
-                            {reorderingDayOrder.map((dayName, index) => (
+                            {(reorderingDayOrder || []).map((dayName, index) => (
                                 <li key={dayName} className={`flex items-center justify-between bg-gray-700 p-3 rounded-md shadow-sm transition-all duration-200 ease-out`}>
                                     <span className={`text-base sm:text-lg text-white`}>{dayName}</span>
                                     <div className="flex space-x-2">
@@ -2199,7 +2252,7 @@ const App = () => {
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ease-out"
                     style={{ opacity: showNotesModal ? 1 : 0 }}>
                     <div className={`p-6 sm:p-8 rounded-lg shadow-2xl w-full max-w-sm sm:max-w-md border border-gray-700 bg-gray-800 transition-all duration-300 ease-out transform ${showNotesModal ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
-                        <h2 className={`text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-white text-center`}>Notes pour {workouts.days[exerciseForNotes.day]?.categories[exerciseForNotes.category]?.find(ex => ex.id === exerciseForNotes.exerciseId)?.name}</h2>
+                        <h2 className={`text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-white text-center`}>Notes pour {workouts.days?.[exerciseForNotes.day]?.categories?.[exerciseForNotes.category]?.find(ex => ex.id === exerciseForNotes.exerciseId)?.name}</h2>
                         <textarea className={`w-full h-24 sm:h-32 p-2 sm:p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:ring-2 focus:ring-blue-500 resize-none text-sm sm:text-base`} placeholder="Écrivez vos notes ici..." value={currentNoteContent} onChange={(e) => setCurrentNoteContent(e.target.value)} ></textarea>
                         <div className="flex justify-end space-x-3 sm:space-x-4 mt-6 sm:mt-8">
                             <button onClick={() => {setShowNotesModal(false); setExerciseForNotes(null); setCurrentNoteContent('');}} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base"> Annuler</button>

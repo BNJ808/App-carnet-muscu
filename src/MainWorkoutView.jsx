@@ -59,11 +59,12 @@ const MainWorkoutView = ({
     formatDate,
     getSeriesDisplay,
 }) => {
+    const safeWorkoutsDays = workouts?.days || {}; // Ensure workouts.days is an object
     const filteredWorkouts = selectedDayFilter
-        ? (workouts.days[selectedDayFilter] ? { [selectedDayFilter]: workouts.days[selectedDayFilter] } : {})
-        : workouts.days;
+        ? (safeWorkoutsDays[selectedDayFilter] ? { [selectedDayFilter]: safeWorkoutsDays[selectedDayFilter] } : {})
+        : safeWorkoutsDays;
 
-    const orderedDays = workouts.dayOrder || [];
+    const orderedDays = workouts?.dayOrder || []; // Ensure workouts.dayOrder is an array
 
     return (
         <>
@@ -80,15 +81,15 @@ const MainWorkoutView = ({
 
             <div className="space-y-8">
                 {orderedDays.filter(dayName => !selectedDayFilter || dayName === selectedDayFilter).map((dayName, dayIndex) => {
-                    const dayData = workouts.days[dayName];
-                    if (!dayData || !dayData.categories) {
-                        console.warn(`Données de jour invalides pour: ${dayName}`, dayData);
-                        return null;
+                    const dayData = safeWorkoutsDays[dayName]; // Use safeWorkoutsDays
+                    if (!dayData || typeof dayData !== 'object' || !dayData.categories || typeof dayData.categories !== 'object') {
+                        console.warn(`Données de jour invalides ou manquantes pour: ${dayName}`, dayData);
+                        return null; // Skip rendering this day
                     }
 
                     const categoryOrder = Array.isArray(dayData.categoryOrder)
                         ? dayData.categoryOrder
-                        : Object.keys(dayData.categories).sort();
+                        : Object.keys(dayData.categories || {}).sort(); // Ensure Object.keys is called on an object
 
                     return (
                         <div key={dayName} className={`bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg border-2 ${dayBorderAndTextColors[dayIndex % dayBorderAndTextColors.length]}`}>
@@ -120,10 +121,10 @@ const MainWorkoutView = ({
 
                             <div className="space-y-6">
                                 {categoryOrder.map((categoryName, categoryIndex) => {
-                                    const exercises = dayData.categories[categoryName];
-                                    if (!Array.isArray(exercises)) {
-                                        console.warn(`Exercices pour la catégorie ${categoryName} du jour ${dayName} ne sont pas un tableau.`, exercises);
-                                        return null;
+                                    const exercises = dayData.categories?.[categoryName]; // Use optional chaining
+                                    if (!Array.isArray(exercises)) { // Only check if it's not an array
+                                        console.warn(`Exercices pour la catégorie ${categoryName} du jour ${dayName} ne sont pas un tableau ou sont manquants.`, exercises);
+                                        return null; // Skip rendering this category
                                     }
 
                                     return (
