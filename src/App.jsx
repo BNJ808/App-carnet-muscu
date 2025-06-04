@@ -382,7 +382,7 @@ const App = () => {
     const [selectedHistoryDayFilter, setSelectedHistoryDayFilter] = useState(null);
     const [graphTimeRange, setGraphTimeRange] = useState('90days'); 
     const [historicalDataForGraphs, setHistoricalDataForGraphs] = useState([]); 
-    const [processedGraphData, setProcessedGraphData] = useState({}); 
+    const [processedGraphData, setProcessedGraphData] = {}; // Initialisation avec un objet vide
 
     const [showExerciseGraphModal, setShowExerciseGraphModal] = useState(false); 
     const [exerciseForGraph, setExerciseForGraph] = useState(null); 
@@ -390,7 +390,7 @@ const App = () => {
 
     const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
-    const [newCategoryName, setNewCategoryName] = '';
+    const [newCategoryName, setNewCategoryName] = useState(''); // Correction: useState avec valeur initiale
 
     const [showDeletedExercisesInHistory, setShowDeletedExercisesInHistory] = useState(false); // État pour afficher les exercices supprimés
 
