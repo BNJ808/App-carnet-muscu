@@ -372,14 +372,10 @@ const App = () => {
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [exerciseToDelete, setExerciseToDelete] = useState(null); 
+    const [exerciseToDelete, setExerciseToDelete] = null; // Changed to null
     const [selectedDayFilter, setSelectedDayFilter] = useState(''); 
-    const [showDatePicker, setShowDatePicker] = useState(false); // This state is now controlled by currentView
-    const [selectedDateForHistory, setSelectedDateForHistory] = useState(null); 
-    const [selectedHistoryDayFilter, setSelectedHistoryDayFilter] = useState(null);
     const [graphTimeRange, setGraphTimeRange] = useState('90days'); 
     const [historicalDataForGraphs, setHistoricalDataForGraphs] = useState([]); 
-    const [processedGraphData, setProcessedGraphData] = useState({}); // Initialisation avec un objet vide
 
     const [showExerciseGraphModal, setShowExerciseGraphModal] = useState(false); 
     const [exerciseForGraph, setExerciseForGraph] = useState(null); 
@@ -507,7 +503,10 @@ const App = () => {
         }
 
         historicalSessions.forEach(session => {
-            const sessionDate = session.timestamp;
+            // Ensure session.timestamp is valid before calling toDate()
+            const sessionDate = session.timestamp ? session.timestamp : null;
+            if (!sessionDate) return; // Skip if timestamp is null/undefined
+
             const workoutData = session.workoutData;
 
             // Ensure workoutData and workoutData.days are valid objects before calling Object.values
@@ -651,11 +650,9 @@ const App = () => {
         }
         // When switching to history, set default date to today
         if (currentView === 'history') {
-            setSelectedDateForHistory(normalizeDateToStartOfDay(new Date()));
+            // No longer setting selectedDateForHistory here as HistoryView is exercise-centric
+            // and does not use this state for its primary display.
         }
-        // selectedHistoryDayFilter is no longer a primary filter for HistoryView, but it's still used in App's fetch logic
-        // for the *current workout plan* if HistoryView needs to display that specific day's exercises.
-        // However, the new HistoryView is exercise-centric, so this filter is less relevant for its primary display.
     }, [currentView]);
 
 
@@ -744,14 +741,9 @@ const App = () => {
                             };
                         }
                         setWorkouts({ days: finalSanitizedDays, dayOrder: sanitizedDayOrder });
-                        // Only set selectedDayFilter if it's currently null or no longer exists
-                        if (!selectedDayFilter || !(sanitizedDayOrder || []).includes(selectedDayFilter)) {
-                            setSelectedDayFilter(sanitizedDayOrder[0]);
-                        }
                     } else {
                         console.log("No workout data found in Firestore. Initializing with base structure.");
                         setWorkouts(baseInitialData);
-                        setSelectedDayFilter(baseInitialData.dayOrder[0]);
                     }
                     setLoading(false);
                 }, (error) => {
@@ -766,10 +758,11 @@ const App = () => {
                     const fetchedData = snapshot.docs.map(doc => {
                         const data = doc.data();
                         return {
-                            timestamp: data.timestamp.toDate(), // Convert Firestore Timestamp to JS Date
+                            // Add null check for timestamp before calling toDate()
+                            timestamp: data.timestamp ? data.timestamp.toDate() : null, // Handle pending server timestamps
                             workoutData: data.workoutData
                         };
-                    });
+                    }).filter(item => item.timestamp !== null); // Filter out items with null timestamps
                     setHistoricalDataForGraphs(fetchedData);
                 }, (error) => {
                     console.error("Erreur lors de la récupération des données historiques:", error);
@@ -787,7 +780,21 @@ const App = () => {
         };
 
         fetchAndSetWorkouts();
-    }, [isAuthReady, userId, appId, selectedDayFilter]); // Removed currentView, selectedDateForHistory as primary triggers
+    }, [isAuthReady, userId, appId]);
+
+    // This effect ensures a valid day is always selected for the workout view
+    useEffect(() => {
+        if (currentView === 'workout' && (workouts.dayOrder || []).length > 0) {
+            // If no day is selected, or the currently selected day no longer exists in dayOrder,
+            // set the selected day to the first one in the ordered list.
+            if (!selectedDayFilter || !(workouts.dayOrder || []).includes(selectedDayFilter)) {
+                setSelectedDayFilter((workouts.dayOrder || [])[0]);
+            }
+        } else if (currentView === 'workout' && (workouts.dayOrder || []).length === 0) {
+            // If there are no days at all, clear the selected filter
+            setSelectedDayFilter(null);
+        }
+    }, [workouts.dayOrder, selectedDayFilter, currentView]);
 
 
     useEffect(() => {
@@ -798,27 +805,24 @@ const App = () => {
         }
 
         const sessionsRef = collection(db, `artifacts/${appId}/users/${userId}/sessions`);
-        let queryStartDate = new Date();
-        let queryEndDate = new Date();
-        queryEndDate.setHours(23, 59, 59, 999);
+        let queryStartDateForFetch = new Date();
+        queryStartDateForFetch.setMonth(queryStartDateForFetch.getMonth() - 3); // Default to last 3 months
+        queryStartDateForFetch.setHours(0, 0, 0, 0);
+        let queryEndDateForFetch = new Date();
+        queryEndDateForFetch.setHours(23, 59, 59, 999);
 
+        // If user has manually set a range, use that for fetching
         if (graphStartDate && graphEndDate) {
-            queryStartDate = normalizeDateToStartOfDay(new Date(graphStartDate));
-            queryEndDate = new Date(new Date(graphEndDate).setHours(23, 59, 59, 999));
-        } else {
-            queryStartDate = new Date(); // Default to today
-            queryStartDate.setMonth(queryStartDate.getMonth() - 3); // Go back 3 months
-            queryStartDate.setHours(0, 0, 0, 0);
+            queryStartDateForFetch = normalizeDateToStartOfDay(new Date(graphStartDate));
+            queryEndDateForFetch = new Date(new Date(graphEndDate).setHours(23, 59, 59, 999));
         }
 
-        const displayStartDate = new Date(queryStartDate);
-        const displayEndDate = new Date(queryEndDate);
-        const allDatesForDisplay = generateDateRange(displayStartDate, displayEndDate);
+        const allDatesForDisplay = generateDateRange(queryStartDateForFetch, queryEndDateForFetch);
 
         const q = query(
             sessionsRef,
-            where('timestamp', '>=', Timestamp.fromDate(queryStartDate)),
-            where('timestamp', '<=', Timestamp.fromDate(queryEndDate)),
+            where('timestamp', '>=', Timestamp.fromDate(queryStartDateForFetch)),
+            where('timestamp', '<=', Timestamp.fromDate(queryEndDateForFetch)),
             orderBy('timestamp', 'asc')
         );
 
@@ -826,10 +830,10 @@ const App = () => {
             const fetchedData = snapshot.docs.map(doc => {
                 const data = doc.data();
                 return {
-                    timestamp: data.timestamp.toDate(),
+                    timestamp: data.timestamp ? data.timestamp.toDate() : null, // Null check
                     workoutData: data.workoutData
                 };
-            });
+            }).filter(item => item.timestamp !== null); // Filter out null timestamps
             
             const latestDailyWeightsIndividual = {};
             fetchedData.forEach(session => {
@@ -840,9 +844,9 @@ const App = () => {
                     const dayData = sessionDays[dayKey];
                     if (dayData && dayData.categories) {
                         Object.keys(dayData.categories).forEach(categoryKey => {
-                            (dayData.categories[categoryKey] || []).forEach(exercise => {
-                                if (exercise.id === exerciseForGraph.id) {
-                                    const exerciseSeries = Array.isArray(exercise.series) ? exercise.series : [];
+                            (dayData.categories[categoryKey] || []).forEach(exItem => {
+                                if (exItem.id === exerciseForGraph.id) {
+                                    const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
                                     const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
                                     if (maxWeightForDay > 0) {
                                         if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
@@ -882,6 +886,25 @@ const App = () => {
 
         return () => unsubscribe();
     }, [isAuthReady, userId, appId, graphStartDate, graphEndDate, showExerciseGraphModal, exerciseForGraph]);
+
+    // Effect to set graph start/end dates based on fetched individual exercise data
+    useEffect(() => {
+        if (showExerciseGraphModal && individualExerciseGraphData.length > 0) {
+            const dates = individualExerciseGraphData.filter(d => d.weight !== null).map(d => new Date(d.date));
+            if (dates.length > 0) {
+                const minDate = new Date(Math.min(...dates));
+                const maxDate = new Date(Math.max(...dates));
+
+                const formatForInput = (date) => date.toISOString().split('T')[0];
+
+                setGraphStartDate(formatForInput(minDate));
+                setGraphEndDate(formatForInput(maxDate));
+            } else {
+                setGraphStartDate('');
+                setGraphEndDate('');
+            }
+        }
+    }, [individualExerciseGraphData, showExerciseGraphModal]);
 
 
     useEffect(() => {
@@ -1178,7 +1201,7 @@ const App = () => {
         applyChanges(updatedWorkouts, "Exercice ajouté avec succès !");
         setShowAddExerciseModal(false);
         setIsAddingExercise(false);
-        // Maintenir le jour sélectionné après l'ajout
+        // Explicitly set selectedDayFilter to stay on the current day
         setSelectedDayFilter(selectedDayForAdd);
     };
 
@@ -1269,12 +1292,8 @@ const App = () => {
         applyChanges(updatedWorkouts, `Jour "${newDayNameInput.trim()}" ajouté avec succès !`);
         setShowAddDayModal(false);
         setNewDayNameInput('');
-        // Maintenir le jour sélectionné après l'ajout
+        // Explicitly set selectedDayFilter to stay on the newly added day
         setSelectedDayFilter(newDayNameInput.trim());
-        // If in history view, update the selected date to today to show the newly created day
-        if (currentView === 'history') {
-            setSelectedDateForHistory(normalizeDateToStartOfDay(new Date()));
-        }
     };
 
     const handleEditDay = (oldDayName) => {
@@ -1313,12 +1332,6 @@ const App = () => {
         if (selectedDayFilter === editingDayName) {
             setSelectedDayFilter(updatedWorkouts.dayOrder.length > 0 ? editedDayNewNameInput.trim() : null);
         }
-        // selectedHistoryDayFilter is no longer directly used for primary filtering in HistoryView,
-        // but if it were, it would also need to be updated.
-        // if (selectedHistoryDayFilter === editingDayName) {
-        //     setSelectedHistoryDayFilter(updatedWorkouts.dayOrder.length > 0 ? editedDayNewNameInput.trim() : null);
-        // }
-
 
         applyChanges(updatedWorkouts, `Jour "${editingDayName}" renommé en "${editedDayNewNameInput.trim()}" avec succès !`);
         setShowEditDayModal(false);
@@ -1344,10 +1357,6 @@ const App = () => {
         if (selectedDayFilter === dayToDeleteName) {
             setSelectedDayFilter(updatedWorkouts.dayOrder.length > 0 ? updatedWorkouts.dayOrder[0] : null);
         }
-        // selectedHistoryDayFilter is no longer directly used for primary filtering in HistoryView.
-        // if (selectedHistoryDayFilter === dayToDeleteName) {
-        //     setSelectedHistoryDayFilter(updatedWorkouts.dayOrder.length > 0 ? updatedWorkouts.dayOrder[0] : null);
-        // }
 
         applyChanges(updatedWorkouts, `Jour "${dayToDeleteName}" supprimé avec succès !`);
         setShowDeleteDayConfirm(false);
@@ -1374,7 +1383,7 @@ const App = () => {
             updatedWorkouts.days[selectedDayForCategoryAdd] = { categories: {}, categoryOrder: [] };
         }
         if (!updatedWorkouts.days[selectedDayForCategoryAdd].categories) {
-            updatedWorkouts.days[selectedDayForCategoryAdd].categories = {};
+            updatedWorkouts.days[selectedDayForAdd].categories = {};
         }
         if (!Array.isArray(updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder)) {
             updatedWorkouts.days[selectedDayForCategoryAdd].categoryOrder = [];
@@ -1387,7 +1396,7 @@ const App = () => {
         applyChanges(updatedWorkouts, `Groupe musculaire "${newCategoryNameInput.trim()}" ajouté avec succès !`);
         setShowAddCategoryModal(false);
         setNewCategoryNameInput('');
-        // Maintenir le jour sélectionné après l'ajout
+        // Explicitly set selectedDayFilter to stay on the current day
         setSelectedDayFilter(selectedDayForCategoryAdd);
     };
 
@@ -1479,8 +1488,7 @@ const App = () => {
     const openExerciseGraphModal = (exercise) => {
         setExerciseForGraph(exercise);
         setShowExerciseGraphModal(true);
-        setGraphStartDate('');
-        setGraphEndDate('');
+        // graphStartDate and graphEndDate will be set by useEffect watching individualExerciseGraphData
     };
 
     const formatDate = (dateString) => {
@@ -1507,55 +1515,20 @@ const App = () => {
 
         if (newSelectedDate > today) {
             setToast({ message: "Impossible de sélectionner une date future pour l'historique.", type: 'error' });
-            setSelectedDateForHistory(today);
+            // setSelectedDateForHistory(today); // No longer needed for history view
         } else {
             setToast(null); // Clear any previous toast on successful navigation
-            setSelectedDateForHistory(newSelectedDate);
+            // setSelectedDateForHistory(newSelectedDate); // No longer needed for history view
         }
     };
 
     const navigateHistory = (direction) => {
-        if (!selectedDateForHistory) return;
-        const newDate = normalizeDateToStartOfDay(new Date(selectedDateForHistory));
-        newDate.setDate(newDate.getDate() + direction);
-
-        const today = normalizeDateToStartOfDay(new Date());
-
-        if (newDate > today) {
-            setToast({ message: "Impossible de naviguer vers une date future.", type: 'error' });
-        } else {
-            setToast(null); // Clear any previous toast on successful navigation
-            setSelectedDateForHistory(newDate);
-        }
+        // This function is no longer used by the exercise-centric history view
     };
 
     const getAllUniqueDays = () => {
         return [...(workouts.dayOrder || [])]; 
     };
-
-    useEffect(() => {
-        if ((workouts.dayOrder || []).length > 0) {
-            // Only set if selectedDayFilter is null OR if the current selectedDayFilter is no longer in the orderedDays
-            if (!selectedDayFilter || !(workouts.dayOrder || []).includes(selectedDayFilter)) {
-                setSelectedDayFilter((workouts.dayOrder || [])[0]);
-            }
-        } else {
-            setSelectedDayFilter(null);
-        }
-    }, [workouts.dayOrder, selectedDayFilter]);
-
-    // selectedHistoryDayFilter is no longer a primary filter for HistoryView,
-    // so this useEffect is less critical for its main display.
-    // useEffect(() => {
-    //     if (currentView === 'history' && (workouts.dayOrder || []).length > 0) {
-    //         if (!selectedHistoryDayFilter || !(workouts.dayOrder || []).includes(selectedHistoryDayFilter)) {
-    //             setSelectedHistoryDayFilter((workouts.dayOrder || [])[0]);
-    //         }
-    //     } else if (currentView === 'history' && (workouts.dayOrder || []).length === 0) {
-    //         setSelectedHistoryDayFilter(null);
-    //     }
-    // }, [selectedDateForHistory, workouts.dayOrder, currentView, selectedHistoryDayFilter]); 
-
 
     const handleReorderDays = (dayName, direction) => {
         const currentOrder = [...(reorderingDayOrder || [])];
@@ -1606,7 +1579,7 @@ const App = () => {
 
         const newIndex = index + direction;
         if (newIndex >= 0 && newIndex < categoryOrder.length) {
-            const [removed] = currentOrder.splice(index, 1);
+            const [removed] = categoryOrder.splice(index, 1);
             categoryOrder.splice(newIndex, 0, removed);
             updatedWorkouts.days[dayName].categoryOrder = categoryOrder; 
             applyChanges(updatedWorkouts, "Ordre des groupes musculaires mis à jour !");
@@ -1701,11 +1674,10 @@ const App = () => {
         try {
             const snapshot = await getDocs(q); 
             const fetchedData = snapshot.docs.map(doc => ({
-                timestamp: doc.data().timestamp.toDate(),
+                timestamp: doc.data().timestamp ? doc.data().timestamp.toDate() : null, // Null check
                 workoutData: doc.data().workoutData
-            }));
+            })).filter(item => item.timestamp !== null); // Filter out null timestamps
 
-            // Use only fetchedData, no historicalSessionsData
             const combinedDataForAnalysis = fetchedData;
 
 
@@ -2213,7 +2185,16 @@ const App = () => {
                             </LineChart>
                         </ResponsiveContainer>
                         <div className="flex justify-end mt-6 sm:mt-8">
-                            <button onClick={() => setShowExerciseGraphModal(false)} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base"> Fermer</button>
+                            <button
+                                onClick={() => {
+                                    setShowExerciseGraphModal(false);
+                                    setGraphStartDate(''); // Reset to default for next open
+                                    setGraphEndDate('');   // Reset to default for next open
+                                }}
+                                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base"
+                            >
+                                Fermer
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -2242,14 +2223,14 @@ const App = () => {
                 </div>
             )}
             {showNotesModal && exerciseForNotes && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ease-out"
+                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ease-out"
                     style={{ opacity: showNotesModal ? 1 : 0 }}>
                     <div className={`p-6 sm:p-8 rounded-lg shadow-2xl w-full max-w-sm sm:max-w-md border border-gray-700 bg-gray-800 transition-all duration-300 ease-out transform ${showNotesModal ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                         <h2 className={`text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-white text-center`}>Notes pour {workouts.days?.[exerciseForNotes.day]?.categories?.[exerciseForNotes.category]?.find(ex => ex.id === exerciseForNotes.exerciseId)?.name}</h2>
                         <textarea className={`w-full h-24 sm:h-32 p-2 sm:p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:ring-2 focus:ring-blue-500 resize-none text-sm sm:text-base`} placeholder="Écrivez vos notes ici..." value={currentNoteContent} onChange={(e) => setCurrentNoteContent(e.target.value)} ></textarea>
-                        <div className="flex justify-end space-x-3 sm:space-x-4 mt-6 sm:mt-8">
-                            <button onClick={() => {setShowNotesModal(false); setExerciseForNotes(null); setCurrentNoteContent('');}} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base"> Annuler</button>
-                            <button onClick={handleDeleteNote} disabled={!currentNoteContent} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"> Supprimer Note</button>
+                        <div className="flex flex-wrap justify-end space-x-2 sm:space-x-3 mt-6 sm:mt-8"> {/* Adjusted spacing and added flex-wrap */}
+                            <button onClick={() => {setShowNotesModal(false); setExerciseForNotes(null); setCurrentNoteContent('');}} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base mb-2 sm:mb-0"> Annuler</button>
+                            <button onClick={handleDeleteNote} disabled={!currentNoteContent} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base mb-2 sm:mb-0"> Supprimer Note</button>
                             <button onClick={handleSaveNote} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base"> Sauvegarder</button>
                         </div>
                     </div>

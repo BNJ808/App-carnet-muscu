@@ -44,6 +44,8 @@ const HistoryView = ({
 
             historicalDataForGraphs.forEach(session => {
                 const sessionDate = session.timestamp;
+                if (!sessionDate) return; // Skip if timestamp is null/undefined
+
                 const workoutData = session.workoutData;
 
                 if (workoutData && workoutData.days) {
@@ -73,8 +75,20 @@ const HistoryView = ({
                                         // This assumes the exercise name and structure is consistent across days/categories
                                         // If an exercise can move, this will store the last day/category it was found in.
                                         // For reactivating, we'll search globally in App.jsx anyway.
-                                        exerciseMap[exercise.id].dayName = Object.keys(workoutData.days).find(key => workoutData.days[key] === dayData);
-                                        exerciseMap[exercise.id].categoryName = Object.keys(dayData.categories).find(key => dayData.categories[key] === categoryExercises);
+                                        // Find the actual dayName and categoryName from the original workoutData structure
+                                        // This is a bit inefficient but necessary if we need these specific names for the modal.
+                                        for (const dName in workoutData.days) {
+                                            if (workoutData.days[dName] === dayData) {
+                                                exerciseMap[exercise.id].dayName = dName;
+                                                break;
+                                            }
+                                        }
+                                        for (const cName in dayData.categories) {
+                                            if (dayData.categories[cName] === categoryExercises) {
+                                                exerciseMap[exercise.id].categoryName = cName;
+                                                break;
+                                            }
+                                        }
 
 
                                         // Aggregate all series for this exercise
@@ -174,9 +188,9 @@ const HistoryView = ({
                                         Dernière perf: {exercise.lastPerformance.weight} kg ({exercise.lastPerformance.reps} reps) le {formatDate(exercise.lastPerformance.date)}
                                     </p>
                                 )}
-                                {isAdvancedMode && exercise.personalBest.weight > 0 && (
+                                {isAdvancedMode && personalBests[exercise.id] && (
                                     <p className="text-yellow-400 text-xs sm:text-sm mt-1">
-                                        Meilleur: {exercise.personalBest.weight} kg ({exercise.personalBest.reps} reps) le {formatDate(exercise.personalBest.date)}
+                                        Meilleur: {personalBests[exercise.id].maxWeight} kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}
                                     </p>
                                 )}
                                 {isAdvancedMode && progressionInsights[exercise.id] && (
