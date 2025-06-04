@@ -26,7 +26,7 @@ import {
  * @param {function} props.handleEditCategory - Fonction pour éditer une catégorie.
  * @param {function} props.handleDeleteCategory - Fonction pour supprimer une catégorie.
  * @param {boolean} props.isSavingExercise - Indique si un exercice est en cours de sauvegarde.
- * @param {boolean} props.isDeletingExercise - Indique si un exercice est en cours de suppression.
+ * @param {boolean} props.isDeletingExercise - Indique si un exercice est en cours d'ajout.
  * @param {boolean} props.isAddingExercise - Indique si un exercice est en cours d'ajout.
  * @param {string[]} props.dayButtonColors - Couleurs pour les boutons de jour.
  * @param {string[]} props.dayBorderAndTextColors - Couleurs de bordure et de texte pour les jours.

@@ -21,7 +21,7 @@ const TimerView = ({
     setTimerSeconds, restTimeInput, setRestTimeInput, formatTime
 }) => {
     return (
-        <div className="flex flex-col items-center justify-center py-8 px-4"> {/* Removed min-h-[calc(...)] */}
+        <div className="flex flex-col items-center justify-center py-8 px-4"> {/* Removed min-h-[calc(...)] to fix mobile scroll issue */}
             <div className="w-full max-w-md bg-gray-800 p-6 sm:p-8 rounded-xl shadow-2xl border border-gray-700 text-center">
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-blue-400 mb-6">Minuteur de Repos</h2>
 

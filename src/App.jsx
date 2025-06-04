@@ -649,19 +649,14 @@ const App = () => {
         if (currentView !== 'workout') {
             setIsEditMode(false);
         }
-        // Also reset history filters when switching away from history view
-        if (currentView !== 'history') {
-            setSelectedDateForHistory(null);
-            setSelectedHistoryDayFilter(null);
-            setShowDeletedExercisesInHistory(false);
-        } else {
-            // When switching to history, set default date to today
+        // When switching to history, set default date to today
+        if (currentView === 'history') {
             setSelectedDateForHistory(normalizeDateToStartOfDay(new Date()));
-            if (workouts.dayOrder.length > 0) {
-                setSelectedHistoryDayFilter(workouts.dayOrder[0]);
-            }
         }
-    }, [currentView, workouts.dayOrder]);
+        // selectedHistoryDayFilter is no longer a primary filter for HistoryView, but it's still used in App's fetch logic
+        // for the *current workout plan* if HistoryView needs to display that specific day's exercises.
+        // However, the new HistoryView is exercise-centric, so this filter is less relevant for its primary display.
+    }, [currentView]);
 
 
     useEffect(() => {
@@ -670,29 +665,14 @@ const App = () => {
                 setLoading(true);
                 const sessionsRef = collection(db, `artifacts/${appId}/users/${userId}/sessions`);
 
-                // Now set up the real-time listener
-                let q;
-                if (currentView === 'history' && selectedDateForHistory) {
-                    // Query for the latest workout data up to a specific date
-                    // Requires a composite index on `timestamp` (descending)
-                    q = query(
-                        sessionsRef,
-                        where('timestamp', '<=', Timestamp.fromDate(normalizeDateToStartOfDay(selectedDateForHistory))),
-                        orderBy('timestamp', 'desc'),
-                        limit(1)
-                    );
-                } else {
-                    // Query for the absolute latest workout data
-                    // Requires an index on `timestamp` (descending)
-                    q = query(sessionsRef, orderBy('timestamp', 'desc'), limit(1));
-                }
+                // Always fetch the latest workout data for the 'workouts' state (current template)
+                const qLatest = query(sessionsRef, orderBy('timestamp', 'desc'), limit(1));
 
-                const unsubscribe = onSnapshot(q, async (snapshot) => {
+                const unsubscribeLatest = onSnapshot(qLatest, async (snapshot) => {
                     if (!snapshot.empty) {
-                        const fetchedWorkoutData = snapshot.docs[0]?.data()?.workoutData; // Utilisation de l'opérateur de chaînage optionnel
-                        console.log("onSnapshot: fetchedWorkoutData retrieved:", fetchedWorkoutData); // LOG POUR DÉBOGAGE
+                        const fetchedWorkoutData = snapshot.docs[0]?.data()?.workoutData;
+                        console.log("onSnapshot: fetchedWorkoutData retrieved:", fetchedWorkoutData);
 
-                        // Ensure fetchedWorkoutData is a valid object, otherwise fall back to a safe empty structure
                         if (!fetchedWorkoutData || typeof fetchedWorkoutData !== 'object') {
                             console.warn("Fetched workout data is invalid or missing. Falling back to empty state.", fetchedWorkoutData);
                             setWorkouts({ days: {}, dayOrder: [] });
@@ -700,54 +680,44 @@ const App = () => {
                             return;
                         }
 
-                        // Ensure days is an object
                         const sanitizedDays = fetchedWorkoutData.days && typeof fetchedWorkoutData.days === 'object'
                             ? fetchedWorkoutData.days
                             : {};
 
-                        // Ensure dayOrder is an array. If not, derive from sanitizedDays keys.
                         const sanitizedDayOrder = Array.isArray(fetchedWorkoutData.dayOrder)
                             ? fetchedWorkoutData.dayOrder
                             : Object.keys(sanitizedDays).sort();
 
                         const finalSanitizedDays = {};
-                        // Iterate over the order, ensuring existing days are processed
                         for (const dayKey of sanitizedDayOrder) { 
                             const dayData = sanitizedDays[dayKey];
 
-                            // Ensure dayData is an object, or create an empty one
                             if (!dayData || typeof dayData !== 'object') {
                                 finalSanitizedDays[dayKey] = { categories: {}, categoryOrder: [] };
                                 continue;
                             }
 
-                            // Ensure categories is an object
                             const newCategories = dayData.categories && typeof dayData.categories === 'object'
                                 ? dayData.categories
                                 : {};
 
-                            // Ensure categoryOrder is an array. If not, derive from newCategories keys.
                             const currentCategoryOrder = Array.isArray(dayData.categoryOrder)
                                 ? dayData.categoryOrder
                                 : Object.keys(newCategories).sort();
 
                             const finalCategoriesForDay = {};
-                            // Iterate over the category order
                             for (const categoryKey of currentCategoryOrder) { 
                                 let exercisesInCat = newCategories[categoryKey];
 
-                                // Ensure exercisesInCat is an array, or create an empty one
                                 if (!Array.isArray(exercisesInCat)) {
                                     exercisesInCat = [];
                                 }
 
                                 finalCategoriesForDay[categoryKey] = exercisesInCat.map(exercise => {
-                                    // Ensure exercise is an object, or create a default one
                                     if (!exercise || typeof exercise !== 'object') {
                                         return { id: generateUUID(), name: '', series: [{ weight: '', reps: '' }], isDeleted: false, notes: '' };
                                     }
 
-                                    // Ensure series is an array
                                     let sanitizedSeries = Array.isArray(exercise.series)
                                         ? exercise.series
                                         : [{ weight: '', reps: '' }];
@@ -768,30 +738,48 @@ const App = () => {
                             }
 
                             finalSanitizedDays[dayKey] = {
-                                ...dayData, // Keep other properties if any
+                                ...dayData,
                                 categories: finalCategoriesForDay,
-                                categoryOrder: currentCategoryOrder // Use the derived or original category order
+                                categoryOrder: currentCategoryOrder
                             };
                         }
-                        console.log("Setting workouts to:", { days: finalSanitizedDays, dayOrder: sanitizedDayOrder }); // Added log
                         setWorkouts({ days: finalSanitizedDays, dayOrder: sanitizedDayOrder });
                         // Only set selectedDayFilter if it's currently null or no longer exists
                         if (!selectedDayFilter || !(sanitizedDayOrder || []).includes(selectedDayFilter)) {
                             setSelectedDayFilter(sanitizedDayOrder[0]);
                         }
                     } else {
-                        // If no data found, initialize with base structure
                         console.log("No workout data found in Firestore. Initializing with base structure.");
-                        setWorkouts(baseInitialData); // Use baseInitialData as default
-                        setSelectedDayFilter(baseInitialData.dayOrder[0]); // Select first day
+                        setWorkouts(baseInitialData);
+                        setSelectedDayFilter(baseInitialData.dayOrder[0]);
                     }
                     setLoading(false);
                 }, (error) => {
-                    console.error("Erreur lors de la récupération des données:", error);
-                    setToast({ message: `Erreur Firestore: ${error.message}`, type: 'error' });
+                    console.error("Erreur lors de la récupération des données du plan d'entraînement:", error);
+                    setToast({ message: `Erreur Firestore (plan): ${error.message}`, type: 'error' });
                     setLoading(false);
                 });
-                return () => unsubscribe();
+
+                // Also fetch all historical data for graphs and history view
+                const qHistorical = query(sessionsRef, orderBy('timestamp', 'asc')); // Fetch all historical data
+                const unsubscribeHistorical = onSnapshot(qHistorical, (snapshot) => {
+                    const fetchedData = snapshot.docs.map(doc => {
+                        const data = doc.data();
+                        return {
+                            timestamp: data.timestamp.toDate(), // Convert Firestore Timestamp to JS Date
+                            workoutData: data.workoutData
+                        };
+                    });
+                    setHistoricalDataForGraphs(fetchedData);
+                }, (error) => {
+                    console.error("Erreur lors de la récupération des données historiques:", error);
+                    setToast({ message: `Erreur Firestore (historique): ${error.message}`, type: 'error' });
+                });
+
+                return () => {
+                    unsubscribeLatest();
+                    unsubscribeHistorical();
+                };
             } else if (!userId && isAuthReady) {
                 setLoading(false);
                 setToast({ message: "Erreur: Utilisateur non authentifié. Actualisez la page.", type: 'error' });
@@ -799,12 +787,12 @@ const App = () => {
         };
 
         fetchAndSetWorkouts();
-    }, [isAuthReady, userId, currentView, selectedDateForHistory, appId]); 
+    }, [isAuthReady, userId, appId, selectedDayFilter]); // Removed currentView, selectedDateForHistory as primary triggers
 
 
     useEffect(() => {
-        if (!isAuthReady || !userId) {
-            setHistoricalDataForGraphs([]);
+        // This useEffect is specifically for the individual exercise graph data
+        if (!isAuthReady || !userId || !showExerciseGraphModal || !exerciseForGraph) {
             setIndividualExerciseGraphData([]);
             return;
         }
@@ -823,13 +811,10 @@ const App = () => {
             queryStartDate.setHours(0, 0, 0, 0);
         }
 
-
         const displayStartDate = new Date(queryStartDate);
         const displayEndDate = new Date(queryEndDate);
         const allDatesForDisplay = generateDateRange(displayStartDate, displayEndDate);
 
-        // Query for historical data within a date range for graphs
-        // Requires a composite index on `timestamp` (ascending)
         const q = query(
             sessionsRef,
             where('timestamp', '>=', Timestamp.fromDate(queryStartDate)),
@@ -841,82 +826,62 @@ const App = () => {
             const fetchedData = snapshot.docs.map(doc => {
                 const data = doc.data();
                 return {
-                    timestamp: data.timestamp.toDate(), // Convert Firestore Timestamp to JS Date
+                    timestamp: data.timestamp.toDate(),
                     workoutData: data.workoutData
                 };
             });
             
-            // Use only fetchedData, no historicalSessionsData
-            const combinedData = fetchedData;
-
-            setHistoricalDataForGraphs(combinedData); // Store all fetched data for insights
-
-            if (showExerciseGraphModal && exerciseForGraph) {
-                const latestDailyWeightsIndividual = {};
-                combinedData.forEach(session => {
-                    const localDate = session.timestamp;
-                    const dateKey = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
-                    const sessionDays = session.workoutData?.days || {};
-                    Object.keys(sessionDays).forEach(dayKey => { // Iterate over dayKey, not day
-                        const dayData = sessionDays[dayKey];
-                        if (dayData && dayData.categories) {
-                            Object.keys(dayData.categories).forEach(categoryKey => { // Iterate over categoryKey
-                                (dayData.categories[categoryKey] || []).forEach(exercise => { // Ensure categories[categoryKey] is an array
-                                    if (exercise.id === exerciseForGraph.id) {
-                                        const exerciseSeries = Array.isArray(exercise.series) ? exercise.series : [];
-                                        const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
-                                        if (maxWeightForDay > 0) { // Only consider if there's a valid weight
-                                            if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
-                                                latestDailyWeightsIndividual[dateKey] = {
-                                                    timestamp: session.timestamp,
-                                                    weight: maxWeightForDay,
-                                                    hasNewData: true
-                                                };
-                                            }
+            const latestDailyWeightsIndividual = {};
+            fetchedData.forEach(session => {
+                const localDate = session.timestamp;
+                const dateKey = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+                const sessionDays = session.workoutData?.days || {};
+                Object.keys(sessionDays).forEach(dayKey => {
+                    const dayData = sessionDays[dayKey];
+                    if (dayData && dayData.categories) {
+                        Object.keys(dayData.categories).forEach(categoryKey => {
+                            (dayData.categories[categoryKey] || []).forEach(exercise => {
+                                if (exercise.id === exerciseForGraph.id) {
+                                    const exerciseSeries = Array.isArray(exercise.series) ? exercise.series : [];
+                                    const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
+                                    if (maxWeightForDay > 0) {
+                                        if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
+                                            latestDailyWeightsIndividual[dateKey] = {
+                                                timestamp: session.timestamp,
+                                                weight: maxWeightForDay,
+                                                hasNewData: true
+                                            };
                                         }
                                     }
-                                });
+                                }
                             });
-                        }
-                    });
-                });
-
-                const finalIndividualData = [];
-                let lastKnownWeight = null;
-                allDatesForDisplay.forEach(date => {
-                    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                    const dataPoint = { date: dateKey, weight: null, hasNewData: false };
-                    if (latestDailyWeightsIndividual[dateKey]) {
-                        dataPoint.weight = latestDailyWeightsIndividual[dateKey].weight;
-                        dataPoint.hasNewData = true;
-                        lastKnownWeight = dataPoint.weight;
-                    } else if (lastKnownWeight !== null) {
-                        dataPoint.weight = lastKnownWeight;
+                        });
                     }
-                    finalIndividualData.push(dataPoint);
                 });
-                setIndividualExerciseGraphData(finalIndividualData);
-            } else {
-                setIndividualExerciseGraphData([]); // Clear if not showing specific graph
-            }
+            });
+
+            const finalIndividualData = [];
+            let lastKnownWeight = null;
+            allDatesForDisplay.forEach(date => {
+                const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                const dataPoint = { date: dateKey, weight: null, hasNewData: false };
+                if (latestDailyWeightsIndividual[dateKey]) {
+                    dataPoint.weight = latestDailyWeightsIndividual[dateKey].weight;
+                    dataPoint.hasNewData = true;
+                    lastKnownWeight = dataPoint.weight;
+                } else if (lastKnownWeight !== null) {
+                    dataPoint.weight = lastKnownWeight;
+                }
+                finalIndividualData.push(dataPoint);
+            });
+            setIndividualExerciseGraphData(finalIndividualData);
         }, (error) => {
-            console.error("Erreur lors de la récupération des données historiques:", error);
-            setToast({ message: `Erreur Firestore (historique): ${error.message}`, type: 'error' });
+            console.error("Erreur lors de la récupération des données historiques pour le graphique:", error);
+            setToast({ message: `Erreur Firestore (graphique): ${error.message}`, type: 'error' });
         });
 
         return () => unsubscribe();
-    }, [isAuthReady, userId, appId, graphTimeRange, showExerciseGraphModal, exerciseForGraph, graphStartDate, graphEndDate]);
-
-
-    useEffect(() => {
-        const newProcessedGraphData = {};
-        if (currentView === 'history' && selectedDateForHistory && !showExerciseGraphModal && historicalDataForGraphs.length > 0) {
-            // This logic is for the global graph view, which seems less used now.
-            // The individual exercise graph logic is handled in the previous useEffect.
-            // For now, this can be simplified or removed if not directly used for display.
-        }
-        setProcessedGraphData(newProcessedGraphData); // Potentially an empty object if not in the specific global graph view
-    }, [historicalDataForGraphs, currentView, selectedDateForHistory, showExerciseGraphModal]);
+    }, [isAuthReady, userId, appId, graphStartDate, graphEndDate, showExerciseGraphModal, exerciseForGraph]);
 
 
     useEffect(() => {
@@ -1251,21 +1216,37 @@ const App = () => {
         setIsDeletingExercise(false); // Fin de l'opération de suppression
     };
 
-    const handleReactivateExercise = (day, category, exerciseId) => {
+    // Modified to search globally by exerciseId
+    const handleReactivateExercise = (exerciseId) => {
         const updatedWorkouts = JSON.parse(JSON.stringify(workouts));
-        if (updatedWorkouts.days?.[day]?.categories?.[category]) {
-            const exerciseIndex = updatedWorkouts.days[day].categories[category].findIndex(
-                (ex) => ex.id === exerciseId
-            );
+        let found = false;
 
-            if (exerciseIndex !== -1) {
-                updatedWorkouts.days[day].categories[category][exerciseIndex].isDeleted = false;
-                applyChanges(updatedWorkouts, "Exercice réactivé avec succès !");
-            } else {
-                setToast({ message: "Erreur: Exercice non trouvé pour la réactivation.", type: 'error' });
+        for (const dayName in updatedWorkouts.days) {
+            if (Object.prototype.hasOwnProperty.call(updatedWorkouts.days, dayName)) {
+                const dayData = updatedWorkouts.days[dayName];
+                if (dayData && dayData.categories) {
+                    for (const categoryName in dayData.categories) {
+                        if (Object.prototype.hasOwnProperty.call(dayData.categories, categoryName)) {
+                            const exercises = dayData.categories[categoryName];
+                            if (Array.isArray(exercises)) {
+                                const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+                                if (exerciseIndex !== -1) {
+                                    exercises[exerciseIndex].isDeleted = false;
+                                    found = true;
+                                    break; // Found and updated, exit inner loop
+                                }
+                            }
+                        }
+                    }
+                }
             }
+            if (found) break; // Exit outer loop if found
+        }
+
+        if (found) {
+            applyChanges(updatedWorkouts, "Exercice réactivé avec succès !");
         } else {
-            setToast({ message: "Erreur: Catégorie ou jour non trouvé pour la réactivation.", type: 'error' });
+            setToast({ message: "Erreur: Exercice non trouvé pour la réactivation.", type: 'error' });
         }
     };
 
@@ -1290,10 +1271,9 @@ const App = () => {
         setNewDayNameInput('');
         // Maintenir le jour sélectionné après l'ajout
         setSelectedDayFilter(newDayNameInput.trim());
-        // Si on est en vue historique, mettre à jour la date pour afficher le jour créé
+        // If in history view, update the selected date to today to show the newly created day
         if (currentView === 'history') {
             setSelectedDateForHistory(normalizeDateToStartOfDay(new Date()));
-            setSelectedHistoryDayFilter(newDayNameInput.trim());
         }
     };
 
@@ -1333,9 +1313,11 @@ const App = () => {
         if (selectedDayFilter === editingDayName) {
             setSelectedDayFilter(updatedWorkouts.dayOrder.length > 0 ? editedDayNewNameInput.trim() : null);
         }
-        if (selectedHistoryDayFilter === editingDayName) {
-            setSelectedHistoryDayFilter(updatedWorkouts.dayOrder.length > 0 ? editedDayNewNameInput.trim() : null);
-        }
+        // selectedHistoryDayFilter is no longer directly used for primary filtering in HistoryView,
+        // but if it were, it would also need to be updated.
+        // if (selectedHistoryDayFilter === editingDayName) {
+        //     setSelectedHistoryDayFilter(updatedWorkouts.dayOrder.length > 0 ? editedDayNewNameInput.trim() : null);
+        // }
 
 
         applyChanges(updatedWorkouts, `Jour "${editingDayName}" renommé en "${editedDayNewNameInput.trim()}" avec succès !`);
@@ -1362,9 +1344,10 @@ const App = () => {
         if (selectedDayFilter === dayToDeleteName) {
             setSelectedDayFilter(updatedWorkouts.dayOrder.length > 0 ? updatedWorkouts.dayOrder[0] : null);
         }
-        if (selectedHistoryDayFilter === dayToDeleteName) {
-            setSelectedHistoryDayFilter(updatedWorkouts.dayOrder.length > 0 ? updatedWorkouts.dayOrder[0] : null);
-        }
+        // selectedHistoryDayFilter is no longer directly used for primary filtering in HistoryView.
+        // if (selectedHistoryDayFilter === dayToDeleteName) {
+        //     setSelectedHistoryDayFilter(updatedWorkouts.dayOrder.length > 0 ? updatedWorkouts.dayOrder[0] : null);
+        // }
 
         applyChanges(updatedWorkouts, `Jour "${dayToDeleteName}" supprimé avec succès !`);
         setShowDeleteDayConfirm(false);
@@ -1516,6 +1499,8 @@ const App = () => {
 
     // Removed toggleHistoryView as navigation is now handled by BottomNavigationBar
 
+    // These functions are no longer directly used by HistoryView's primary display,
+    // but they remain if needed for other parts or future features.
     const handleDateChange = (date) => { // Directly receive date object from DatePicker
         const newSelectedDate = normalizeDateToStartOfDay(date);
         const today = normalizeDateToStartOfDay(new Date());
@@ -1559,15 +1544,17 @@ const App = () => {
         }
     }, [workouts.dayOrder, selectedDayFilter]);
 
-    useEffect(() => {
-        if (currentView === 'history' && (workouts.dayOrder || []).length > 0) {
-            if (!selectedHistoryDayFilter || !(workouts.dayOrder || []).includes(selectedHistoryDayFilter)) {
-                setSelectedHistoryDayFilter((workouts.dayOrder || [])[0]);
-            }
-        } else if (currentView === 'history' && (workouts.dayOrder || []).length === 0) {
-            setSelectedHistoryDayFilter(null);
-        }
-    }, [selectedDateForHistory, workouts.dayOrder, currentView, selectedHistoryDayFilter]); 
+    // selectedHistoryDayFilter is no longer a primary filter for HistoryView,
+    // so this useEffect is less critical for its main display.
+    // useEffect(() => {
+    //     if (currentView === 'history' && (workouts.dayOrder || []).length > 0) {
+    //         if (!selectedHistoryDayFilter || !(workouts.dayOrder || []).includes(selectedHistoryDayFilter)) {
+    //             setSelectedHistoryDayFilter((workouts.dayOrder || [])[0]);
+    //         }
+    //     } else if (currentView === 'history' && (workouts.dayOrder || []).length === 0) {
+    //         setSelectedHistoryDayFilter(null);
+    //     }
+    // }, [selectedDateForHistory, workouts.dayOrder, currentView, selectedHistoryDayFilter]); 
 
 
     const handleReorderDays = (dayName, direction) => {
@@ -1619,7 +1606,7 @@ const App = () => {
 
         const newIndex = index + direction;
         if (newIndex >= 0 && newIndex < categoryOrder.length) {
-            const [removed] = categoryOrder.splice(index, 1);
+            const [removed] = currentOrder.splice(index, 1);
             categoryOrder.splice(newIndex, 0, removed);
             updatedWorkouts.days[dayName].categoryOrder = categoryOrder; 
             applyChanges(updatedWorkouts, "Ordre des groupes musculaires mis à jour !");
@@ -1973,24 +1960,19 @@ const App = () => {
 
             {currentView === 'history' && (
                 <HistoryView
-                    workouts={workouts}
-                    selectedDateForHistory={selectedDateForHistory}
-                    selectedHistoryDayFilter={selectedHistoryDayFilter}
+                    historicalDataForGraphs={historicalDataForGraphs} // Pass all historical data
                     showDeletedExercisesInHistory={showDeletedExercisesInHistory}
                     setShowDeletedExercisesInHistory={setShowDeletedExercisesInHistory}
-                    handleDateChange={handleDateChange}
-                    navigateHistory={navigateHistory}
-                    setSelectedHistoryDayFilter={setSelectedHistoryDayFilter}
-                    getAllUniqueDays={getAllUniqueDays}
                     formatDate={formatDate}
                     getSeriesDisplay={getSeriesDisplay}
-                    handleReactivateExercise={handleReactivateExercise}
+                    handleReactivateExercise={handleReactivateExercise} // Updated to take only exerciseId
                     openExerciseGraphModal={openExerciseGraphModal}
                     handleOpenNotesModal={handleOpenNotesModal}
                     handleAnalyzeProgressionClick={handleAnalyzeProgressionClick}
                     personalBests={personalBests}
                     progressionInsights={progressionInsights}
                     isAdvancedMode={isAdvancedMode}
+                    // Removed date/day specific props as HistoryView is now exercise-centric
                 />
             )}
 
