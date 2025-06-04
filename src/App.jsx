@@ -14,6 +14,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Toast from './Toast.jsx';
 import MainWorkoutView from './MainWorkoutView.jsx';
 import HistoryView from './HistoryView.jsx';
+import TimerView from './TimerView.jsx'; // Nouveau
+import BottomNavigationBar from './BottomNavigationBar.jsx'; // Nouveau
 
 // This ensures Tone is defined, either by the environment or as a stub.
 // This is a workaround to prevent ReferenceError if Tone.js is not loaded by the environment.
@@ -375,7 +377,7 @@ const App = () => {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [exerciseToDelete, setExerciseToDelete] = useState(null); 
     const [selectedDayFilter, setSelectedDayFilter] = useState(''); 
-    const [showDatePicker, setShowDatePicker] = useState(false); 
+    const [showDatePicker, setShowDatePicker] = useState(false); // This state is now controlled by currentView
     const [selectedDateForHistory, setSelectedDateForHistory] = useState(null); 
     const [selectedHistoryDayFilter, setSelectedHistoryDayFilter] = useState(null);
     const [graphTimeRange, setGraphTimeRange] = useState('90days'); 
@@ -388,7 +390,7 @@ const App = () => {
 
     const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
-    const [newCategoryName, setNewCategoryName] = useState('');
+    const [newCategoryName, setNewCategoryName] = '';
 
     const [showDeletedExercisesInHistory, setShowDeletedExercisesInHistory] = useState(false); // État pour afficher les exercices supprimés
 
@@ -426,6 +428,7 @@ const App = () => {
     const MAX_UNDO_STATES = 10; 
 
     const [isEditMode, setIsEditMode] = useState(false);
+    const [currentView, setCurrentView] = useState('workout'); // 'workout', 'timer', 'history'
 
     const [showNotesModal, setShowNotesModal] = useState(false);
     const [exerciseForNotes, setExerciseForNotes] = useState(null); 
@@ -626,6 +629,25 @@ const App = () => {
         };
     }, [dropdownRef]);
 
+    // Reset isEditMode when view changes from workout
+    useEffect(() => {
+        if (currentView !== 'workout') {
+            setIsEditMode(false);
+        }
+        // Also reset history filters when switching away from history view
+        if (currentView !== 'history') {
+            setSelectedDateForHistory(null);
+            setSelectedHistoryDayFilter(null);
+            setShowDeletedExercisesInHistory(false);
+        } else {
+            // When switching to history, set default date to today
+            setSelectedDateForHistory(normalizeDateToStartOfDay(new Date()));
+            if (workouts.dayOrder.length > 0) {
+                setSelectedHistoryDayFilter(workouts.dayOrder[0]);
+            }
+        }
+    }, [currentView]);
+
 
     useEffect(() => {
         const fetchAndSetWorkouts = async () => {
@@ -633,23 +655,9 @@ const App = () => {
                 setLoading(true);
                 const sessionsRef = collection(db, `artifacts/${appId}/users/${userId}/sessions`);
 
-                // REMOVED: Seeding of historical data. Data will now be fetched from Firestore only.
-                // const initialDocs = await getDocs(query(sessionsRef, limit(1)));
-                // if (initialDocs.empty) {
-                //     console.log("Seeding historical data to Firestore...");
-                //     for (const session of historicalSessionsData) {
-                //         console.log("Seeding: Adding workoutData to Firestore:", session.workoutData);
-                //         await addDoc(sessionsRef, {
-                //             timestamp: Timestamp.fromDate(session.timestamp),
-                //             workoutData: session.workoutData
-                //         });
-                //     }
-                //     setToast({ message: "Données historiques fictives chargées !", type: 'success' });
-                // }
-
                 // Now set up the real-time listener
                 let q;
-                if (selectedDateForHistory) {
+                if (currentView === 'history' && selectedDateForHistory) {
                     // Query for the latest workout data up to a specific date
                     // Requires a composite index on `timestamp` (descending)
                     q = query(
@@ -744,7 +752,7 @@ const App = () => {
         };
 
         fetchAndSetWorkouts();
-    }, [isAuthReady, userId, selectedDateForHistory, appId]); 
+    }, [isAuthReady, userId, currentView, selectedDateForHistory, appId]); 
 
 
     useEffect(() => {
@@ -791,7 +799,7 @@ const App = () => {
                 };
             });
             
-            // REMOVED: Combining with fictional historical data
+            // Use only fetchedData, no historicalSessionsData
             const combinedData = fetchedData;
 
             setHistoricalDataForGraphs(combinedData); // Store all fetched data for insights
@@ -850,18 +858,18 @@ const App = () => {
         });
 
         return () => unsubscribe();
-    }, [isAuthReady, userId, appId, graphTimeRange, showDatePicker, showExerciseGraphModal, exerciseForGraph, graphStartDate, graphEndDate]);
+    }, [isAuthReady, userId, appId, graphTimeRange, showExerciseGraphModal, exerciseForGraph, graphStartDate, graphEndDate]);
 
 
     useEffect(() => {
         const newProcessedGraphData = {};
-        if (showDatePicker && selectedDateForHistory && !showExerciseGraphModal && historicalDataForGraphs.length > 0) {
+        if (currentView === 'history' && selectedDateForHistory && !showExerciseGraphModal && historicalDataForGraphs.length > 0) {
             // This logic is for the global graph view, which seems less used now.
             // The individual exercise graph logic is handled in the previous useEffect.
             // For now, this can be simplified or removed if not directly used for display.
         }
         setProcessedGraphData(newProcessedGraphData); // Potentially an empty object if not in the specific global graph view
-    }, [historicalDataForGraphs, showDatePicker, selectedDateForHistory, showExerciseGraphModal]);
+    }, [historicalDataForGraphs, currentView, selectedDateForHistory, showExerciseGraphModal]);
 
 
     useEffect(() => {
@@ -1388,25 +1396,7 @@ const App = () => {
         return dateString; 
     };
 
-    const toggleHistoryView = () => {
-        setShowDatePicker(prev => {
-            const newShowDatePicker = !prev;
-            if (newShowDatePicker) {
-                const today = normalizeDateToStartOfDay(new Date());
-                setSelectedDateForHistory(today);
-                if (workouts.dayOrder.length > 0) {
-                    setSelectedHistoryDayFilter(workouts.dayOrder[0]);
-                } else {
-                    setSelectedHistoryDayFilter(null);
-                }
-                setIsEditMode(false);
-            } else {
-                setSelectedDateForHistory(null);
-                setSelectedHistoryDayFilter(null);
-            }
-            return newShowDatePicker;
-        });
-    };
+    // Removed toggleHistoryView as navigation is now handled by BottomNavigationBar
 
     const handleDateChange = (e) => {
         const newSelectedDate = normalizeDateToStartOfDay(new Date(e.target.value));
@@ -1451,14 +1441,14 @@ const App = () => {
     }, [workouts.dayOrder, selectedDayFilter]);
 
     useEffect(() => {
-        if (showDatePicker && (workouts.dayOrder || []).length > 0) {
+        if (currentView === 'history' && (workouts.dayOrder || []).length > 0) {
             if (!selectedHistoryDayFilter || !(workouts.dayOrder || []).includes(selectedHistoryDayFilter)) {
                 setSelectedHistoryDayFilter((workouts.dayOrder || [])[0]);
             }
-        } else if (showDatePicker && (workouts.dayOrder || []).length === 0) {
+        } else if (currentView === 'history' && (workouts.dayOrder || []).length === 0) {
             setSelectedHistoryDayFilter(null);
         }
-    }, [selectedDateForHistory, workouts.dayOrder, showDatePicker, selectedHistoryDayFilter]); 
+    }, [selectedDateForHistory, workouts.dayOrder, currentView, selectedHistoryDayFilter]); 
 
 
     const handleReorderDays = (dayName, direction) => {
@@ -1702,7 +1692,7 @@ const App = () => {
     const orderedDays = workouts.dayOrder || []; 
 
     return (
-        <div className={`min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white font-inter p-4 sm:p-6 lg:p-8`}>
+        <div className={`min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white font-inter p-4 sm:p-6 lg:p-8 pb-20`}> {/* Added pb-20 for bottom nav bar */}
             <style>{appStyles}</style>
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -1741,25 +1731,21 @@ const App = () => {
                     >
                         <Redo2 className="h-5 w-5" />
                     </button>
-                    <button
-                        onClick={() => setIsEditMode(prev => !prev)}
-                        disabled={showDatePicker}
-                        className={`px-4 py-2 sm:px-6 sm:py-3 rounded-full font-bold shadow-lg transition transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 text-sm sm:text-base
-                            ${isEditMode ? 'bg-gradient-to-r from-red-600 to-pink-700 hover:from-red-700 hover:to-pink-800' : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'}
-                            text-white disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                        {isEditMode ? 'Quitter édition' : 'Mode Édition'}
-                    </button>
-                    <button
-                        onClick={toggleHistoryView}
-                        className="px-4 py-2 sm:px-6 sm:py-3 rounded-full bg-gradient-to-r from-purple-600 to-indigo-700 text-white font-bold shadow-lg hover:from-purple-700 hover:to-indigo-800 transition transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 text-sm sm:text-base"
-                    >
-                        {showDatePicker ? 'Retour aux exercices' : 'Voir l\'historique'}
-                    </button>
+                    {currentView === 'workout' && ( // Only show "Mode Édition" in workout view
+                        <button
+                            onClick={() => setIsEditMode(prev => !prev)}
+                            className={`px-4 py-2 sm:px-6 sm:py-3 rounded-full font-bold shadow-lg transition transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 text-sm sm:text-base
+                                ${isEditMode ? 'bg-gradient-to-r from-red-600 to-pink-700 hover:from-red-700 hover:to-pink-800' : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'}
+                                text-white disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                            {isEditMode ? 'Quitter édition' : 'Mode Édition'}
+                        </button>
+                    )}
+                    {/* Removed "Voir l'historique" button as it's now in the bottom nav */}
                 </div>
             </header>
 
-            {isEditMode && !showDatePicker && (
+            {isEditMode && currentView === 'workout' && ( // Only show day actions dropdown in workout edit mode
                 <div className="flex flex-col sm:flex-row gap-6 mb-6">
                     <div className="relative inline-block text-left" ref={dropdownRef}>
                         <button
@@ -1795,7 +1781,7 @@ const App = () => {
                 </div>
             )}
 
-            {!showDatePicker && (
+            {currentView === 'workout' && (
                 <div className="flex flex-wrap gap-3 mb-8 justify-start">
                     {orderedDays.map((day, index) => (
                         <button
@@ -1813,28 +1799,7 @@ const App = () => {
                 </div>
             )}
 
-            {showDatePicker ? (
-                <HistoryView
-                    workouts={workouts}
-                    selectedDateForHistory={selectedDateForHistory}
-                    selectedHistoryDayFilter={selectedHistoryDayFilter}
-                    showDeletedExercisesInHistory={showDeletedExercisesInHistory}
-                    setShowDeletedExercisesInHistory={setShowDeletedExercisesInHistory} // <-- CORRECTION ICI
-                    handleDateChange={handleDateChange}
-                    navigateHistory={navigateHistory}
-                    setSelectedHistoryDayFilter={setSelectedHistoryDayFilter}
-                    getAllUniqueDays={getAllUniqueDays}
-                    formatDate={formatDate}
-                    getSeriesDisplay={getSeriesDisplay}
-                    handleReactivateExercise={handleReactivateExercise}
-                    openExerciseGraphModal={openExerciseGraphModal} // PASSÉ EN PROP
-                    handleOpenNotesModal={handleOpenNotesModal}     // PASSÉ EN PROP
-                    handleAnalyzeProgressionClick={handleAnalyzeProgressionClick}
-                    personalBests={personalBests}
-                    progressionInsights={progressionInsights}
-                    isAdvancedMode={isAdvancedMode}
-                />
-            ) : (
+            {currentView === 'workout' && (
                 <MainWorkoutView
                     workouts={workouts}
                     selectedDayFilter={selectedDayFilter}
@@ -1851,8 +1816,8 @@ const App = () => {
                     handleReorderCategories={handleReorderCategories}
                     handleReorderExercises={handleReorderExercises}
                     openAddCategoryModalForDay={openAddCategoryModalForDay}
-                    handleEditCategory={handleEditCategory} // Pass handleEditCategory
-                    handleDeleteCategory={handleDeleteCategory} // Pass handleDeleteCategory
+                    handleEditCategory={handleEditCategory}
+                    handleDeleteCategory={handleDeleteCategory}
                     isSavingExercise={isSavingExercise}
                     isDeletingExercise={isDeletingExercise}
                     isAddingExercise={isAddingExercise}
@@ -1860,6 +1825,12 @@ const App = () => {
                     dayBorderAndTextColors={dayBorderAndTextColors}
                     formatDate={formatDate}
                     getSeriesDisplay={getSeriesDisplay}
+                    // Timer props are now passed only to TimerView
+                />
+            )}
+
+            {currentView === 'timer' && (
+                <TimerView
                     timerSeconds={timerSeconds}
                     timerIsRunning={timerIsRunning}
                     timerIsFinished={timerIsFinished}
@@ -1870,6 +1841,29 @@ const App = () => {
                     restTimeInput={restTimeInput}
                     setRestTimeInput={setRestTimeInput}
                     formatTime={formatTime}
+                />
+            )}
+
+            {currentView === 'history' && (
+                <HistoryView
+                    workouts={workouts}
+                    selectedDateForHistory={selectedDateForHistory}
+                    selectedHistoryDayFilter={selectedHistoryDayFilter}
+                    showDeletedExercisesInHistory={showDeletedExercisesInHistory}
+                    setShowDeletedExercisesInHistory={setShowDeletedExercisesInHistory}
+                    handleDateChange={handleDateChange}
+                    navigateHistory={navigateHistory}
+                    setSelectedHistoryDayFilter={setSelectedHistoryDayFilter}
+                    getAllUniqueDays={getAllUniqueDays}
+                    formatDate={formatDate}
+                    getSeriesDisplay={getSeriesDisplay}
+                    handleReactivateExercise={handleReactivateExercise}
+                    openExerciseGraphModal={openExerciseGraphModal}
+                    handleOpenNotesModal={handleOpenNotesModal}
+                    handleAnalyzeProgressionClick={handleAnalyzeProgressionClick}
+                    personalBests={personalBests}
+                    progressionInsights={progressionInsights}
+                    isAdvancedMode={isAdvancedMode}
                 />
             )}
 
@@ -2184,6 +2178,7 @@ const App = () => {
                 </div>
             )}
 
+            <BottomNavigationBar currentView={currentView} setCurrentView={setCurrentView} />
         </div>
     );
 };
