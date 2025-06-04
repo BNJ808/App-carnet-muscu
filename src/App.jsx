@@ -4,7 +4,7 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, where, serverTimestamp, getDocs, Timestamp, writeBatch, deleteDoc } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import {
-    Undo2, Redo2, Settings, XCircle, CheckCircle
+    Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown // Ajout de ChevronDown
 } from 'lucide-react';
 // Import pour l'API Gemini
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -747,7 +747,7 @@ const App = () => {
                                         return { id: generateUUID(), name: '', series: [{ weight: '', reps: '' }], isDeleted: false, notes: '' };
                                     }
 
-                                    // Ensure series is an array of objects
+                                    // Ensure series is an array
                                     let sanitizedSeries = Array.isArray(exercise.series)
                                         ? exercise.series
                                         : [{ weight: '', reps: '' }];
@@ -1211,7 +1211,12 @@ const App = () => {
         });
         applyChanges(updatedWorkouts, "Exercice ajouté avec succès !");
         setShowAddExerciseModal(false);
-        setIsAddingExercise(false); // Fin de l'opération d'ajout
+        setIsAddingExercise(false);
+        // Maintenir le jour sélectionné
+        setSelectedDayFilter(selectedDayForAdd);
+        if (currentView === 'history') {
+            setSelectedHistoryDayFilter(selectedDayForAdd);
+        }
     };
 
 
@@ -1285,6 +1290,11 @@ const App = () => {
         applyChanges(updatedWorkouts, `Jour "${newDayNameInput.trim()}" ajouté avec succès !`);
         setShowAddDayModal(false);
         setNewDayNameInput('');
+        // Maintenir le jour sélectionné
+        setSelectedDayFilter(newDayNameInput.trim());
+        if (currentView === 'history') {
+            setSelectedHistoryDayFilter(newDayNameInput.trim());
+        }
     };
 
     const handleEditDay = (oldDayName) => {
@@ -1394,6 +1404,11 @@ const App = () => {
         applyChanges(updatedWorkouts, `Groupe musculaire "${newCategoryNameInput.trim()}" ajouté avec succès !`);
         setShowAddCategoryModal(false);
         setNewCategoryNameInput('');
+        // Maintenir le jour sélectionné
+        setSelectedDayFilter(selectedDayForCategoryAdd);
+        if (currentView === 'history') {
+            setSelectedHistoryDayFilter(selectedDayForCategoryAdd);
+        }
     };
 
     const openAddCategoryModalForDay = (day) => {
@@ -1872,9 +1887,7 @@ const App = () => {
                             aria-haspopup="true"
                         >
                             Actions sur les jours
-                            <svg className="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 10 111.414 1.414l-4 4a1 1  0 01-1.414 0l-4-4a1 1  0 010-1.414z" clipRule="evenodd" />
-                            </svg>
+                            <ChevronDown className="-mr-1 ml-2 h-5 w-5" /> {/* Correction de l'icône SVG */}
                         </button>
                         {showDayActionsDropdown && (
                             <div
