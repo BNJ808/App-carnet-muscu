@@ -202,9 +202,6 @@ const baseInitialData = {
     dayOrder: ['Lundi + Jeudi', 'Mardi + Vendredi', 'Mercredi + Samedi'],
 };
 
-// Fictional Historical Data - REMOVED as per user request
-// const historicalSessionsData = []; // This array is now empty or removed
-
 // Helper function to calculate 1RM using different formulas
 const calculate1RM = (weight, reps) => {
     if (isNaN(weight) || isNaN(reps) || weight <= 0 || reps <= 0) {
@@ -504,35 +501,51 @@ const App = () => {
         ninetyDaysAgo.setHours(0, 0, 0, 0);
 
         const exerciseHistory = {};
+        if (!Array.isArray(historicalSessions)) {
+            console.warn("calculateInsights: historicalSessions is not an array.", historicalSessions);
+            return { insights: {}, pbs: {} };
+        }
+
         historicalSessions.forEach(session => {
             const sessionDate = session.timestamp;
             const workoutData = session.workoutData;
 
-            if (workoutData && workoutData.days) {
+            // Ensure workoutData and workoutData.days are valid objects before calling Object.values
+            if (workoutData && typeof workoutData === 'object' && workoutData.days && typeof workoutData.days === 'object') {
                 Object.values(workoutData.days).forEach(dayData => {
-                    if (dayData && dayData.categories) {
+                    // Ensure dayData and dayData.categories are valid objects before calling Object.values
+                    if (dayData && typeof dayData === 'object' && dayData.categories && typeof dayData.categories === 'object') {
                         Object.values(dayData.categories).forEach(categoryExercises => {
-                            categoryExercises.forEach(exercise => {
-                                if (!exercise.isDeleted && exercise.series && exercise.series.length > 0) {
-                                    const maxWeight = Math.max(...exercise.series.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
-                                    if (!isNaN(maxWeight) && maxWeight > 0) {
-                                        if (!exerciseHistory[exercise.id]) {
-                                            exerciseHistory[exercise.id] = {
-                                                name: exercise.name,
-                                                sessions: []
-                                            };
+                            // Ensure categoryExercises is an array before iterating
+                            if (Array.isArray(categoryExercises)) {
+                                categoryExercises.forEach(exercise => {
+                                    if (!exercise.isDeleted && exercise.series && exercise.series.length > 0) {
+                                        const maxWeight = Math.max(...exercise.series.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
+                                        if (!isNaN(maxWeight) && maxWeight > 0) {
+                                            if (!exerciseHistory[exercise.id]) {
+                                                exerciseHistory[exercise.id] = {
+                                                    name: exercise.name,
+                                                    sessions: []
+                                                };
+                                            }
+                                            exerciseHistory[exercise.id].sessions.push({
+                                                date: sessionDate,
+                                                weight: maxWeight,
+                                                reps: parseInt(exercise.series[0].reps) || 0 
+                                            });
                                         }
-                                        exerciseHistory[exercise.id].sessions.push({
-                                            date: sessionDate,
-                                            weight: maxWeight,
-                                            reps: parseInt(exercise.series[0].reps) || 0 
-                                        });
                                     }
-                                }
-                            });
+                                });
+                            } else {
+                                console.warn("calculateInsights: categoryExercises is not an array:", categoryExercises);
+                            }
                         });
+                    } else {
+                        console.warn("calculateInsights: dayData or dayData.categories is invalid:", dayData);
                     }
                 });
+            } else {
+                console.warn("calculateInsights: workoutData or workoutData.days is invalid:", workoutData);
             }
         });
 
@@ -677,27 +690,34 @@ const App = () => {
                         const fetchedWorkoutData = snapshot.docs[0]?.data()?.workoutData; // Utilisation de l'opérateur de chaînage optionnel
                         console.log("onSnapshot: fetchedWorkoutData retrieved:", fetchedWorkoutData); // LOG POUR DÉBOGAGE
 
-                        // Vérification robuste de fetchedWorkoutData
-                        if (!fetchedWorkoutData || typeof fetchedWorkoutData !== 'object' || !fetchedWorkoutData.days) {
-                            console.error("Fetched workout data is invalid or missing 'days' property. Falling back to empty state.", fetchedWorkoutData);
-                            setWorkouts({ days: {}, dayOrder: [] }); // Fallback to empty state
+                        // Ensure fetchedWorkoutData is a valid object before proceeding
+                        if (!fetchedWorkoutData || typeof fetchedWorkoutData !== 'object') {
+                            console.warn("Fetched workout data is invalid or missing. Falling back to empty state.", fetchedWorkoutData);
+                            setWorkouts({ days: {}, dayOrder: [] });
                             setLoading(false);
-                            return; // Exit early
+                            return;
                         }
 
-                        const sanitizedDays = fetchedWorkoutData.days || {};
-                        const sanitizedDayOrder = fetchedWorkoutData.dayOrder && Array.isArray(fetchedWorkoutData.dayOrder) && fetchedWorkoutData.dayOrder.length > 0
+                        const sanitizedDays = fetchedWorkoutData.days && typeof fetchedWorkoutData.days === 'object'
+                            ? fetchedWorkoutData.days
+                            : {};
+
+                        const sanitizedDayOrder = Array.isArray(fetchedWorkoutData.dayOrder)
                             ? fetchedWorkoutData.dayOrder
-                            : Object.keys(sanitizedDays).sort();
+                            : Object.keys(sanitizedDays).sort(); // Ensure Object.keys is called on an object
 
                         const finalSanitizedDays = {};
                         for (const dayKey in sanitizedDays) {
-                            if (sanitizedDays.hasOwnProperty(dayKey)) {
+                            if (Object.prototype.hasOwnProperty.call(sanitizedDays, dayKey)) { // More robust hasOwnProperty check
                                 const dayData = sanitizedDays[dayKey];
                                 const newCategories = {};
-                                if (dayData && dayData.categories && typeof dayData.categories === 'object') { // Vérification supplémentaire
+                                const currentCategoryOrder = Array.isArray(dayData.categoryOrder)
+                                    ? dayData.categoryOrder
+                                    : []; // Ensure categoryOrder is an array, even if empty
+
+                                if (dayData && typeof dayData === 'object' && dayData.categories && typeof dayData.categories === 'object') {
                                     for (const categoryKey in dayData.categories) {
-                                        if (dayData.categories.hasOwnProperty(categoryKey)) {
+                                        if (Object.prototype.hasOwnProperty.call(dayData.categories, categoryKey)) { // More robust hasOwnProperty check
                                             const exercisesInCat = Array.isArray(dayData.categories[categoryKey])
                                                 ? dayData.categories[categoryKey]
                                                 : [];
@@ -707,10 +727,10 @@ const App = () => {
                                                         weight: s.weight !== undefined ? String(s.weight) : '',
                                                         reps: s.reps !== undefined ? String(s.reps) : ''
                                                     }))
-                                                    : [{ weight: '', reps: '' }];
+                                                    : [{ weight: '', reps: '' }]; // Always ensure series is an array of objects
                                                 return {
                                                     ...exercise,
-                                                    id: exercise.id || generateUUID(), 
+                                                    id: exercise.id || generateUUID(),
                                                     series: sanitizedSeries,
                                                     isDeleted: typeof exercise.isDeleted === 'boolean' ? exercise.isDeleted : false,
                                                     notes: typeof exercise.notes === 'string' ? exercise.notes : ''
@@ -720,11 +740,9 @@ const App = () => {
                                     }
                                 }
                                 finalSanitizedDays[dayKey] = {
-                                    ...dayData,
+                                    ...dayData, // Keep other properties if any
                                     categories: newCategories,
-                                    categoryOrder: Array.isArray(dayData.categoryOrder)
-                                    ? dayData.categoryOrder
-                                    : Object.keys(newCategories).sort()
+                                    categoryOrder: currentCategoryOrder.length > 0 ? currentCategoryOrder : Object.keys(newCategories).sort()
                                 };
                             }
                         }
@@ -898,28 +916,73 @@ const App = () => {
         if (userId && appId) { 
             const sessionsRef = collection(db, `artifacts/${appId}/users/${userId}/sessions`);
             try {
-                // Assurez-vous que la structure des données est correcte avant de sauvegarder
-                const sanitizedWorkoutsState = {
-                    ...updatedWorkoutsState,
-                    days: Object.keys(updatedWorkoutsState.days || {}).reduce((acc, dayKey) => {
-                        const dayData = updatedWorkoutsState.days[dayKey];
-                        acc[dayKey] = {
-                            ...dayData,
-                            categories: Object.keys(dayData.categories || {}).reduce((catAcc, categoryKey) => {
-                                const categoryExercises = dayData.categories[categoryKey];
-                                catAcc[categoryKey] = Array.isArray(categoryExercises) ? categoryExercises.map(exercise => ({
-                                    ...exercise,
-                                    series: Array.isArray(exercise.series) ? exercise.series.map(s => ({
-                                        weight: s.weight !== undefined ? String(s.weight) : '',
-                                        reps: s.reps !== undefined ? String(s.reps) : ''
-                                    })) : [{ weight: '', reps: '' }] // Assurez-vous que series est un tableau
-                                })) : []; // Assurez-vous que categories[categoryKey] est un tableau
-                                return catAcc;
-                            }, {})
-                        };
-                        return acc;
-                    }, {})
-                };
+                // Deep clone and sanitize the data before saving
+                const sanitizedWorkoutsState = JSON.parse(JSON.stringify(updatedWorkoutsState));
+
+                // Ensure top-level structure
+                if (!sanitizedWorkoutsState.days || typeof sanitizedWorkoutsState.days !== 'object') {
+                    sanitizedWorkoutsState.days = {};
+                }
+                if (!Array.isArray(sanitizedWorkoutsState.dayOrder)) {
+                    sanitizedWorkoutsState.dayOrder = Object.keys(sanitizedWorkoutsState.days).sort();
+                }
+
+                for (const dayKey in sanitizedWorkoutsState.days) {
+                    if (Object.prototype.hasOwnProperty.call(sanitizedWorkoutsState.days, dayKey)) {
+                        const dayData = sanitizedWorkoutsState.days[dayKey];
+
+                        // Ensure dayData is an object
+                        if (!dayData || typeof dayData !== 'object') {
+                            sanitizedWorkoutsState.days[dayKey] = { categories: {}, categoryOrder: [] };
+                            continue;
+                        }
+
+                        // Ensure categories is an object
+                        if (!dayData.categories || typeof dayData.categories !== 'object') {
+                            dayData.categories = {};
+                        }
+                        // Ensure categoryOrder is an array
+                        if (!Array.isArray(dayData.categoryOrder)) {
+                            dayData.categoryOrder = Object.keys(dayData.categories).sort();
+                        }
+
+                        for (const categoryKey in dayData.categories) {
+                            if (Object.prototype.hasOwnProperty.call(dayData.categories, categoryKey)) {
+                                let categoryExercises = dayData.categories[categoryKey];
+
+                                // Ensure categoryExercises is an array
+                                if (!Array.isArray(categoryExercises)) {
+                                    categoryExercises = [];
+                                }
+
+                                dayData.categories[categoryKey] = categoryExercises.map(exercise => {
+                                    // Ensure exercise is an object
+                                    if (!exercise || typeof exercise !== 'object') {
+                                        return { id: generateUUID(), name: '', series: [{ weight: '', reps: '' }], isDeleted: false, notes: '' };
+                                    }
+
+                                    // Ensure series is an array
+                                    let sanitizedSeries = Array.isArray(exercise.series)
+                                        ? exercise.series
+                                        : [{ weight: '', reps: '' }];
+
+                                    sanitizedSeries = sanitizedSeries.map(s => ({
+                                        weight: s && s.weight !== undefined ? String(s.weight) : '',
+                                        reps: s && s.reps !== undefined ? String(s.reps) : ''
+                                    }));
+
+                                    return {
+                                        id: exercise.id || generateUUID(),
+                                        name: typeof exercise.name === 'string' ? exercise.name : '',
+                                        series: sanitizedSeries,
+                                        isDeleted: typeof exercise.isDeleted === 'boolean' ? exercise.isDeleted : false,
+                                        notes: typeof exercise.notes === 'string' ? exercise.notes : ''
+                                    };
+                                });
+                            }
+                        }
+                    }
+                }
 
                 await addDoc(sessionsRef, {
                     timestamp: serverTimestamp(),
@@ -1757,7 +1820,7 @@ const App = () => {
                         >
                             Actions sur les jours
                             <svg className="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1  0 01-1.414 0l-4-4a1 1  0 010-1.414z" clipRule="evenodd" />
+                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 10 111.414 1.414l-4 4a1 1  0 01-1.414 0l-4-4a1 1  0 010-1.414z" clipRule="evenodd" />
                             </svg>
                         </button>
                         {showDayActionsDropdown && (
