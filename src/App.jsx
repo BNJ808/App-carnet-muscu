@@ -7,7 +7,7 @@ import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, Pencil, Sparkles, ArrowUp, ArrowDown // Ajout de toutes les icônes utilisées
 } from 'lucide-react';
 // Import pour l'API Gemini
-import { GoogleGenerativeAI } from '@google-generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 
 // Import des composants refactorisés - Correction des chemins d'importation
