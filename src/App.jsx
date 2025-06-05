@@ -4,7 +4,7 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, where, serverTimestamp, getDocs, Timestamp, writeBatch, deleteDoc } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import {
-    Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown // Ajout de ChevronDown
+    Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, Pencil, Sparkles, ArrowUp, ArrowDown // Ajout de toutes les icônes utilisées
 } from 'lucide-react';
 // Import pour l'API Gemini
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -372,6 +372,18 @@ const dayTitleColors = dayBorderAndTextColors.map(colorString => {
     return match ? match[0] : 'text-gray-300'; // Retourne la classe trouvée ou une couleur par défaut
 });
 
+// Définition de dayButtonColors ici
+const dayButtonColors = {
+    Lundi: 'bg-blue-500 hover:bg-blue-600',
+    Mardi: 'bg-green-500 hover:bg-green-600',
+    Mercredi: 'bg-red-500 hover:bg-red-600',
+    Jeudi: 'bg-yellow-500 hover:bg-yellow-600',
+    Vendredi: 'bg-purple-500 hover:bg-purple-600',
+    Samedi: 'bg-pink-500 hover:bg-pink-600',
+    Dimanche: 'bg-indigo-500 hover:bg-indigo-600',
+    // Ajoutez d'autres jours si nécessaire
+};
+
 
 // Composant principal de l'application
 const App = () => {
@@ -382,7 +394,7 @@ const App = () => {
     const [editingExerciseName, setEditingExerciseName] = useState(''); 
     const [newWeight, setNewWeight] = useState('');
     const [newSets, setNewSets] = useState('');
-    const [newReps, setNewReps] = useState(''); 
+    const [newReps, setNewReps] = ''; 
 
     const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
     const [newExerciseName, setNewExerciseName] = useState('');
@@ -504,7 +516,7 @@ const App = () => {
 
         historicalSessions.forEach(session => {
             // Ensure session.timestamp is valid before calling toDate()
-            const sessionDate = session.timestamp ? session.timestamp : null;
+            const sessionDate = session.timestamp ? session.timestamp.toDate() : null;
             if (!sessionDate) return; // Skip if timestamp is null/undefined
 
             const workoutData = session.workoutData;
@@ -1597,7 +1609,7 @@ const App = () => {
 
         const newIndex = index + direction;
         if (newIndex >= 0 && newIndex < exercises.length) {
-            const [removed] = exercises.splice(currentIndex, 1);
+            const [removed] = exercises.splice(index, 1);
             exercises.splice(newIndex, 0, removed);
             updatedWorkouts.days[dayName].categories[categoryName] = exercises;
             applyChanges(updatedWorkouts, "Ordre des exercices mis à jour !");
@@ -1872,9 +1884,10 @@ const App = () => {
                         <button
                             key={day}
                             onClick={() => setSelectedDayFilter(day)}
+                            // Utilisation des dayButtonColors définies
                             className={`px-4 py-2 sm:px-6 sm:py-3 rounded-full font-bold shadow-md transition transform hover:scale-105 text-sm sm:text-base
                             ${selectedDayFilter === day
-                                    ? `bg-gradient-to-r ${dayButtonColors[index % dayButtonColors.length]} text-white`
+                                    ? dayButtonColors[day.split(' ')[0]] || 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white' // Utilisation du premier mot pour la couleur
                                     : `bg-gray-700 border-2 ${dayBorderAndTextColors[index % dayBorderAndTextColors.length]}`
                                 }`}
                         >
@@ -1957,7 +1970,7 @@ const App = () => {
                         <div className="space-y-3 sm:space-y-4">
                             <div>
                                 <label htmlFor="editExerciseName" className={`block text-gray-300 text-sm font-bold mb-1 sm:mb-2`}>Nom de l'exercice:</label>
-                                <input type="text" id="editExerciseName" className={`shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 sm:py-3 sm:px-4 bg-gray-700 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base`} value={editingExerciseName} onChange={(e) => setEditingExerciseName(e.target.value)} />
+                                <input type="text" id="editExerciseName" className={`shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 sm:py-3 sm:px-4 bg-gray-700 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base`} value={editingExerciseName} onChange={(e) => setNewExerciseName(e.target.value)} />
                             </div>
                             <div>
                                 <label htmlFor="editWeight" className={`block text-gray-300 text-sm font-bold mb-1 sm:mb-2`}>Poids (kg):</label>
