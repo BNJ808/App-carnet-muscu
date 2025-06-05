@@ -7,7 +7,7 @@ import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, Pencil, Sparkles, ArrowUp, ArrowDown // Ajout de toutes les icônes utilisées
 } from 'lucide-react';
 // Import pour l'API Gemini
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google-generative-ai';
 
 
 // Import des composants refactorisés - Correction des chemins d'importation
@@ -19,7 +19,7 @@ import BottomNavigationBar from './BottomNavigationBar.jsx'; // Nouveau
 
 // This ensures Tone is defined, either by the environment or as a stub.
 // This is a workaround to prevent ReferenceError if Tone.js is not loaded by the environment.
-// It will allow the app to run, but audio functionality will be disabled if Tone is truly missing.
+// It will allow the app to run, but audio functionality will be disabled if Tone is truly missing.\
 if (typeof window.Tone === 'undefined') {
     console.warn("Tone.js library not found globally. Audio functionality will be disabled.");
     window.Tone = {
@@ -159,7 +159,7 @@ const baseInitialData = {
                 DOS: [
                     { id: 'dos-1', name: 'R. Haltères Léger', series: [{ weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }], isDeleted: false, notes: '' },
                     { id: 'dos-2', name: 'R. Haltères Lourd', series: [{ weight: '12', reps: '8' }, { weight: '12', reps: '8' }, { weight: '12', reps: '8' }, { weight: '12', reps: '8' }], isDeleted: false, notes: '' },
-                    { id: 'dos-3', name: 'Tractions', series: [{ weight: '', reps: '6' }, { weight: '', reps: '6' }, { weight: '', reps: '6' }, { weight: '', reps: '6' }], isDeleted: false, notes: '' },
+                    { id: 'dos-3', name: 'Tractions', series: [{ weight: '', reps: '6' }, { weight: '', reps: '6' }, { weight: '6', reps: '6' }, { weight: '', reps: '6' }], isDeleted: false, notes: '' },
                     { id: 'dos-4', name: 'R.Haltères Mono', series: [{ weight: '10', reps: '12' }, { weight: '10', reps: '12' }, { weight: '10', reps: '12' }], isDeleted: false, notes: '' },
                 ],
                 BICEPS: [
@@ -394,7 +394,7 @@ const App = () => {
     const [editingExerciseName, setEditingExerciseName] = useState(''); 
     const [newWeight, setNewWeight] = useState('');
     const [newSets, setNewSets] = useState('');
-    const [newReps, setNewReps] = ''; 
+    const [newReps, setNewReps] = useState(''); // Corrected to use useState for initial empty string
 
     const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
     const [newExerciseName, setNewExerciseName] = useState('');
@@ -516,7 +516,7 @@ const App = () => {
 
         historicalSessions.forEach(session => {
             // Ensure session.timestamp is valid before calling toDate()
-            const sessionDate = session.timestamp ? session.timestamp.toDate() : null;
+            const sessionDate = session.timestamp instanceof Date ? session.timestamp : null; // session.timestamp should already be a Date object from fetch, check here
             if (!sessionDate) return; // Skip if timestamp is null/undefined
 
             const workoutData = session.workoutData;
@@ -769,9 +769,16 @@ const App = () => {
                 const unsubscribeHistorical = onSnapshot(qHistorical, (snapshot) => {
                     const fetchedData = snapshot.docs.map(doc => {
                         const data = doc.data();
+                        let timestampToUse;
+                        if (data.timestamp instanceof Timestamp) {
+                            timestampToUse = data.timestamp.toDate();
+                        } else if (data.timestamp && typeof data.timestamp === 'object' && 'seconds' in data.timestamp && 'nanoseconds' in data.timestamp) {
+                            timestampToUse = new Timestamp(data.timestamp.seconds, data.timestamp.nanoseconds).toDate();
+                        } else {
+                            timestampToUse = new Date(); // Fallback
+                        }
                         return {
-                            // Add null check for timestamp before calling toDate()
-                            timestamp: data.timestamp ? data.timestamp.toDate() : null, // Handle pending server timestamps
+                            timestamp: timestampToUse,
                             workoutData: data.workoutData
                         };
                     }).filter(item => item.timestamp !== null); // Filter out items with null timestamps
@@ -841,8 +848,16 @@ const App = () => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const fetchedData = snapshot.docs.map(doc => {
                 const data = doc.data();
+                let timestampToUse;
+                if (data.timestamp instanceof Timestamp) {
+                    timestampToUse = data.timestamp.toDate();
+                } else if (data.timestamp && typeof data.timestamp === 'object' && 'seconds' in data.timestamp && 'nanoseconds' in data.timestamp) {
+                    timestampToUse = new Timestamp(data.timestamp.seconds, data.timestamp.nanoseconds).toDate();
+                } else {
+                    timestampToUse = new Date(); // Fallback
+                }
                 return {
-                    timestamp: data.timestamp ? data.timestamp.toDate() : null, // Null check
+                    timestamp: timestampToUse,
                     workoutData: data.workoutData
                 };
             }).filter(item => item.timestamp !== null); // Filter out null timestamps
@@ -1725,19 +1740,31 @@ const App = () => {
         
         try {
             const snapshot = await getDocs(q); 
-            const fetchedData = snapshot.docs.map(doc => ({
-                timestamp: doc.data().timestamp, // Keep as Timestamp for formatDate to handle
-                workoutData: doc.data().workoutData
-            })).filter(item => item.timestamp !== null); // Filter out null timestamps
+            const fetchedData = snapshot.docs.map(doc => {
+                const data = doc.data();
+                let timestampToUse;
+                if (data.timestamp instanceof Timestamp) {
+                    timestampToUse = data.timestamp.toDate();
+                } else if (data.timestamp && typeof data.timestamp === 'object' && 'seconds' in data.timestamp && 'nanoseconds' in data.timestamp) {
+                    timestampToUse = new Timestamp(data.timestamp.seconds, data.timestamp.nanoseconds).toDate();
+                } else {
+                    timestampToUse = new Date(); // Fallback
+                }
+                return {
+                    timestamp: timestampToUse,
+                    workoutData: data.workoutData
+                };
+            }).filter(item => item.timestamp !== null); // Filter out null timestamps
 
             const combinedDataForAnalysis = fetchedData;
 
 
             const latestDailyWeightsIndividual = {};
             combinedDataForAnalysis.forEach(session => {
-                const localDate = session.timestamp ? session.timestamp.toDate() : null; // Convert to Date here for dateKey
-                if (!localDate) return;
-
+                const localDate = session.timestamp;
+                // Ensure localDate is a valid Date object before proceeding
+                if (!(localDate instanceof Date)) return; 
+                
                 const dateKey = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
                 const sessionDays = session.workoutData?.days || {};
                 Object.keys(sessionDays).forEach(dayKey => {
@@ -1749,9 +1776,10 @@ const App = () => {
                                     const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
                                     const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
                                     if (maxWeightForDay > 0) {
-                                        if (!latestDailyWeightsIndividual[dateKey] || (session.timestamp && latestDailyWeightsIndividual[dateKey].timestamp && session.timestamp.toDate() > latestDailyWeightsIndividual[dateKey].timestamp.toDate())) {
+                                        // Compare Date objects directly for latest session
+                                        if (!latestDailyWeightsIndividual[dateKey] || localDate > latestDailyWeightsIndividual[dateKey].timestamp) {
                                             latestDailyWeightsIndividual[dateKey] = {
-                                                timestamp: session.timestamp,
+                                                timestamp: localDate,
                                                 weight: maxWeightForDay,
                                             };
                                         }
