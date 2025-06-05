@@ -356,13 +356,13 @@ const useTimer = (initialSeconds = 60) => {
 // Définition des couleurs pour les bordures et le texte des jours
 // Ces couleurs sont utilisées pour les boutons de jour et la bordure des blocs de jour
 const dayBorderAndTextColors = [
-    'border-blue-500 text-blue-700',   // Lundi + Jeudi
-    'border-green-500 text-green-700', // Mardi + Vendredi
-    'border-red-500 text-red-700',     // Mercredi + Samedi
-    'border-yellow-500 text-yellow-700', // Exemple pour un 4ème jour si ajouté
-    'border-purple-500 text-purple-700', // Exemple pour un 5ème jour si ajouté
-    'border-pink-500 text-pink-700',   // Exemple pour un 6ème jour si ajouté
-    'border-indigo-500 text-indigo-700', // Exemple pour un 7ème jour si ajouté
+    'border-blue-500 text-blue-500',   // Lundi + Jeudi
+    'border-green-500 text-green-500', // Mardi + Vendredi
+    'border-red-500 text-red-500',     // Mercredi + Samedi
+    'border-yellow-500 text-yellow-500', // Dimanche
+    'border-purple-500 text-purple-500', // Exemple pour un 5ème jour si ajouté
+    'border-pink-500 text-pink-500',   // Exemple pour un 6ème jour si ajouté
+    'border-indigo-500 text-indigo-500', // Exemple pour un 7ème jour si ajouté
 ];
 
 // Dérivation des couleurs spécifiques pour les titres des jours (h2)
