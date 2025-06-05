@@ -1496,24 +1496,65 @@ const App = () => {
         setCategoryToDelete(null);
     };
 
+    // Modified formatDate to handle Firebase Timestamp objects robustly
+    const formatDate = (date) => {
+        if (date instanceof Timestamp && typeof date.toDate === 'function') {
+            // It's a Firebase Timestamp object
+            try {
+                return date.toDate().toLocaleDateString('fr-FR', {
+                    year: 'numeric',
+                    month: '2-digit', // Use 2-digit for consistency with string parsing below
+                    day: '2-digit',
+                });
+            } catch (error) {
+                console.error("Erreur lors de la conversion du Timestamp Firebase en Date:", error);
+                return 'Date invalide';
+            }
+        } else if (date instanceof Date) {
+            // It's a native JavaScript Date object
+            return date.toLocaleDateString('fr-FR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            });
+        } else if (typeof date === 'object' && date !== null && 'seconds' in date && 'nanoseconds' in date) {
+            // It could be a serialized Timestamp object (without methods)
+            try {
+                // Recreate a Timestamp object from seconds and nanoseconds properties
+                return new Timestamp(date.seconds, date.nanoseconds).toDate().toLocaleDateString('fr-FR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                });
+            } catch (error) {
+                console.error("Erreur lors de la recréation du Timestamp et conversion en Date:", error);
+                return 'Date invalide';
+            }
+        } else if (typeof date === 'string') {
+            // Try parsing string dates like "YYYY-MM-DD" from date input fields
+            const parts = date.split('-');
+            if (parts.length === 3) {
+                const [year, month, day] = parts;
+                const parsedDate = new Date(year, month - 1, day); // Month is 0-indexed
+                if (!isNaN(parsedDate.getTime())) { // Check for valid date
+                    return parsedDate.toLocaleDateString('fr-FR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                    });
+                }
+            }
+        }
+        // Fallback for any other unexpected format
+        console.warn("Objet date non reconnu passé à formatDate:", date);
+        return String(date); // Return as string or a default 'N/A'
+    };
+
+
     const openExerciseGraphModal = (exercise) => {
         setExerciseForGraph(exercise);
         setShowExerciseGraphModal(true);
         // graphStartDate and graphEndDate will be set by useEffect watching individualExerciseGraphData
-    };
-
-    const formatDate = (dateString) => {
-        if (!dateString) return '';
-        if (dateString instanceof Date) {
-            return dateString.toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' });
-        }
-        const parts = String(dateString).split('-'); // Ensure dateString is treated as a string
-        if (parts.length === 3) {
-            const [year, month, day] = parts;
-            const date = new Date(year, month - 1, day);
-            return date.toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' });
-        }
-        return String(dateString); 
     };
 
     // Removed toggleHistoryView as navigation is now handled by BottomNavigationBar
@@ -1685,7 +1726,7 @@ const App = () => {
         try {
             const snapshot = await getDocs(q); 
             const fetchedData = snapshot.docs.map(doc => ({
-                timestamp: doc.data().timestamp ? doc.data().timestamp.toDate() : null, // Null check
+                timestamp: doc.data().timestamp, // Keep as Timestamp for formatDate to handle
                 workoutData: doc.data().workoutData
             })).filter(item => item.timestamp !== null); // Filter out null timestamps
 
@@ -1694,7 +1735,9 @@ const App = () => {
 
             const latestDailyWeightsIndividual = {};
             combinedDataForAnalysis.forEach(session => {
-                const localDate = session.timestamp;
+                const localDate = session.timestamp ? session.timestamp.toDate() : null; // Convert to Date here for dateKey
+                if (!localDate) return;
+
                 const dateKey = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
                 const sessionDays = session.workoutData?.days || {};
                 Object.keys(sessionDays).forEach(dayKey => {
@@ -1706,7 +1749,7 @@ const App = () => {
                                     const exerciseSeries = Array.isArray(exItem.series) ? exItem.series : [];
                                     const maxWeightForDay = Math.max(0, ...exerciseSeries.map(s => parseFloat(s.weight)).filter(w => !isNaN(w)));
                                     if (maxWeightForDay > 0) {
-                                        if (!latestDailyWeightsIndividual[dateKey] || session.timestamp > latestDailyWeightsIndividual[dateKey].timestamp) {
+                                        if (!latestDailyWeightsIndividual[dateKey] || (session.timestamp && latestDailyWeightsIndividual[dateKey].timestamp && session.timestamp.toDate() > latestDailyWeightsIndividual[dateKey].timestamp.toDate())) {
                                             latestDailyWeightsIndividual[dateKey] = {
                                                 timestamp: session.timestamp,
                                                 weight: maxWeightForDay,
