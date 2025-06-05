@@ -28,7 +28,7 @@ import {
  * @param {boolean} props.isSavingExercise - Indique si un exercice est en cours de sauvegarde.
  * @param {boolean} props.isDeletingExercise - Indique si un exercice est en cours d'ajout.
  * @param {boolean} props.isAddingExercise - Indique si un exercice est en cours d'ajout.
- * @param {string[]} props.dayButtonColors - Couleurs pour les boutons de jour.
+ * @param {function} props.dayButtonColors - NOUVEAU : Fonction pour obtenir les couleurs des boutons de jour.
  * @param {string[]} props.dayBorderAndTextColors - Couleurs de bordure et de texte pour les jours.
  * @param {string[]} props.dayTitleColors - NOUVEAU : Couleurs spécifiques pour les titres des jours (h2).
  * @param {function} props.formatDate - Fonction pour formater une date.
@@ -55,7 +55,7 @@ const MainWorkoutView = ({
     isSavingExercise,
     isDeletingExercise,
     isAddingExercise,
-    dayButtonColors,
+    dayButtonColors, // AJOUT DE LA NOUVELLE PROP (fonction)
     dayBorderAndTextColors,
     dayTitleColors, // AJOUT DE LA NOUVELLE PROP
     formatDate,

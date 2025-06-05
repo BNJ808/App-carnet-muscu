@@ -7,7 +7,7 @@ import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, Pencil, Sparkles, ArrowUp, ArrowDown // Ajout de toutes les icônes utilisées
 } from 'lucide-react';
 // Import pour l'API Gemini
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google-generative-ai';
 
 
 // Import des composants refactorisés - Correction des chemins d'importation
@@ -373,15 +373,21 @@ const dayTitleColors = dayBorderAndTextColors.map(colorString => {
 });
 
 // Définition de dayButtonColors ici
-const dayButtonColors = {
-    Lundi: 'bg-blue-500 hover:bg-blue-600',
-    Mardi: 'bg-green-500 hover:bg-green-600',
-    Mercredi: 'bg-red-500 hover:bg-red-600',
-    Jeudi: 'bg-yellow-500 hover:bg-yellow-600',
-    Vendredi: 'bg-purple-500 hover:bg-purple-600',
-    Samedi: 'bg-pink-500 hover:bg-pink-600',
-    Dimanche: 'bg-indigo-500 hover:bg-indigo-600',
-    // Ajoutez d'autres jours si nécessaire
+// MODIFICATION: Rendre cette map plus générique pour supporter les jours dynamiques.
+// Utilisons une fonction pour obtenir une couleur basée sur l'index du jour.
+const getDayButtonColors = (index, isSelected) => {
+    const colors = [
+        { default: 'bg-blue-500 hover:bg-blue-600', selected: 'bg-blue-700 ring-2 ring-blue-500' },
+        { default: 'bg-green-500 hover:bg-green-600', selected: 'bg-green-700 ring-2 ring-green-500' },
+        { default: 'bg-red-500 hover:bg-red-600', selected: 'bg-red-700 ring-2 ring-red-500' },
+        { default: 'bg-yellow-500 hover:bg-yellow-600', selected: 'bg-yellow-700 ring-2 ring-yellow-500' },
+        { default: 'bg-purple-500 hover:bg-purple-600', selected: 'bg-purple-700 ring-2 ring-purple-500' },
+        { default: 'bg-pink-500 hover:bg-pink-600', selected: 'bg-pink-700 ring-2 ring-pink-500' },
+        { default: 'bg-indigo-500 hover:bg-indigo-600', selected: 'bg-indigo-700 ring-2 ring-indigo-500' },
+        // Ajoutez d'autres couleurs si vous prévoyez plus de jours pour un cycle visuel
+    ];
+    const colorSet = colors[index % colors.length];
+    return isSelected ? colorSet.selected : colorSet.default;
 };
 
 
@@ -852,7 +858,7 @@ const App = () => {
                 if (data.timestamp instanceof Timestamp) {
                     timestampToUse = data.timestamp.toDate();
                 } else if (data.timestamp && typeof data.timestamp === 'object' && 'seconds' in data.timestamp && 'nanoseconds' in data.timestamp) {
-                    timestampToUse = new Timestamp(data.timestamp.seconds, data.timestamp.nanoseconds).toDate();
+                    timestampToUse = new Timestamp(data.timestamp.seconds, data.nanoseconds).toDate();
                 } else {
                     timestampToUse = new Date(); // Fallback
                 }
@@ -1955,12 +1961,9 @@ const App = () => {
                         <button
                             key={day}
                             onClick={() => setSelectedDayFilter(day)}
-                            // Utilisation des dayButtonColors définies
+                            // Utilisation de la fonction getDayButtonColors pour gérer les couleurs
                             className={`px-4 py-2 sm:px-6 sm:py-3 rounded-full font-bold shadow-md transition transform hover:scale-105 text-sm sm:text-base
-                            ${selectedDayFilter === day
-                                    ? dayButtonColors[day.split(' ')[0]] || 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white' // Utilisation du premier mot pour la couleur
-                                    : `bg-gray-700 border-2 ${dayBorderAndTextColors[index % dayBorderAndTextColors.length]}`
-                                }`}
+                            ${getDayButtonColors(index, selectedDayFilter === day)} text-white`}
                         >
                             {day}
                         </button>
@@ -1990,7 +1993,8 @@ const App = () => {
                     isSavingExercise={isSavingExercise}
                     isDeletingExercise={isDeletingExercise}
                     isAddingExercise={isAddingExercise}
-                    dayButtonColors={dayButtonColors}
+                    // MODIFICATION: Passer getDayButtonColors au lieu de dayButtonColors
+                    dayButtonColors={getDayButtonColors} 
                     dayBorderAndTextColors={dayBorderAndTextColors}
                     dayTitleColors={dayTitleColors} // Pass the new prop here
                     formatDate={formatDate}
