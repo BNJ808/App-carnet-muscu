@@ -827,105 +827,114 @@ const ImprovedWorkoutApp = () => {
    }, [workouts, personalBests, historicalData]);
 
    const importData = useCallback((event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const importedData = JSON.parse(e.target.result);
-            
-            if (importedData.workouts) {
-                const sanitizedWorkouts = sanitizeWorkoutData(importedData.workouts);
-                setWorkouts(sanitizedWorkouts);
-                saveWorkoutsOptimized(sanitizedWorkouts, "Données importées avec succès !");
-                
-                setToast({ 
-                    message: "Import réussi !", 
-                    type: 'success'
-                    // Supprimé l'action pour éviter la référence circulaire
-                });
-            } else {
-                setToast({ message: "Format de fichier invalide", type: 'error' });
-            }
-        } catch (error) {
-            console.error("Erreur import:", error);
-            setToast({ message: "Erreur lors de l'import", type: 'error' });
-        }
-    };
-    reader.readAsText(file);
-    
-    // Reset input
-    event.target.value = '';
-}, [sanitizeWorkoutData, saveWorkoutsOptimized]); // Supprimé handleUndo
+       const file = event.target.files[0];
+       if (!file) return;
+       
+       const reader = new FileReader();
+       reader.onload = (e) => {
+           try {
+               const importedData = JSON.parse(e.target.result);
+               
+               if (importedData.workouts) {
+                   const sanitizedWorkouts = sanitizeWorkoutData(importedData.workouts);
+                   setWorkouts(sanitizedWorkouts);
+                   saveWorkoutsOptimized(sanitizedWorkouts, "Données importées avec succès !");
+                   
+                   setToast({ 
+                       message: "Import réussi !", 
+                       type: 'success'
+                   });
+               } else {
+                   setToast({ message: "Format de fichier invalide", type: 'error' });
+               }
+           } catch (error) {
+               console.error("Erreur import:", error);
+               setToast({ message: "Erreur lors de l'import", type: 'error' });
+           }
+       };
+       reader.readAsText(file);
+       
+       // Reset input
+       event.target.value = '';
+   }, [sanitizeWorkoutData, saveWorkoutsOptimized]);
 
-   // Fonctions d'undo/redo optimisées
+   // Fonctions d'undo/redo corrigées
    const handleUndo = useCallback(() => {
-    if (undoStack.length === 0) {
-        setToast({ message: "Rien à annuler", type: 'warning' });
-        return;
-    }
-    
-    const previousState = undoStack[undoStack.length - 1];
-    setUndoStack(prev => prev.slice(0, -1));
-    setRedoStack(prev => [...prev, workouts]);
-    setWorkouts(previousState);
-    setToast({ message: "Action annulée", type: 'success' });
-}, [undoStack.length, workouts]); // Changé undoStack en undoStack.length
+       setUndoStack(prevUndoStack => {
+           if (prevUndoStack.length === 0) {
+               setToast({ message: "Rien à annuler", type: 'warning' });
+               return prevUndoStack;
+           }
+           
+           const previousState = prevUndoStack[prevUndoStack.length - 1];
+           
+           // Sauvegarder l'état actuel dans redo avant de changer
+           setRedoStack(prevRedoStack => [...prevRedoStack, workouts]);
+           setWorkouts(previousState);
+           setToast({ message: "Action annulée", type: 'success' });
+           
+           return prevUndoStack.slice(0, -1);
+       });
+   }, [workouts]);
 
-const handleRedo = useCallback(() => {
-    if (redoStack.length === 0) {
-        setToast({ message: "Rien à rétablir", type: 'warning' });
-        return;
-    }
-    
-    const nextState = redoStack[redoStack.length - 1];
-    setRedoStack(prev => prev.slice(0, -1));
-    setUndoStack(prev => [...prev, workouts]);
-    setWorkouts(nextState);
-    setToast({ message: "Action rétablie", type: 'success' });
-}, [redoStack.length, workouts]); // Changé redoStack en redoStack.length
+   const handleRedo = useCallback(() => {
+       setRedoStack(prevRedoStack => {
+           if (prevRedoStack.length === 0) {
+               setToast({ message: "Rien à rétablir", type: 'warning' });
+               return prevRedoStack;
+           }
+           
+           const nextState = prevRedoStack[prevRedoStack.length - 1];
+           
+           // Sauvegarder l'état actuel dans undo avant de changer
+           setUndoStack(prevUndoStack => [...prevUndoStack, workouts]);
+           setWorkouts(nextState);
+           setToast({ message: "Action rétablie", type: 'success' });
+           
+           return prevRedoStack.slice(0, -1);
+       });
+   }, [workouts]);
 
    // Calculs mémorisés pour les statistiques
-  const workoutStats = useMemo(() => {
-    if (!workouts?.days || !historicalData) {
-        return {
-            totalExercises: 0,
-            totalSessions: 0,
-            thisWeekSessions: 0,
-            totalVolume: 0,
-            averageSessionsPerWeek: 0
-        };
-    }
+   const workoutStats = useMemo(() => {
+       if (!workouts?.days || !historicalData) {
+           return {
+               totalExercises: 0,
+               totalSessions: 0,
+               thisWeekSessions: 0,
+               totalVolume: 0,
+               averageSessionsPerWeek: 0
+           };
+       }
 
-    const totalExercises = Object.values(workouts.days).reduce((total, day) => {
-        return total + Object.values(day.categories || {}).reduce((dayTotal, exercises) => {
-            return dayTotal + (Array.isArray(exercises) ? exercises.filter(ex => !ex.isDeleted).length : 0);
-        }, 0);
-    }, 0);
+       const totalExercises = Object.values(workouts.days).reduce((total, day) => {
+           return total + Object.values(day.categories || {}).reduce((dayTotal, exercises) => {
+               return dayTotal + (Array.isArray(exercises) ? exercises.filter(ex => !ex.isDeleted).length : 0);
+           }, 0);
+       }, 0);
 
-    const totalSessions = historicalData.length;
-    const thisWeekSessions = historicalData.filter(session => {
-        const sessionDate = session.timestamp;
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        return sessionDate > weekAgo;
-    }).length;
+       const totalSessions = historicalData.length;
+       const thisWeekSessions = historicalData.filter(session => {
+           const sessionDate = session.timestamp;
+           const weekAgo = new Date();
+           weekAgo.setDate(weekAgo.getDate() - 7);
+           return sessionDate > weekAgo;
+       }).length;
 
-    const totalVolume = Object.values(personalBests || {}).reduce((total, best) => {
-        return total + (best.totalVolume || 0);
-    }, 0);
+       const totalVolume = Object.values(personalBests || {}).reduce((total, best) => {
+           return total + (best.totalVolume || 0);
+       }, 0);
 
-    const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
+       const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
 
-    return {
-        totalExercises,
-        totalSessions,
-        thisWeekSessions,
-        totalVolume: Math.round(totalVolume),
-        averageSessionsPerWeek
-    };
-}, [workouts?.days, historicalData?.length, personalBests]); // Dépendances plus spécifiques
+       return {
+           totalExercises,
+           totalSessions,
+           thisWeekSessions,
+           totalVolume: Math.round(totalVolume),
+           averageSessionsPerWeek
+       };
+   }, [workouts?.days, historicalData?.length, personalBests]);
 
    // Gestion des raccourcis clavier
    useEffect(() => {
