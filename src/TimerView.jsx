@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Pause, RotateCcw, Clock, Target, Zap, Settings } from 'lucide-react';
+import React, { useState } from 'react';
+import { Play, Pause, RotateCcw, Plus, Minus, Clock, Zap } from 'lucide-react';
 
 /**
- * Composant TimerView amélioré pour le minuteur de repos avec presets et fonctionnalités avancées.
+ * Composant TimerView pour la gestion du minuteur de repos.
  */
 const TimerView = ({
     timerSeconds,
@@ -18,247 +18,285 @@ const TimerView = ({
     setTimerPreset,
     isAdvancedMode
 }) => {
-    const [customTime, setCustomTime] = useState('');
-    const [showCustomInput, setShowCustomInput] = useState(false);
-    const [timerHistory, setTimerHistory] = useState([]);
+    const [customMinutes, setCustomMinutes] = useState(1);
+    const [customSeconds, setCustomSeconds] = useState(30);
     const [selectedPreset, setSelectedPreset] = useState(90);
-
-    // Presets de temps prédéfinis
+    
+    // Presets de temps populaires
     const timePresets = [
-        { label: '30s', value: 30, icon: '⚡', color: 'bg-yellow-500' },
-        { label: '1min', value: 60, icon: '🏃', color: 'bg-blue-500' },
-        { label: '1m30', value: 90, icon: '💪', color: 'bg-green-500' },
-        { label: '2min', value: 120, icon: '🔥', color: 'bg-orange-500' },
-        { label: '3min', value: 180, icon: '🎯', color: 'bg-purple-500' },
-        { label: '5min', value: 300, icon: '🧘', color: 'bg-indigo-500' }
+        { label: '30s', value: 30, category: 'Court' },
+        { label: '45s', value: 45, category: 'Court' },
+        { label: '1min', value: 60, category: 'Court' },
+        { label: '1min30', value: 90, category: 'Moyen' },
+        { label: '2min', value: 120, category: 'Moyen' },
+        { label: '3min', value: 180, category: 'Moyen' },
+        { label: '4min', value: 240, category: 'Long' },
+        { label: '5min', value: 300, category: 'Long' }
     ];
 
-    // Enregistrer l'historique des minuteurs
-    useEffect(() => {
-        if (timerIsFinished) {
-            const completedTimer = {
-                duration: parseInt(restTimeInput) || 90,
-                completedAt: new Date().toISOString(),
-                id: Date.now()
-            };
-            setTimerHistory(prev => [completedTimer, ...prev.slice(0, 9)]); // Garder les 10 derniers
+    const groupedPresets = timePresets.reduce((acc, preset) => {
+        if (!acc[preset.category]) {
+            acc[preset.category] = [];
         }
-    }, [timerIsFinished, restTimeInput]);
+        acc[preset.category].push(preset);
+        return acc;
+    }, {});
 
-    const handlePresetClick = (preset) => {
-        setSelectedPreset(preset.value);
-        setTimerPreset(preset.value);
-        setRestTimeInput(preset.value.toString());
-    };
-
-    const handleCustomTimeSubmit = () => {
-        const seconds = parseInt(customTime);
-        if (seconds && seconds > 0 && seconds <= 3600) { // Max 1 heure
-            setTimerPreset(seconds);
-            setRestTimeInput(seconds.toString());
-            setSelectedPreset(seconds);
-            setCustomTime('');
-            setShowCustomInput(false);
+    const handleCustomTimerStart = () => {
+        const totalSeconds = (customMinutes * 60) + customSeconds;
+        if (totalSeconds > 0) {
+            startTimer(totalSeconds);
         }
     };
 
-    const getTimerColor = () => {
-        const percentage = (timerSeconds / (parseInt(restTimeInput) || 90)) * 100;
-        if (percentage > 50) return 'text-green-400';
-        if (percentage > 25) return 'text-yellow-400';
-        return 'text-red-400';
+    const adjustTime = (increment) => {
+        if (timerIsRunning) return;
+        
+        const newTime = Math.max(0, timerSeconds + increment);
+        setTimerSeconds(newTime);
     };
 
-    const getCircularProgress = () => {
-        const total = parseInt(restTimeInput) || 90;
-        const progress = ((total - timerSeconds) / total) * 100;
-        return Math.min(progress, 100);
+    const getTimerDisplay = () => {
+        if (timerSeconds === 0 && !timerIsRunning) {
+            return '00:00';
+        }
+        return formatTime(timerSeconds);
+    };
+
+    const getTimerStatusColor = () => {
+        if (timerIsFinished) return 'text-red-400';
+        if (timerIsRunning) return 'text-blue-400';
+        if (timerSeconds > 0) return 'text-yellow-400';
+        return 'text-gray-400';
+    };
+
+    const getProgressPercentage = () => {
+        if (selectedPreset === 0) return 0;
+        return ((selectedPreset - timerSeconds) / selectedPreset) * 100;
     };
 
     return (
         <div className="max-w-2xl mx-auto space-y-8">
-            {/* Header */}
-            <div className="text-center">
-                <h2 className="text-3xl font-bold text-white mb-2 flex items-center justify-center gap-3">
-                    <Clock className="h-8 w-8 text-blue-400" />
-                    Minuteur de Repos
-                </h2>
-                <p className="text-gray-400">Optimisez vos temps de récupération</p>
-            </div>
-
-            {/* Minuteur principal avec design circulaire */}
-            <div className="relative">
-                <div className="w-80 h-80 mx-auto relative">
-                    {/* Cercle de progression */}
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                        {/* Cercle de fond */}
-                        <circle
-                            cx="50"
-                            cy="50"
-                            r="45"
-                            stroke="currentColor"
-                            strokeWidth="8"
-                            fill="none"
-                            className="text-gray-700"
-                        />
-                        {/* Cercle de progression */}
-                        <circle
-                            cx="50"
-                            cy="50"
-                            r="45"
-                            stroke="currentColor"
-                            strokeWidth="8"
-                            fill="none"
-                            strokeDasharray={`${2 * Math.PI * 45}`}
-                            strokeDashoffset={`${2 * Math.PI * 45 * (1 - getCircularProgress() / 100)}`}
-                            className={`transition-all duration-1000 ${getTimerColor()}`}
-                            strokeLinecap="round"
-                        />
-                    </svg>
-
-                    {/* Contenu central */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <div className={`text-6xl font-bold mb-2 transition-colors duration-300 ${getTimerColor()}`}>
-                            {formatTime(timerSeconds)}
-                        </div>
-                        
-                        {timerIsFinished && (
-                            <div className="text-red-400 text-xl font-bold animate-pulse flex items-center gap-2">
-                                <Zap className="h-6 w-6" />
-                                Temps écoulé !
-                            </div>
-                        )}
-                        
-                        {!timerIsFinished && (
-                            <div className="text-gray-400 text-sm">
-                                {timerIsRunning ? 'En cours...' : 'En pause'}
-                            </div>
-                        )}
-                    </div>
+            {/* Affichage principal du minuteur */}
+            <div className="bg-gray-800 rounded-2xl p-8 text-center border border-gray-700">
+                <div className="mb-6">
+                    <Clock className="h-12 w-12 text-blue-400 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-white mb-2">Minuteur de repos</h2>
+                    <p className="text-gray-400">Gérez vos temps de repos entre les séries</p>
                 </div>
-            </div>
 
-            {/* Contrôles principaux */}
-            <div className="flex justify-center items-center gap-4">
-                <button
-                    onClick={resetTimer}
-                    className="p-4 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all hover:scale-105"
-                    title="Réinitialiser"
-                >
-                    <RotateCcw className="h-6 w-6" />
-                </button>
-
-                <button
-                    onClick={timerIsRunning ? pauseTimer : startTimer}
-                    className={`p-6 rounded-xl font-bold text-white transition-all transform hover:scale-105 shadow-lg ${
-                        timerIsRunning 
-                            ? 'bg-red-500 hover:bg-red-600' 
-                            : 'bg-green-500 hover:bg-green-600'
-                    }`}
-                >
-                    {timerIsRunning ? (
-                        <Pause className="h-8 w-8" />
-                    ) : (
-                        <Play className="h-8 w-8" />
+                {/* Affichage du temps */}
+                <div className="relative mb-8">
+                    <div className={`text-7xl font-mono font-bold ${getTimerStatusColor()} mb-4`}>
+                        {getTimerDisplay()}
+                    </div>
+                    
+                    {/* Barre de progression */}
+                    {selectedPreset > 0 && timerSeconds > 0 && (
+                        <div className="w-full bg-gray-700 rounded-full h-2 mb-4">
+                            <div 
+                                className="bg-blue-500 h-2 rounded-full transition-all duration-1000 ease-linear"
+                                style={{ width: `${getProgressPercentage()}%` }}
+                            ></div>
+                        </div>
                     )}
-                </button>
+                    
+                    {timerIsFinished && (
+                        <div className="text-green-400 font-semibold text-xl animate-pulse">
+                            ⏰ Temps de repos terminé !
+                        </div>
+                    )}
+                </div>
 
-                <button
-                    onClick={() => setShowCustomInput(!showCustomInput)}
-                    className="p-4 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all hover:scale-105"
-                    title="Temps personnalisé"
-                >
-                    <Settings className="h-6 w-6" />
-                </button>
+                {/* Contrôles du minuteur */}
+                <div className="flex justify-center gap-4 mb-6">
+                    {timerSeconds > 0 && !timerIsFinished && (
+                        <button
+                            onClick={pauseTimer}
+                            className={`px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2 ${
+                                timerIsRunning 
+                                    ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
+                                    : 'bg-green-600 hover:bg-green-700 text-white'
+                            }`}
+                        >
+                            {timerIsRunning ? (
+                                <>
+                                    <Pause className="h-5 w-5" />
+                                    Pause
+                                </>
+                            ) : (
+                                <>
+                                    <Play className="h-5 w-5" />
+                                    Reprendre
+                                </>
+                            )}
+                        </button>
+                    )}
+                    
+                    {(timerSeconds > 0 || timerIsFinished) && (
+                        <button
+                            onClick={resetTimer}
+                            className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2"
+                        >
+                            <RotateCcw className="h-5 w-5" />
+                            Reset
+                        </button>
+                    )}
+                </div>
+
+                {/* Ajustement rapide du temps (mode avancé) */}
+                {isAdvancedMode && !timerIsRunning && timerSeconds > 0 && (
+                    <div className="flex justify-center gap-2 mb-6">
+                        <button
+                            onClick={() => adjustTime(-10)}
+                            className="bg-red-600/20 hover:bg-red-600/30 text-red-400 px-3 py-2 rounded-lg transition-all flex items-center gap-1"
+                        >
+                            <Minus className="h-4 w-4" />
+                            10s
+                        </button>
+                        <button
+                            onClick={() => adjustTime(-30)}
+                            className="bg-red-600/20 hover:bg-red-600/30 text-red-400 px-3 py-2 rounded-lg transition-all flex items-center gap-1"
+                        >
+                            <Minus className="h-4 w-4" />
+                            30s
+                        </button>
+                        <button
+                            onClick={() => adjustTime(30)}
+                            className="bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-2 rounded-lg transition-all flex items-center gap-1"
+                        >
+                            <Plus className="h-4 w-4" />
+                            30s
+                        </button>
+                        <button
+                            onClick={() => adjustTime(60)}
+                            className="bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-2 rounded-lg transition-all flex items-center gap-1"
+                        >
+                            <Plus className="h-4 w-4" />
+                            1min
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Presets de temps */}
-            <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white text-center">Temps prédéfinis</h3>
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-                    {timePresets.map((preset) => (
-                        <button
-                            key={preset.value}
-                            onClick={() => handlePresetClick(preset)}
-                            className={`p-4 rounded-xl transition-all hover:scale-105 ${
-                                selectedPreset === preset.value
-                                    ? `${preset.color} text-white shadow-lg`
-                                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                            }`}
-                        >
-                            <div className="text-2xl mb-1">{preset.icon}</div>
-                            <div className="text-sm font-medium">{preset.label}</div>
-                        </button>
-                    ))}
-                </div>
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-yellow-400" />
+                    Temps prédéfinis
+                </h3>
+                
+                {Object.entries(groupedPresets).map(([category, presets]) => (
+                    <div key={category} className="mb-4">
+                        <h4 className="text-sm font-medium text-gray-400 mb-2">{category}</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                            {presets.map(preset => (
+                                <button
+                                    key={preset.value}
+                                    onClick={() => {
+                                        setSelectedPreset(preset.value);
+                                        startTimer(preset.value);
+                                    }}
+                                    disabled={timerIsRunning}
+                                    className={`p-3 rounded-lg font-medium transition-all ${
+                                        selectedPreset === preset.value && timerSeconds > 0
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                >
+                                    {preset.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ))}
             </div>
 
-            {/* Input temps personnalisé */}
-            {showCustomInput && (
-                <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-6 space-y-4">
-                    <h4 className="text-lg font-semibold text-white">Temps personnalisé</h4>
-                    <div className="flex gap-3">
-                        <input
-                            type="number"
-                            value={customTime}
-                            onChange={(e) => setCustomTime(e.target.value)}
-                            placeholder="Secondes (1-3600)"
-                            min="1"
-                            max="3600"
-                            className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+            {/* Minuteur personnalisé */}
+            {isAdvancedMode && (
+                <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                    <h3 className="text-lg font-semibold text-white mb-4">Temps personnalisé</h3>
+                    
+                    <div className="flex items-center justify-center gap-4 mb-4">
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                min="0"
+                                max="59"
+                                value={customMinutes}
+                                onChange={(e) => setCustomMinutes(parseInt(e.target.value) || 0)}
+                                className="bg-gray-700 text-white text-center rounded-lg px-3 py-2 w-16"
+                                disabled={timerIsRunning}
+                            />
+                            <span className="text-gray-400">min</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                min="0"
+                                max="59"
+                                value={customSeconds}
+                                onChange={(e) => setCustomSeconds(parseInt(e.target.value) || 0)}
+                                className="bg-gray-700 text-white text-center rounded-lg px-3 py-2 w-16"
+                                disabled={timerIsRunning}
+                            />
+                            <span className="text-gray-400">sec</span>
+                        </div>
+                        
                         <button
-                            onClick={handleCustomTimeSubmit}
-                            disabled={!customTime || parseInt(customTime) <= 0}
-                            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={handleCustomTimerStart}
+                            disabled={timerIsRunning || (customMinutes === 0 && customSeconds === 0)}
+                            className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-all flex items-center gap-2"
                         >
-                            Définir
+                            <Play className="h-4 w-4" />
+                            Démarrer
                         </button>
                     </div>
-                    <p className="text-xs text-gray-400">
-                        Entrez une durée entre 1 seconde et 1 heure (3600 secondes)
-                    </p>
+                    
+                    <div className="text-center text-gray-400 text-sm">
+                        Temps total: {formatTime((customMinutes * 60) + customSeconds)}
+                    </div>
                 </div>
             )}
 
-            {/* Historique des minuteurs (mode avancé) */}
-            {isAdvancedMode && timerHistory.length > 0 && (
-                <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-6 space-y-4">
-                    <h4 className="text-lg font-semibold text-white flex items-center gap-2">
-                        <Target className="h-5 w-5" />
-                        Historique des repos
-                    </h4>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        {timerHistory.slice(0, 5).map((timer) => (
-                            <div
-                                key={timer.id}
-                                className="bg-gray-700/50 rounded-lg p-3 text-center"
+            {/* Conseils de repos */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4">💡 Conseils de temps de repos</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div className="bg-gray-700/50 rounded-lg p-3">
+                        <h4 className="font-medium text-green-400 mb-2">Force (1-5 reps)</h4>
+                        <p className="text-gray-300">3-5 minutes entre les séries pour une récupération complète</p>
+                    </div>
+                    <div className="bg-gray-700/50 rounded-lg p-3">
+                        <h4 className="font-medium text-blue-400 mb-2">Hypertrophie (6-12 reps)</h4>
+                        <p className="text-gray-300">1-3 minutes pour maintenir l'intensité musculaire</p>
+                    </div>
+                    <div className="bg-gray-700/50 rounded-lg p-3">
+                        <h4 className="font-medium text-yellow-400 mb-2">Endurance (12+ reps)</h4>
+                        <p className="text-gray-300">30s-1min pour maintenir le rythme cardiaque</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Historique des temps de repos (mode avancé) */}
+            {isAdvancedMode && (
+                <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                    <h3 className="text-lg font-semibold text-white mb-4">Derniers temps utilisés</h3>
+                    <div className="flex flex-wrap gap-2">
+                        {[90, 120, 60, 180, 45].map(time => (
+                            <button
+                                key={time}
+                                onClick={() => startTimer(time)}
+                                disabled={timerIsRunning}
+                                className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-300 px-3 py-2 rounded-lg text-sm transition-all"
                             >
-                                <div className="text-sm font-medium text-white">
-                                    {formatTime(timer.duration)}
-                                </div>
-                                <div className="text-xs text-gray-400">
-                                    {new Date(timer.completedAt).toLocaleTimeString('fr-FR', {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                    })}
-                                </div>
-                            </div>
+                                {formatTime(time)}
+                            </button>
                         ))}
                     </div>
                 </div>
             )}
-
-            {/* Conseils et informations */}
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-6 space-y-3">
-                <h4 className="text-lg font-semibold text-blue-400">💡 Conseils pour les temps de repos</h4>
-                <div className="text-sm text-gray-300 space-y-2">
-                    <p><strong>Force/Puissance:</strong> 3-5 minutes entre les séries</p>
-                    <p><strong>Hypertrophie:</strong> 1-3 minutes entre les séries</p>
-                    <p><strong>Endurance:</strong> 30 secondes à 1 minute entre les séries</p>
-                    <p><strong>Exercices isolés:</strong> 1-2 minutes suffisent généralement</p>
-                </div>
-            </div>
         </div>
     );
 };

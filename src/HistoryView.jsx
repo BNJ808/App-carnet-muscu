@@ -1,13 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     Sparkles, LineChart as LineChartIcon, NotebookText, RotateCcw, Search,
-    Calendar, TrendingUp, Award, Activity, Filter, Download, BarChart3,
-    Target, Zap, Eye, EyeOff
+    Filter, Calendar, Award, TrendingUp, Activity, Eye, EyeOff, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 /**
- * Composant HistoryView amélioré pour l'affichage de l'historique avec analyses et graphiques.
+ * Composant HistoryView pour afficher l'historique des entraînements.
  */
 const HistoryView = ({
     historicalData,
@@ -22,566 +20,452 @@ const HistoryView = ({
     sortBy,
     setSortBy
 }) => {
-    const [selectedTimeRange, setSelectedTimeRange] = useState('30days');
-    const [selectedExerciseForGraph, setSelectedExerciseForGraph] = useState(null);
-    const [showDeletedOnly, setShowDeletedOnly] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState('all');
-    const [viewMode, setViewMode] = useState('exercises'); // 'exercises', 'sessions', 'analytics'
+    const [showDeletedExercises, setShowDeletedExercises] = useState(false);
+    const [selectedTimeRange, setSelectedTimeRange] = useState('all');
+    const [expandedSessions, setExpandedSessions] = useState(new Set());
+    const [selectedExerciseFilter, setSelectedExerciseFilter] = useState('all');
 
-    // Plages de temps disponibles
-    const timeRanges = [
-        { label: '7 jours', value: '7days' },
-        { label: '30 jours', value: '30days' },
-        { label: '3 mois', value: '90days' },
-        { label: '6 mois', value: '180days' },
-        { label: 'Tout', value: 'all' }
+    // Options de tri
+    const sortOptions = [
+        { value: 'date-desc', label: 'Plus récent' },
+        { value: 'date-asc', label: 'Plus ancien' },
+        { value: 'exercise-name', label: 'Nom d\'exercice' },
+        { value: 'volume', label: 'Volume total' }
     ];
 
-    // Traitement des données historiques pour extraire les exercices uniques
-    const processedExercises = useMemo(() => {
-        const exerciseMap = {};
+    // Options de plage temporelle
+    const timeRangeOptions = [
+        { value: 'all', label: 'Tout l\'historique' },
+        { value: 'week', label: '7 derniers jours' },
+        { value: 'month', label: '30 derniers jours' },
+        { value: 'quarter', label: '3 derniers mois' }
+    ];
+
+    // Filtrage des données par plage temporelle
+    const getFilteredDataByTime = useMemo(() => {
+        if (selectedTimeRange === 'all') return historicalData;
+        
         const now = new Date();
-        const cutoffDate = selectedTimeRange === 'all' ? new Date(0) : new Date(now - parseInt(selectedTimeRange) * 24 * 60 * 60 * 1000);
+        const cutoffDate = new Date();
+        
+        switch (selectedTimeRange) {
+            case 'week':
+                cutoffDate.setDate(now.getDate() - 7);
+                break;
+            case 'month':
+                cutoffDate.setDate(now.getDate() - 30);
+                break;
+            case 'quarter':
+                cutoffDate.setMonth(now.getMonth() - 3);
+                break;
+            default:
+                return historicalData;
+        }
+        
+        return historicalData.filter(session => 
+            session.timestamp && session.timestamp >= cutoffDate
+        );
+    }, [historicalData, selectedTimeRange]);
 
-        historicalData.forEach(session => {
-            const sessionDate = session.timestamp;
-            if (sessionDate < cutoffDate) return;
-
+    // Extraction de tous les exercices uniques
+    const getAllUniqueExercises = useMemo(() => {
+        const exercises = new Set();
+        
+        getFilteredDataByTime.forEach(session => {
             const workoutData = session.workoutData;
             if (!workoutData?.days) return;
-
-            Object.entries(workoutData.days).forEach(([dayName, dayData]) => {
-                Object.entries(dayData.categories || {}).forEach(([categoryName, exercises]) => {
-                    if (!Array.isArray(exercises)) return;
-
-                    exercises.forEach(exercise => {
-                        if (!exercise.id) return;
-
-                        if (!exerciseMap[exercise.id]) {
-                            exerciseMap[exercise.id] = {
-                                id: exercise.id,
-                                name: exercise.name,
-                                category: categoryName,
-                                dayName: dayName,
-                                allSeries: [],
-                                sessions: [],
-                                isDeleted: exercise.isDeleted,
-                                firstSeen: sessionDate,
-                                lastSeen: sessionDate,
-                                totalVolume: 0,
-                                maxWeight: 0,
-                                maxReps: 0
-                            };
-                        }
-
-                        const exerciseData = exerciseMap[exercise.id];
-                        exerciseData.isDeleted = exercise.isDeleted; // Dernière valeur connue
-                        exerciseData.lastSeen = sessionDate > exerciseData.lastSeen ? sessionDate : exerciseData.lastSeen;
-
-                        // Ajouter la session
-                        exerciseData.sessions.push({
-                            date: sessionDate,
-                            series: exercise.series || [],
-                            notes: exercise.notes || ''
-                        });
-
-                        // Traiter les séries
-                        if (Array.isArray(exercise.series)) {
-                            exercise.series.forEach(serie => {
-                                const weight = parseFloat(serie.weight) || 0;
-                                const reps = parseInt(serie.reps) || 0;
-                                const volume = weight * reps;
-
-                                if (weight > 0 && reps > 0) {
-                                    exerciseData.allSeries.push({
-                                        date: sessionDate,
-                                        weight: weight,
-                                        reps: reps,
-                                        volume: volume
-                                    });
-
-                                    exerciseData.totalVolume += volume;
-                                    exerciseData.maxWeight = Math.max(exerciseData.maxWeight, weight);
-                                    exerciseData.maxReps = Math.max(exerciseData.maxReps, reps);
-                                }
-                            });
+            
+            Object.values(workoutData.days).forEach(day => {
+                if (!day.categories) return;
+                
+                Object.values(day.categories).forEach(categoryExercises => {
+                    if (!Array.isArray(categoryExercises)) return;
+                    
+                    categoryExercises.forEach(exercise => {
+                        if (!exercise.isDeleted || showDeletedExercises) {
+                            exercises.add(exercise.name);
                         }
                     });
                 });
             });
         });
+        
+        return Array.from(exercises).sort();
+    }, [getFilteredDataByTime, showDeletedExercises]);
 
-        return Object.values(exerciseMap);
-    }, [historicalData, selectedTimeRange]);
-
-    // Filtrage des exercices
-    const filteredExercises = useMemo(() => {
-        return processedExercises.filter(exercise => {
-            // Filtre par statut supprimé
-            if (showDeletedOnly && !exercise.isDeleted) return false;
-            if (!showDeletedOnly && exercise.isDeleted) return false;
-
-            // Filtre par catégorie
-            if (selectedCategory !== 'all' && exercise.category !== selectedCategory) return false;
-
-            // Filtre par recherche
-            if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-
-            return true;
-        }).sort((a, b) => {
-            switch (sortBy) {
-                case 'name':
-                    return a.name.localeCompare(b.name);
-                case 'recent':
-                    return new Date(b.lastSeen) - new Date(a.lastSeen);
-                case 'volume':
-                    return b.totalVolume - a.totalVolume;
-                case 'sessions':
-                    return b.sessions.length - a.sessions.length;
-                default:
-                    return 0;
-            }
+    // Données traitées et filtrées
+    const processedData = useMemo(() => {
+        let data = [];
+        
+        getFilteredDataByTime.forEach(session => {
+            const workoutData = session.workoutData;
+            if (!workoutData?.days) return;
+            
+            Object.values(workoutData.days).forEach(day => {
+                if (!day.categories) return;
+                
+                Object.values(day.categories).forEach(exercises => {
+                    if (!Array.isArray(exercises)) return;
+                    
+                    exercises.forEach(exercise => {
+                        if (exercise.isDeleted && !showDeletedExercises) return;
+                        
+                        // Filtrage par terme de recherche
+                        if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+                            return;
+                        }
+                        
+                        // Filtrage par exercice sélectionné
+                        if (selectedExerciseFilter !== 'all' && exercise.name !== selectedExerciseFilter) {
+                            return;
+                        }
+                        
+                        data.push({
+                            ...exercise,
+                            sessionId: session.id,
+                            timestamp: session.timestamp,
+                            isDeleted: exercise.isDeleted || false
+                        });
+                    });
+                });
+            });
         });
-    }, [processedExercises, showDeletedOnly, selectedCategory, searchTerm, sortBy]);
+        
+        // Tri des données
+        switch (sortBy) {
+            case 'date-desc':
+                data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                break;
+            case 'date-asc':
+                data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                break;
+            case 'exercise-name':
+                data.sort((a, b) => a.name.localeCompare(b.name));
+                break;
+            case 'volume':
+                data.sort((a, b) => {
+                    const volumeA = calculateExerciseVolume(a);
+                    const volumeB = calculateExerciseVolume(b);
+                    return volumeB - volumeA;
+                });
+                break;
+            default:
+                break;
+        }
+        
+        return data;
+    }, [getFilteredDataByTime, searchTerm, sortBy, showDeletedExercises, selectedExerciseFilter]);
 
-    // Extraction des catégories uniques
-    const availableCategories = useMemo(() => {
-        const categories = new Set();
-        processedExercises.forEach(exercise => categories.add(exercise.category));
-        return ['all', ...Array.from(categories)].filter(Boolean);
-    }, [processedExercises]);
+    // Calcul du volume total d'un exercice
+    const calculateExerciseVolume = (exercise) => {
+        if (!exercise.series || !Array.isArray(exercise.series)) return 0;
+        
+        return exercise.series.reduce((total, serie) => {
+            const weight = parseFloat(serie.weight) || 0;
+            const reps = parseInt(serie.reps) || 0;
+            return total + (weight * reps);
+        }, 0);
+    };
 
-    // Données pour les graphiques
-    const chartData = useMemo(() => {
-        if (!selectedExerciseForGraph) return [];
+    // Groupement des données par session
+    const groupedBySessions = useMemo(() => {
+        const sessions = new Map();
+        
+        processedData.forEach(exercise => {
+            if (!sessions.has(exercise.sessionId)) {
+                sessions.set(exercise.sessionId, {
+                    id: exercise.sessionId,
+                    timestamp: exercise.timestamp,
+                    exercises: []
+                });
+            }
+            sessions.get(exercise.sessionId).exercises.push(exercise);
+        });
+        
+        return Array.from(sessions.values()).sort((a, b) => 
+            new Date(b.timestamp) - new Date(a.timestamp)
+        );
+    }, [processedData]);
 
-        const exercise = processedExercises.find(ex => ex.id === selectedExerciseForGraph);
-        if (!exercise) return [];
-
-        return exercise.allSeries.map((serie, index) => ({
-            session: index + 1,
-            date: serie.date.toLocaleDateString('fr-FR'),
-            weight: serie.weight,
-            reps: serie.reps,
-            volume: serie.volume
-        }));
-    }, [selectedExerciseForGraph, processedExercises]);
-
-    // Statistiques globales
-    const globalStats = useMemo(() => {
-        const activeExercises = processedExercises.filter(ex => !ex.isDeleted);
-        const totalSessions = historicalData.filter(session => {
-            const now = new Date();
-            const cutoffDate = selectedTimeRange === 'all' ? new Date(0) : new Date(now - parseInt(selectedTimeRange) * 24 * 60 * 60 * 1000);
-            return session.timestamp >= cutoffDate;
-        }).length;
-
+    // Statistiques de l'historique
+    const historyStats = useMemo(() => {
+        const totalSessions = getFilteredDataByTime.length;
+        const totalExercises = processedData.length;
+        const totalVolume = processedData.reduce((sum, ex) => sum + calculateExerciseVolume(ex), 0);
+        const uniqueExercises = new Set(processedData.map(ex => ex.name)).size;
+        
         return {
-            totalExercises: activeExercises.length,
-            deletedExercises: processedExercises.filter(ex => ex.isDeleted).length,
-            totalSessions: totalSessions,
-            totalVolume: Math.round(activeExercises.reduce((sum, ex) => sum + ex.totalVolume, 0)),
-            avgSessionsPerExercise: activeExercises.length > 0 ? Math.round((activeExercises.reduce((sum, ex) => sum + ex.sessions.length, 0) / activeExercises.length) * 10) / 10 : 0
+            totalSessions,
+            totalExercises,
+            totalVolume: Math.round(totalVolume),
+            uniqueExercises
         };
-    }, [processedExercises, historicalData, selectedTimeRange]);
+    }, [getFilteredDataByTime, processedData]);
 
-    // Composant pour une carte d'exercice
-    const ExerciseCard = ({ exercise }) => {
-        const trend = calculateTrend(exercise);
-        const daysSinceLastWorkout = Math.floor((new Date() - exercise.lastSeen) / (1000 * 60 * 60 * 24));
+    const toggleSessionExpanded = (sessionId) => {
+        const newExpanded = new Set(expandedSessions);
+        if (newExpanded.has(sessionId)) {
+            newExpanded.delete(sessionId);
+        } else {
+            newExpanded.add(sessionId);
+        }
+        setExpandedSessions(newExpanded);
+    };
 
+    const renderExerciseCard = (exercise) => {
+        const personalBest = personalBests[exercise.name];
+        const volume = calculateExerciseVolume(exercise);
+        
         return (
-            <div className={`bg-gray-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all duration-300 hover:bg-gray-800/70 hover:scale-[1.02] group ${
-                exercise.isDeleted ? 'border-red-500/30 bg-red-900/20' : 'border-gray-700 hover:border-gray-600'
-            }`}>
-                {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1 min-w-0">
-                        <h3 className={`text-lg font-semibold text-white truncate ${exercise.isDeleted ? 'line-through opacity-60' : ''}`}>
+            <div key={`${exercise.sessionId}-${exercise.id}`} className={`bg-gray-700/50 rounded-lg p-4 border border-gray-600/50 ${exercise.isDeleted ? 'opacity-60 border-red-500/30' : ''}`}>
+                <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                        <h4 className={`font-medium mb-1 ${exercise.isDeleted ? 'text-red-400 line-through' : 'text-white'}`}>
                             {exercise.name}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-sm text-blue-400 bg-blue-500/20 px-2 py-1 rounded-full">
-                                {exercise.category}
-                            </span>
-                            <span className="text-sm text-gray-400">
-                                {exercise.dayName}
-                            </span>
+                            {exercise.isDeleted && <span className="ml-2 text-xs">(Supprimé)</span>}
+                        </h4>
+                        
+                        {personalBest && (
+                            <div className="text-xs text-yellow-400 mb-1">
+                                🏆 Record: {personalBest.maxWeight}kg × {personalBest.maxWeightReps} reps
+                            </div>
+                        )}
+                        
+                        <div className="text-sm text-gray-300 mb-2">
+                            {getSeriesDisplay(exercise.series)}
+                        </div>
+                        
+                        {volume > 0 && (
+                            <div className="text-xs text-blue-400">
+                                Volume: {volume}kg
+                            </div>
+                        )}
+                        
+                        {exercise.notes && (
+                            <div className="text-xs text-gray-400 mt-1">
+                                📝 {exercise.notes}
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-center gap-1 ml-3">
+                        {isAdvancedMode && (
+                            <>
+                                <button
+                                    onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise.name)}
+                                    className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10 rounded transition-colors"
+                                    title="Analyser avec IA"
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                </button>
+                                
+                                {exercise.isDeleted && (
+                                    <button
+                                        onClick={() => handleReactivateExercise && handleReactivateExercise(exercise)}
+                                        className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 rounded transition-colors"
+                                        title="Réactiver l'exercice"
+                                    >
+                                        <RotateCcw className="h-4 w-4" />
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="text-xs text-gray-400">
+                    📅 {formatDate(exercise.timestamp)}
+                </div>
+            </div>
+        );
+    };
+
+    const renderSessionCard = (session) => {
+        const isExpanded = expandedSessions.has(session.id);
+        const totalVolume = session.exercises.reduce((sum, ex) => sum + calculateExerciseVolume(ex), 0);
+        
+        return (
+            <div key={session.id} className="bg-gray-800 rounded-lg border border-gray-700">
+                <button
+                    onClick={() => toggleSessionExpanded(session.id)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <Calendar className="h-5 w-5 text-blue-400" />
+                        <div className="text-left">
+                            <h3 className="font-medium text-white">{formatDate(session.timestamp)}</h3>
+                            <p className="text-sm text-gray-400">
+                                {session.exercises.length} exercice{session.exercises.length !== 1 ? 's' : ''} • 
+                                {Math.round(totalVolume)}kg de volume
+                            </p>
                         </div>
                     </div>
-
-                    {exercise.isDeleted && (
-                        <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                            Supprimé
-                        </span>
-                    )}
-                </div>
-
-                {/* Statistiques */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <div className="text-sm text-gray-400">Sessions</div>
-                        <div className="text-xl font-bold text-white">{exercise.sessions.length}</div>
-                    </div>
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <div className="text-sm text-gray-400">Volume total</div>
-                        <div className="text-xl font-bold text-white">{Math.round(exercise.totalVolume)}kg</div>
-                    </div>
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <div className="text-sm text-gray-400">Poids max</div>
-                        <div className="text-xl font-bold text-white">{exercise.maxWeight}kg</div>
-                    </div>
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <div className="text-sm text-gray-400">Reps max</div>
-                        <div className="text-xl font-bold text-white">{exercise.maxReps}</div>
-                    </div>
-                </div>
-
-                {/* Progression */}
-                {trend !== 0 && (
-                    <div className={`flex items-center gap-2 mb-4 p-2 rounded-lg ${
-                        trend > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                    }`}>
-                        <TrendingUp className={`h-4 w-4 ${trend < 0 ? 'rotate-180' : ''}`} />
-                        <span className="text-sm font-medium">
-                            {trend > 0 ? 'Progression' : 'Régression'} : {Math.abs(trend)}%
-                        </span>
+                    {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+                </button>
+                
+                {isExpanded && (
+                    <div className="p-4 pt-0 space-y-3">
+                        {session.exercises.map(exercise => renderExerciseCard(exercise))}
                     </div>
                 )}
+            </div>
+        );
+    };
 
-                {/* Dernière activité */}
-               <div className="text-sm text-gray-400 mb-4">
-                   Dernière fois: {daysSinceLastWorkout === 0 ? "Aujourd'hui" : `il y a ${daysSinceLastWorkout} jour(s)`}
-               </div>
+    return (
+        <div className="space-y-6">
+            {/* Statistiques de l'historique */}
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                    <Activity className="h-6 w-6 text-blue-400" />
+                    Statistiques de l'historique
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-400">{historyStats.totalSessions}</div>
+                        <div className="text-sm text-gray-400">Sessions</div>
+                    </div>
+                    <div className="text-center">
+                        <div className="text-2xl font-bold text-green-400">{historyStats.totalExercises}</div>
+                        <div className="text-sm text-gray-400">Exercices</div>
+                    </div>
+                    <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-400">{historyStats.uniqueExercises}</div>
+                        <div className="text-sm text-gray-400">Exercices uniques</div>
+                    </div>
+                    <div className="text-center">
+                        <div className="text-2xl font-bold text-yellow-400">{historyStats.totalVolume}</div>
+                        <div className="text-sm text-gray-400">Volume total (kg)</div>
+                    </div>
+                </div>
+            </div>
 
-               {/* Actions */}
-               <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                   {exercise.isDeleted ? (
-                       <button
-                           onClick={() => handleReactivateExercise(exercise.id)}
-                           className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all"
-                       >
-                           <RotateCcw className="h-4 w-4" />
-                           Réactiver
-                       </button>
-                   ) : (
-                       <>
-                           <button
-                               onClick={() => setSelectedExerciseForGraph(exercise.id)}
-                               className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all"
-                           >
-                               <LineChartIcon className="h-4 w-4" />
-                               Graphique
-                           </button>
-                           {isAdvancedMode && (
-                               <button
-                                   onClick={() => analyzeProgressionWithAI(exercise)}
-                                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all"
-                               >
-                                   <Sparkles className="h-4 w-4" />
-                                   Analyser
-                               </button>
-                           )}
-                       </>
-                   )}
-               </div>
-           </div>
-       );
-   };
+            {/* Filtres et recherche */}
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <Filter className="h-5 w-5 text-purple-400" />
+                    Filtres et recherche
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Recherche */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un exercice..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-gray-700 text-white rounded-lg pl-10 pr-3 py-2 text-sm placeholder-gray-400"
+                        />
+                    </div>
+                    
+                    {/* Plage temporelle */}
+                    <select
+                        value={selectedTimeRange}
+                        onChange={(e) => setSelectedTimeRange(e.target.value)}
+                        className="bg-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+                    >
+                        {timeRangeOptions.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+                    
+                    {/* Exercice spécifique */}
+                    <select
+                        value={selectedExerciseFilter}
+                        onChange={(e) => setSelectedExerciseFilter(e.target.value)}
+                        className="bg-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+                    >
+                        <option value="all">Tous les exercices</option>
+                        {getAllUniqueExercises.map(exercise => (
+                            <option key={exercise} value={exercise}>{exercise}</option>
+                        ))}
+                    </select>
+                    
+                    {/* Tri */}
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+                    >
+                        {sortOptions.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+                </div>
+                
+                {/* Options d'affichage */}
+                {isAdvancedMode && (
+                    <div className="mt-4 flex items-center gap-4">
+                        <button
+                            onClick={() => setShowDeletedExercises(!showDeletedExercises)}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                                showDeletedExercises 
+                                    ? 'bg-red-600/20 text-red-400' 
+                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            }`}
+                        >
+                            {showDeletedExercises ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                            {showDeletedExercises ? 'Masquer' : 'Afficher'} les exercices supprimés
+                        </button>
+                    </div>
+                )}
+            </div>
 
-   const calculateTrend = (exercise) => {
-       if (exercise.sessions.length < 3) return 0;
-       
-       const recentSessions = exercise.sessions.slice(-3);
-       const oldSessions = exercise.sessions.slice(-6, -3);
-       
-       if (oldSessions.length === 0) return 0;
+            {/* Records personnels */}
+            {Object.keys(personalBests).length > 0 && (
+                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <Award className="h-5 w-5 text-yellow-400" />
+                        Records personnels
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {Object.entries(personalBests).slice(0, 6).map(([exerciseName, best]) => (
+                            <div key={exerciseName} className="bg-gray-700/50 rounded-lg p-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="font-medium text-white text-sm">{exerciseName}</span>
+                                    <div className="text-right">
+                                        <div className="text-yellow-400 font-bold text-sm">
+                                            {best.maxWeight}kg × {best.maxWeightReps}
+                                        </div>
+                                        <div className="text-xs text-gray-400">
+                                            {formatDate(best.lastUpdate)}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
-       const recentAvg = recentSessions.reduce((sum, session) => {
-           const sessionVolume = session.series.reduce((vol, serie) => {
-               return vol + ((parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0));
-           }, 0);
-           return sum + sessionVolume;
-       }, 0) / recentSessions.length;
-
-       const oldAvg = oldSessions.reduce((sum, session) => {
-           const sessionVolume = session.series.reduce((vol, serie) => {
-               return vol + ((parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0));
-           }, 0);
-           return sum + sessionVolume;
-       }, 0) / oldSessions.length;
-
-       if (oldAvg === 0) return 0;
-       return Math.round(((recentAvg - oldAvg) / oldAvg) * 100);
-   };
-
-   return (
-       <div className="space-y-8">
-           {/* Header avec statistiques */}
-           <div className="space-y-6">
-               <div className="flex items-center justify-between">
-                   <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                       <Activity className="h-7 w-7 text-blue-400" />
-                       Historique & Analyses
-                   </h2>
-                   
-                   <div className="flex items-center gap-2">
-                       {['exercises', 'sessions', 'analytics'].map((mode) => (
-                           <button
-                               key={mode}
-                               onClick={() => setViewMode(mode)}
-                               className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                                   viewMode === mode
-                                       ? 'bg-blue-500 text-white'
-                                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                               }`}
-                           >
-                               {mode === 'exercises' && 'Exercices'}
-                               {mode === 'sessions' && 'Sessions'}
-                               {mode === 'analytics' && 'Analytics'}
-                           </button>
-                       ))}
-                   </div>
-               </div>
-
-               {/* Statistiques globales */}
-               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                   <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4">
-                       <div className="flex items-center gap-2 mb-2">
-                           <Target className="h-5 w-5 text-blue-400" />
-                           <span className="text-sm text-gray-400">Exercices actifs</span>
-                       </div>
-                       <div className="text-2xl font-bold text-white">{globalStats.totalExercises}</div>
-                   </div>
-
-                   <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4">
-                       <div className="flex items-center gap-2 mb-2">
-                           <Calendar className="h-5 w-5 text-green-400" />
-                           <span className="text-sm text-gray-400">Sessions</span>
-                       </div>
-                       <div className="text-2xl font-bold text-white">{globalStats.totalSessions}</div>
-                   </div>
-
-                   <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4">
-                       <div className="flex items-center gap-2 mb-2">
-                           <Zap className="h-5 w-5 text-yellow-400" />
-                           <span className="text-sm text-gray-400">Volume total</span>
-                       </div>
-                       <div className="text-2xl font-bold text-white">{globalStats.totalVolume}kg</div>
-                   </div>
-
-                   <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4">
-                       <div className="flex items-center gap-2 mb-2">
-                           <Award className="h-5 w-5 text-purple-400" />
-                           <span className="text-sm text-gray-400">Moy/exercice</span>
-                       </div>
-                       <div className="text-2xl font-bold text-white">{globalStats.avgSessionsPerExercise}</div>
-                   </div>
-
-                   <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4">
-                       <div className="flex items-center gap-2 mb-2">
-                           <Eye className="h-5 w-5 text-red-400" />
-                           <span className="text-sm text-gray-400">Supprimés</span>
-                       </div>
-                       <div className="text-2xl font-bold text-white">{globalStats.deletedExercises}</div>
-                   </div>
-               </div>
-           </div>
-
-           {/* Filtres et recherche */}
-           <div className="space-y-4">
-               <div className="flex flex-wrap gap-3">
-                   {timeRanges.map((range) => (
-                       <button
-                           key={range.value}
-                           onClick={() => setSelectedTimeRange(range.value)}
-                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                               selectedTimeRange === range.value
-                                   ? 'bg-blue-500 text-white'
-                                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                           }`}
-                       >
-                           {range.label}
-                       </button>
-                   ))}
-               </div>
-
-               <div className="flex flex-wrap gap-3">
-                   <div className="relative flex-1 min-w-[200px]">
-                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                       <input
-                           type="text"
-                           placeholder="Rechercher un exercice..."
-                           value={searchTerm}
-                           onChange={(e) => setSearchTerm(e.target.value)}
-                           className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       />
-                   </div>
-
-                   <select
-                       value={selectedCategory}
-                       onChange={(e) => setSelectedCategory(e.target.value)}
-                       className="px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                   >
-                       {availableCategories.map((category) => (
-                           <option key={category} value={category}>
-                               {category === 'all' ? 'Toutes catégories' : category}
-                           </option>
-                       ))}
-                   </select>
-
-                   <select
-                       value={sortBy}
-                       onChange={(e) => setSortBy(e.target.value)}
-                       className="px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                   >
-                       <option value="name">Nom</option>
-                       <option value="recent">Plus récent</option>
-                       <option value="volume">Volume</option>
-                       <option value="sessions">Sessions</option>
-                   </select>
-
-                   <button
-                       onClick={() => setShowDeletedOnly(!showDeletedOnly)}
-                       className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                           showDeletedOnly
-                               ? 'bg-red-500 text-white'
-                               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                       }`}
-                   >
-                       {showDeletedOnly ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                       {showDeletedOnly ? 'Masquer supprimés' : 'Voir supprimés'}
-                   </button>
-               </div>
-           </div>
-
-           {/* Contenu principal selon le mode */}
-           {viewMode === 'exercises' && (
-               <div className="space-y-6">
-                   {filteredExercises.length > 0 ? (
-                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                           {filteredExercises.map((exercise) => (
-                               <ExerciseCard key={exercise.id} exercise={exercise} />
-                           ))}
-                       </div>
-                   ) : (
-                       <div className="text-center py-12">
-                           <Activity className="h-16 w-16 text-gray-400 mx-auto mb-4 opacity-50" />
-                           <p className="text-gray-400 text-lg">Aucun exercice trouvé</p>
-                           <p className="text-gray-500 text-sm mt-2">Modifiez vos filtres ou ajoutez des exercices</p>
-                       </div>
-                   )}
-               </div>
-           )}
-
-           {/* Modale graphique d'exercice */}
-           {selectedExerciseForGraph && (
-               <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto">
-                       <div className="p-6">
-                           <div className="flex items-center justify-between mb-6">
-                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                   <LineChartIcon className="h-5 w-5 text-blue-400" />
-                                   Progression - {processedExercises.find(ex => ex.id === selectedExerciseForGraph)?.name}
-                               </h3>
-                               <button
-                                   onClick={() => setSelectedExerciseForGraph(null)}
-                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                               >
-                                   ✕
-                               </button>
-                           </div>
-
-                           {chartData.length > 0 ? (
-                               <div className="space-y-6">
-                                   <div className="h-80">
-                                       <ResponsiveContainer width="100%" height="100%">
-                                           <LineChart data={chartData}>
-                                               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                               <XAxis 
-                                                   dataKey="session" 
-                                                   stroke="#9CA3AF"
-                                                   label={{ value: 'Session', position: 'insideBottom', offset: -5 }}
-                                               />
-                                               <YAxis stroke="#9CA3AF" />
-                                               <Tooltip 
-                                                   contentStyle={{ 
-                                                       backgroundColor: '#1F2937', 
-                                                       border: '1px solid #374151',
-                                                       borderRadius: '8px',
-                                                       color: '#F3F4F6'
-                                                   }}
-                                               />
-                                               <Legend />
-                                               <Line 
-                                                   type="monotone" 
-                                                   dataKey="weight" 
-                                                   stroke="#3B82F6" 
-                                                   strokeWidth={2}
-                                                   name="Poids (kg)"
-                                                   dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                                               />
-                                               <Line 
-                                                   type="monotone" 
-                                                   dataKey="reps" 
-                                                   stroke="#10B981" 
-                                                   strokeWidth={2}
-                                                   name="Répétitions"
-                                                   dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
-                                               />
-                                               <Line 
-                                                   type="monotone" 
-                                                   dataKey="volume" 
-                                                   stroke="#F59E0B" 
-                                                   strokeWidth={2}
-                                                   name="Volume (kg)"
-                                                   dot={{ fill: '#F59E0B', strokeWidth: 2, r: 4 }}
-                                               />
-                                           </LineChart>
-                                       </ResponsiveContainer>
-                                   </div>
-
-                                   <div className="grid grid-cols-3 gap-4">
-                                       <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 text-center">
-                                           <div className="text-blue-400 text-sm mb-1">Poids moyen</div>
-                                           <div className="text-white text-xl font-bold">
-                                               {Math.round(chartData.reduce((sum, d) => sum + d.weight, 0) / chartData.length * 10) / 10}kg
-                                           </div>
-                                       </div>
-                                       <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 text-center">
-                                           <div className="text-green-400 text-sm mb-1">Reps moyennes</div>
-                                           <div className="text-white text-xl font-bold">
-                                               {Math.round(chartData.reduce((sum, d) => sum + d.reps, 0) / chartData.length * 10) / 10}
-                                           </div>
-                                       </div>
-                                       <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 text-center">
-                                           <div className="text-yellow-400 text-sm mb-1">Volume moyen</div>
-                                           <div className="text-white text-xl font-bold">
-                                               {Math.round(chartData.reduce((sum, d) => sum + d.volume, 0) / chartData.length)}kg
-                                           </div>
-                                       </div>
-                                   </div>
-                               </div>
-                           ) : (
-                               <div className="text-center py-8">
-                                   <p className="text-gray-400">Pas assez de données pour générer un graphique</p>
-                               </div>
-                           )}
-
-                           <div className="mt-6">
-                               <button
-                                   onClick={() => setSelectedExerciseForGraph(null)}
-                                   className="w-full px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                               >
-                                   Fermer
-                               </button>
-                           </div>
-                       </div>
-                   </div>
-               </div>
-           )}
-       </div>
-   );
+            {/* Liste des sessions */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-green-400" />
+                    Historique des séances ({groupedBySessions.length})
+                </h3>
+                
+                {groupedBySessions.length === 0 ? (
+                    <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700">
+                        <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-400 mb-2">Aucune séance trouvée</p>
+                        <p className="text-sm text-gray-500">
+                            {searchTerm || selectedExerciseFilter !== 'all' 
+                                ? 'Essayez de modifier vos filtres de recherche'
+                                : 'Commencez à vous entraîner pour voir votre historique ici'
+                            }
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {groupedBySessions.map(session => renderSessionCard(session))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 };
 
 export default HistoryView;

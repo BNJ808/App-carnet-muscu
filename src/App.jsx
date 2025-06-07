@@ -2,10 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { auth, db } from './firebase';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { doc, setDoc, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
-import {
-    Undo2, Redo2, Settings, Plus, Trash2, Play, Pause, RotateCcw,
-    Dumbbell, Clock, History, Download, Upload, Eye, EyeOff
-} from 'lucide-react';
 
 // Constantes
 const AUTO_SAVE_DELAY = 2000;
@@ -52,23 +48,7 @@ const getSeriesDisplay = (series) => {
     return series.map(s => `${s.weight || '?'}kg × ${s.reps || '?'}`).join(' | ');
 };
 
-// Composant Toast simple
-const Toast = ({ message, type, onClose }) => {
-    const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
-    
-    useEffect(() => {
-        const timer = setTimeout(onClose, 3000);
-        return () => clearTimeout(timer);
-    }, [onClose]);
-
-    return (
-        <div className={`fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-lg shadow-xl ${bgColor} text-white text-lg font-semibold z-50 animate-fade-in-up`}>
-            {message}
-        </div>
-    );
-};
-
-// Hook pour les notifications natives
+// Hook personnalisé pour les notifications natives
 const useNotifications = () => {
     const [permission, setPermission] = useState(Notification?.permission || 'default');
 
@@ -128,9 +108,9 @@ function App() {
     const [undoStack, setUndoStack] = useState([]);
     const [redoStack, setRedoStack] = useState([]);
     
-    // États UI
-    const [isCompactView, setIsCompactView] = useState(false);
-    const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+    // États pour l'analyse IA
+    const [progressionAnalysisContent, setProgressionAnalysisContent] = useState('');
+    const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
     
     // Refs
     const timerRef = useRef(null);
@@ -179,10 +159,12 @@ function App() {
             return;
         }
         
+        // Annuler la sauvegarde précédente si en cours
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
         }
         
+        // Sauvegarder après un délai pour éviter les sauvegardes multiples
         saveTimeoutRef.current = setTimeout(async () => {
             try {
                 const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
@@ -204,7 +186,11 @@ function App() {
                 console.error("Erreur sauvegarde:", error);
                 setToast({ 
                     message: "Erreur de sauvegarde", 
-                    type: 'error'
+                    type: 'error',
+                    action: { 
+                        label: 'Réessayer', 
+                        onClick: () => saveWorkoutsOptimized(workoutsData, successMessage) 
+                    }
                 });
             }
         }, AUTO_SAVE_DELAY);
@@ -288,6 +274,12 @@ function App() {
                                         lastUpdate: session.timestamp
                                     };
                                 }
+                                
+                                if (volume > (bests[exerciseName]?.maxVolume || 0)) {
+                                    bests[exerciseName].maxVolume = volume;
+                                }
+                                
+                                bests[exerciseName].totalVolume = (bests[exerciseName]?.totalVolume || 0) + volume;
                             }
                         });
                     });
@@ -323,7 +315,7 @@ function App() {
     // Fonctions d'undo/redo
     const handleUndo = useCallback(() => {
         if (undoStack.length === 0) {
-            setToast({ message: "Rien à annuler", type: 'error' });
+            setToast({ message: "Rien à annuler", type: 'warning' });
             return;
         }
         
@@ -336,7 +328,7 @@ function App() {
 
     const handleRedo = useCallback(() => {
         if (redoStack.length === 0) {
-            setToast({ message: "Rien à rétablir", type: 'error' });
+            setToast({ message: "Rien à rétablir", type: 'warning' });
             return;
         }
         
@@ -364,6 +356,7 @@ function App() {
         const setsNum = parseInt(newSets) || 1;
         const updatedWorkouts = { ...workouts };
         
+        // S'assurer que la structure existe
         if (!updatedWorkouts.days[selectedDayForAdd]) {
             updatedWorkouts.days[selectedDayForAdd] = { categories: {} };
         }
@@ -389,22 +382,11 @@ function App() {
         
         applyChanges(updatedWorkouts, `Exercice "${newExerciseName}" ajouté`);
         
+        // Reset du formulaire
         setNewExerciseName('');
         setNewSets('3');
         setIsAddingExercise(false);
     }, [newExerciseName, selectedDayForAdd, selectedCategoryForAdd, newSets, workouts, applyChanges]);
-
-    // Fonction pour supprimer un exercice
-    const handleDeleteExercise = useCallback((day, category, exerciseId) => {
-        const updatedWorkouts = { ...workouts };
-        const exerciseIndex = updatedWorkouts.days[day].categories[category].findIndex(ex => ex.id === exerciseId);
-        
-        if (exerciseIndex !== -1) {
-            const exerciseName = updatedWorkouts.days[day].categories[category][exerciseIndex].name;
-            updatedWorkouts.days[day].categories[category][exerciseIndex].isDeleted = true;
-            applyChanges(updatedWorkouts, `Exercice "${exerciseName}" supprimé`);
-        }
-    }, [workouts, applyChanges]);
 
     // Fonctions d'export/import
     const exportData = useCallback(() => {
@@ -466,6 +448,7 @@ function App() {
         };
         reader.readAsText(file);
         
+        // Reset input
         event.target.value = '';
     }, [sanitizeWorkoutData, saveWorkoutsOptimized]);
 
@@ -543,7 +526,8 @@ function App() {
                         setLoading(false);
                         setToast({ 
                             message: "Erreur d'authentification", 
-                            type: 'error'
+                            type: 'error',
+                            action: { label: 'Réessayer', onClick: () => window.location.reload() }
                         });
                     }
                 });
@@ -597,6 +581,7 @@ function App() {
             setTimerIsRunning(false);
             setTimerIsFinished(true);
             
+            // Notifications
             showNotification('Temps de repos terminé !', {
                 body: 'Prêt pour la prochaine série ?',
                 tag: 'timer-finished'
@@ -677,78 +662,34 @@ function App() {
     return (
         <div className="min-h-screen bg-gray-900 text-white">
             {/* Interface principale */}
-            <div className="container mx-auto px-4 py-8 pb-20">
-                {/* Header */}
-                <header className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-3">
-                        <Dumbbell className="h-8 w-8 text-blue-400" />
-                        <div>
-                            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                                Carnet Muscu Pro
-                            </h1>
-                            {lastSaveTime && (
-                                <p className="text-xs text-gray-400">
-                                    Dernière sync: {lastSaveTime.toLocaleTimeString()}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setIsAdvancedMode(!isAdvancedMode)}
-                            className={`p-2 rounded-lg transition-all ${isAdvancedMode ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                            title="Mode avancé"
-                        >
-                            <Settings className="h-5 w-5" />
-                        </button>
-
-                        <button
-                            onClick={() => setIsCompactView(!isCompactView)}
-                            className={`p-2 rounded-lg transition-all ${isCompactView ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                            title="Vue compacte"
-                        >
-                            {isCompactView ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                    </div>
-                </header>
+            <div className="container mx-auto px-4 py-8">
+                <h1 className="text-3xl font-bold text-center mb-8">Carnet Muscu Pro</h1>
                 
                 {/* Navigation */}
                 <div className="flex justify-center mb-8">
                     <div className="bg-gray-800 rounded-lg p-2">
                         <button
                             onClick={() => setCurrentView('workout')}
-                            className={`px-4 py-2 rounded-md mr-2 transition-all ${
+                            className={`px-4 py-2 rounded-md mr-2 ${
                                 currentView === 'workout' ? 'bg-blue-600' : 'hover:bg-gray-700'
                             }`}
                         >
-                            <Dumbbell className="h-5 w-5 inline mr-2" />
                             Séances
                         </button>
                         <button
-                            onClick={() => setCurrentView('timer')}
-                            className={`px-4 py-2 rounded-md mr-2 transition-all ${
-                                currentView === 'timer' ? 'bg-blue-600' : 'hover:bg-gray-700'
-                            }`}
-                        >
-                            <Clock className="h-5 w-5 inline mr-2" />
-                            Minuteur
-                        </button>
-                        <button
                             onClick={() => setCurrentView('stats')}
-                            className={`px-4 py-2 rounded-md mr-2 transition-all ${
+                            className={`px-4 py-2 rounded-md mr-2 ${
                                 currentView === 'stats' ? 'bg-blue-600' : 'hover:bg-gray-700'
                             }`}
                         >
-                            📊 Stats
+                            Statistiques
                         </button>
                         <button
                             onClick={() => setCurrentView('history')}
-                            className={`px-4 py-2 rounded-md transition-all ${
+                            className={`px-4 py-2 rounded-md ${
                                 currentView === 'history' ? 'bg-blue-600' : 'hover:bg-gray-700'
                             }`}
                         >
-                            <History className="h-5 w-5 inline mr-2" />
                             Historique
                         </button>
                     </div>
@@ -766,12 +707,12 @@ function App() {
                                     placeholder="Nom de l'exercice"
                                     value={newExerciseName}
                                     onChange={(e) => setNewExerciseName(e.target.value)}
-                                    className="bg-gray-700 rounded-md px-3 py-2 text-white placeholder-gray-400"
+                                    className="bg-gray-700 rounded-md px-3 py-2"
                                 />
                                 <select
                                     value={selectedDayForAdd}
                                     onChange={(e) => setSelectedDayForAdd(e.target.value)}
-                                    className="bg-gray-700 rounded-md px-3 py-2 text-white"
+                                    className="bg-gray-700 rounded-md px-3 py-2"
                                 >
                                     {DAYS.map(day => (
                                         <option key={day} value={day}>{day}</option>
@@ -780,7 +721,7 @@ function App() {
                                 <select
                                     value={selectedCategoryForAdd}
                                     onChange={(e) => setSelectedCategoryForAdd(e.target.value)}
-                                    className="bg-gray-700 rounded-md px-3 py-2 text-white"
+                                    className="bg-gray-700 rounded-md px-3 py-2"
                                 >
                                     {CATEGORIES.map(category => (
                                         <option key={category} value={category}>{category}</option>
@@ -793,15 +734,14 @@ function App() {
                                     onChange={(e) => setNewSets(e.target.value)}
                                     min="1"
                                     max="10"
-                                    className="bg-gray-700 rounded-md px-3 py-2 text-white placeholder-gray-400"
+                                    className="bg-gray-700 rounded-md px-3 py-2"
                                 />
                             </div>
                             <button
                                 onClick={handleAddExercise}
                                 disabled={isAddingExercise || !newExerciseName.trim()}
-                                className="mt-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-6 py-2 rounded-md transition-all flex items-center gap-2"
+                                className="mt-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-6 py-2 rounded-md"
                             >
-                                <Plus className="h-4 w-4" />
                                 {isAddingExercise ? 'Ajout...' : 'Ajouter l\'exercice'}
                             </button>
                         </div>
@@ -810,7 +750,7 @@ function App() {
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {DAYS.map(day => (
                                 <div key={day} className="bg-gray-800 rounded-lg p-6">
-                                    <h3 className="text-lg font-semibold mb-4 text-blue-400">{day}</h3>
+                                    <h3 className="text-lg font-semibold mb-4">{day}</h3>
                                     {CATEGORIES.map(category => {
                                         const exercises = workouts?.days?.[day]?.categories?.[category] || [];
                                         const activeExercises = exercises.filter(ex => !ex.isDeleted);
@@ -819,27 +759,28 @@ function App() {
                                         
                                         return (
                                             <div key={category} className="mb-4">
-                                                <h4 className="text-purple-400 font-medium mb-2">{category}</h4>
+                                                <h4 className="text-blue-400 font-medium mb-2">{category}</h4>
                                                 {activeExercises.map(exercise => (
                                                     <div key={exercise.id} className="bg-gray-700 rounded-md p-3 mb-2">
                                                         <div className="flex justify-between items-center mb-2">
                                                             <span className="font-medium">{exercise.name}</span>
                                                             <button
-                                                                onClick={() => handleDeleteExercise(day, category, exercise.id)}
-                                                                className="text-red-400 hover:text-red-300 transition-colors"
-                                                                title="Supprimer"
+                                                                onClick={() => {
+                                                                    const updatedWorkouts = { ...workouts };
+                                                                    const exerciseIndex = updatedWorkouts.days[day].categories[category].findIndex(ex => ex.id === exercise.id);
+                                                                    if (exerciseIndex !== -1) {
+                                                                        updatedWorkouts.days[day].categories[category][exerciseIndex].isDeleted = true;
+                                                                        applyChanges(updatedWorkouts, `Exercice "${exercise.name}" supprimé`);
+                                                                    }
+                                                                }}
+                                                                className="text-red-400 hover:text-red-300 text-sm"
                                                             >
-                                                                <Trash2 className="h-4 w-4" />
+                                                                Supprimer
                                                             </button>
                                                         </div>
                                                         <div className="text-sm text-gray-300">
                                                             {getSeriesDisplay(exercise.series)}
                                                         </div>
-                                                        {exercise.notes && (
-                                                            <div className="text-xs text-gray-400 mt-1">
-                                                                📝 {exercise.notes}
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
@@ -849,67 +790,10 @@ function App() {
                                         const exercises = workouts?.days?.[day]?.categories?.[category] || [];
                                         return exercises.filter(ex => !ex.isDeleted).length === 0;
                                     }) && (
-                                        <p className="text-gray-400 text-center py-4 italic">Aucun exercice programmé</p>
+                                        <p className="text-gray-400 text-center py-4">Aucun exercice programmé</p>
                                     )}
                                 </div>
                             ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Vue Minuteur */}
-                {currentView === 'timer' && (
-                    <div className="max-w-md mx-auto">
-                        <div className="bg-gray-800 rounded-lg p-8 text-center">
-                            <h2 className="text-2xl font-semibold mb-6">Minuteur de repos</h2>
-                            
-                            <div className={`text-6xl font-bold mb-6 ${timerIsFinished ? 'text-red-400' : 'text-blue-400'}`}>
-                                {formatTime(timerSeconds)}
-                            </div>
-                            
-                            <div className="space-y-4">
-                                {!timerIsRunning && timerSeconds === 0 && (
-                                    <div className="grid grid-cols-3 gap-2 mb-4">
-                                        {timerPresets.map(seconds => (
-                                            <button
-                                                key={seconds}
-                                                onClick={() => startTimer(seconds)}
-                                                className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-sm transition-all"
-                                            >
-                                                {seconds}s
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                                
-                                <div className="flex justify-center gap-4">
-                                    {timerSeconds > 0 && !timerIsFinished && (
-                                        <button
-                                            onClick={pauseTimer}
-                                            className="bg-yellow-600 hover:bg-yellow-700 px-6 py-3 rounded-lg transition-all flex items-center gap-2"
-                                        >
-                                            {timerIsRunning ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                                            {timerIsRunning ? 'Pause' : 'Reprendre'}
-                                        </button>
-                                    )}
-                                    
-                                    {timerSeconds > 0 && (
-                                        <button
-                                            onClick={stopTimer}
-                                            className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg transition-all flex items-center gap-2"
-                                        >
-                                            <RotateCcw className="h-4 w-4" />
-                                            Arrêter
-                                        </button>
-                                    )}
-                                </div>
-                                
-                                {timerIsFinished && (
-                                    <div className="text-green-400 font-semibold">
-                                        ⏰ Temps de repos terminé !
-                                    </div>
-                                )}
-                            </div>
                         </div>
                     </div>
                 )}
@@ -937,7 +821,7 @@ function App() {
                                                 <div className="text-sm text-gray-400">Cette semaine</div>
                                             </div>
                                             <div className="text-center">
-                                                <div className="text-2xl font-bold text-purple-400">{Math.round(stats.totalVolume)}</div>
+                                                <div className="text-2xl font-bold text-purple-400">{stats.totalVolume}</div>
                                                 <div className="text-sm text-gray-400">Volume total (kg)</div>
                                             </div>
                                         </>
@@ -953,12 +837,12 @@ function App() {
                                 <p className="text-gray-400 text-center py-4">Aucun record enregistré</p>
                             ) : (
                                 <div className="space-y-3">
-                                    {Object.entries(personalBests).slice(0, 10).map(([exerciseName, best]) => (
+                                    {Object.entries(personalBests).map(([exerciseName, best]) => (
                                         <div key={exerciseName} className="bg-gray-700 rounded-md p-3">
                                             <div className="flex justify-between items-center">
                                                 <span className="font-medium">{exerciseName}</span>
                                                 <div className="text-sm text-gray-300">
-                                                    🏆 {best.maxWeight}kg × {best.maxWeightReps} reps
+                                                    Max: {best.maxWeight}kg × {best.maxWeightReps} reps
                                                 </div>
                                             </div>
                                         </div>
@@ -980,10 +864,7 @@ function App() {
                                 {historicalData.slice(0, 20).map(session => (
                                     <div key={session.id} className="bg-gray-700 rounded-md p-3">
                                         <div className="text-sm text-gray-300">
-                                            📅 {formatDate(session.timestamp)}
-                                        </div>
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            Session d'entraînement
+                                            {formatDate(session.timestamp)}
                                         </div>
                                     </div>
                                 ))}
@@ -993,23 +874,20 @@ function App() {
                 )}
 
                 {/* Boutons d'action */}
-                <div className="flex justify-center flex-wrap gap-4 mt-8">
+                <div className="flex justify-center space-x-4 mt-8">
                     <button
                         onClick={() => startTimer(90)}
-                        className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md transition-all flex items-center gap-2"
+                        className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md"
                     >
-                        <Clock className="h-4 w-4" />
                         Timer 90s
                     </button>
                     <button
                         onClick={exportData}
-                        className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition-all flex items-center gap-2"
+                        className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md"
                     >
-                        <Download className="h-4 w-4" />
                         Exporter
                     </button>
-                    <label className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-md cursor-pointer transition-all flex items-center gap-2">
-                        <Upload className="h-4 w-4" />
+                    <label className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-md cursor-pointer">
                         Importer
                         <input
                             type="file"
@@ -1021,54 +899,19 @@ function App() {
                     <button
                         onClick={handleUndo}
                         disabled={undoStack.length === 0}
-                        className="bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-md transition-all flex items-center gap-2"
+                        className="bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-md"
                     >
-                        <Undo2 className="h-4 w-4" />
                         Annuler
                     </button>
                     <button
                         onClick={handleRedo}
                         disabled={redoStack.length === 0}
-                        className="bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-md transition-all flex items-center gap-2"
+                        className="bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-md"
                     >
-                        <Redo2 className="h-4 w-4" />
                         Rétablir
                     </button>
                 </div>
             </div>
-
-            {/* Navigation inférieure mobile */}
-            <nav className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 shadow-lg z-50">
-                <div className="flex justify-around items-center h-16 max-w-lg mx-auto">
-                    <button
-                        onClick={() => setCurrentView('workout')}
-                        className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors ${
-                            currentView === 'workout' ? 'text-blue-400' : 'text-gray-400 hover:text-white'
-                        }`}
-                    >
-                        <Dumbbell className="h-6 w-6 mb-1" />
-                        <span className="text-xs font-medium">Séances</span>
-                    </button>
-                    <button
-                        onClick={() => setCurrentView('timer')}
-                        className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors ${
-                            currentView === 'timer' ? 'text-blue-400' : 'text-gray-400 hover:text-white'
-                        }`}
-                    >
-                        <Clock className="h-6 w-6 mb-1" />
-                        <span className="text-xs font-medium">Minuteur</span>
-                    </button>
-                    <button
-                        onClick={() => setCurrentView('history')}
-                        className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors ${
-                            currentView === 'history' ? 'text-blue-400' : 'text-gray-400 hover:text-white'
-                        }`}
-                    >
-                        <History className="h-6 w-6 mb-1" />
-                        <span className="text-xs font-medium">Historique</span>
-                    </button>
-                </div>
-            </nav>
 
             {/* Modal du minuteur */}
             {showTimerModal && (
@@ -1085,14 +928,14 @@ function App() {
                                 {!timerIsFinished && (
                                     <button
                                         onClick={pauseTimer}
-                                        className="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded-md transition-all"
+                                        className="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded-md"
                                     >
                                         {timerIsRunning ? 'Pause' : 'Reprendre'}
                                     </button>
                                 )}
                                 <button
                                     onClick={stopTimer}
-                                    className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md transition-all"
+                                    className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md"
                                 >
                                     {timerIsFinished ? 'Fermer' : 'Arrêter'}
                                 </button>
@@ -1105,7 +948,7 @@ function App() {
                                             <button
                                                 key={seconds}
                                                 onClick={() => startTimer(seconds)}
-                                                className="bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded text-sm transition-all"
+                                                className="bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded text-sm"
                                             >
                                                 {seconds}s
                                             </button>
@@ -1120,11 +963,40 @@ function App() {
 
             {/* Notifications Toast */}
             {toast && (
-                <Toast
-                    message={toast.message}
-                    type={toast.type}
-                    onClose={() => setToast(null)}
-                />
+                <div className={`fixed bottom-4 right-4 max-w-sm w-full mx-4 p-4 rounded-lg shadow-lg z-50 animate-fade-in-up ${
+                    toast.type === 'success' ? 'bg-green-600' :
+                    toast.type === 'error' ? 'bg-red-600' :
+                    toast.type === 'warning' ? 'bg-yellow-600' :
+                    'bg-blue-600'
+                }`}>
+                    <div className="flex justify-between items-start">
+                        <p className="text-white">{toast.message}</p>
+                        <button
+                            onClick={() => setToast(null)}
+                            className="text-white/80 hover:text-white ml-2"
+                        >
+                            ×
+                        </button>
+                    </div>
+                    {toast.action && (
+                        <button
+                            onClick={() => {
+                                toast.action.onClick();
+                                setToast(null);
+                            }}
+                            className="mt-2 text-white underline text-sm"
+                        >
+                            {toast.action.label}
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* Informations de sauvegarde */}
+            {lastSaveTime && (
+                <div className="fixed bottom-4 left-4 text-xs text-gray-400">
+                    Dernière sauvegarde: {lastSaveTime.toLocaleTimeString()}
+                </div>
             )}
 
             {/* Styles CSS */}
@@ -1136,11 +1008,11 @@ function App() {
                 @keyframes fadeInUp {
                     from {
                         opacity: 0;
-                        transform: translateY(20px) translateX(-50%);
+                        transform: translateY(20px);
                     }
                     to {
                         opacity: 1;
-                        transform: translateY(0) translateX(-50%);
+                        transform: translateY(0);
                     }
                 }
 
