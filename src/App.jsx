@@ -827,67 +827,64 @@ const ImprovedWorkoutApp = () => {
    }, [workouts, personalBests, historicalData]);
 
    const importData = useCallback((event) => {
-       const file = event.target.files[0];
-       if (!file) return;
-       
-       const reader = new FileReader();
-       reader.onload = (e) => {
-           try {
-               const importedData = JSON.parse(e.target.result);
-               
-               if (importedData.workouts) {
-                   const sanitizedWorkouts = sanitizeWorkoutData(importedData.workouts);
-                   setWorkouts(sanitizedWorkouts);
-                   saveWorkoutsOptimized(sanitizedWorkouts, "Données importées avec succès !");
-                   
-                   setToast({ 
-                       message: "Import réussi !", 
-                       type: 'success',
-                       action: {
-                           label: 'Annuler',
-                           onClick: handleUndo
-                       }
-                   });
-               } else {
-                   setToast({ message: "Format de fichier invalide", type: 'error' });
-               }
-           } catch (error) {
-               console.error("Erreur import:", error);
-               setToast({ message: "Erreur lors de l'import", type: 'error' });
-           }
-       };
-       reader.readAsText(file);
-       
-       // Reset input
-       event.target.value = '';
-   }, [sanitizeWorkoutData, saveWorkoutsOptimized]);
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const importedData = JSON.parse(e.target.result);
+            
+            if (importedData.workouts) {
+                const sanitizedWorkouts = sanitizeWorkoutData(importedData.workouts);
+                setWorkouts(sanitizedWorkouts);
+                saveWorkoutsOptimized(sanitizedWorkouts, "Données importées avec succès !");
+                
+                setToast({ 
+                    message: "Import réussi !", 
+                    type: 'success'
+                    // Supprimé l'action pour éviter la référence circulaire
+                });
+            } else {
+                setToast({ message: "Format de fichier invalide", type: 'error' });
+            }
+        } catch (error) {
+            console.error("Erreur import:", error);
+            setToast({ message: "Erreur lors de l'import", type: 'error' });
+        }
+    };
+    reader.readAsText(file);
+    
+    // Reset input
+    event.target.value = '';
+}, [sanitizeWorkoutData, saveWorkoutsOptimized]); // Supprimé handleUndo
 
    // Fonctions d'undo/redo optimisées
    const handleUndo = useCallback(() => {
-       if (undoStack.length === 0) {
-           setToast({ message: "Rien à annuler", type: 'warning' });
-           return;
-       }
-       
-       const previousState = undoStack[undoStack.length - 1];
-       setUndoStack(prev => prev.slice(0, -1));
-       setRedoStack(prev => [...prev, workouts]);
-       setWorkouts(previousState);
-       setToast({ message: "Action annulée", type: 'success' });
-   }, [undoStack, workouts]);
+    if (undoStack.length === 0) {
+        setToast({ message: "Rien à annuler", type: 'warning' });
+        return;
+    }
+    
+    const previousState = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    setRedoStack(prev => [...prev, workouts]);
+    setWorkouts(previousState);
+    setToast({ message: "Action annulée", type: 'success' });
+}, [undoStack.length, workouts]); // Changé undoStack en undoStack.length
 
-   const handleRedo = useCallback(() => {
-       if (redoStack.length === 0) {
-           setToast({ message: "Rien à rétablir", type: 'warning' });
-           return;
-       }
-       
-       const nextState = redoStack[redoStack.length - 1];
-       setRedoStack(prev => prev.slice(0, -1));
-       setUndoStack(prev => [...prev, workouts]);
-       setWorkouts(nextState);
-       setToast({ message: "Action rétablie", type: 'success' });
-   }, [redoStack, workouts]);
+const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) {
+        setToast({ message: "Rien à rétablir", type: 'warning' });
+        return;
+    }
+    
+    const nextState = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+    setUndoStack(prev => [...prev, workouts]);
+    setWorkouts(nextState);
+    setToast({ message: "Action rétablie", type: 'success' });
+}, [redoStack.length, workouts]); // Changé redoStack en redoStack.length
 
    // Calculs mémorisés pour les statistiques
    const workoutStats = useMemo(() => {
