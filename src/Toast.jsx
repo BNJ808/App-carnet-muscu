@@ -51,11 +51,11 @@ const Toast = ({
 
     // Configuration des positions
     const positionClasses = {
-        'bottom-center': 'bottom-5 left-1/2 -translate-x-1/2',
+        'bottom-center': 'bottom-24 left-1/2 -translate-x-1/2',
         'top-right': 'top-5 right-5',
         'top-left': 'top-5 left-5',
-        'bottom-right': 'bottom-5 right-5',
-        'bottom-left': 'bottom-5 left-5',
+        'bottom-right': 'bottom-24 right-5',
+        'bottom-left': 'bottom-24 left-5',
         'top-center': 'top-5 left-1/2 -translate-x-1/2'
     };
 
@@ -106,7 +106,11 @@ const Toast = ({
                     ? 'translate-y-0 opacity-100 scale-100' 
                     : 'translate-y-2 opacity-0 scale-95'
             }`}
-        >
+            style={{
+        bottom: position === 'bottom-center' ? '100px' : undefined,
+        marginBottom: position.includes('bottom') ? '0px' : undefined
+    }}
+>
             <div className={`${config.bg} text-white rounded-xl shadow-2xl border border-white/20 backdrop-blur-sm max-w-sm min-w-[300px] overflow-hidden`}>
                 {/* Barre de progression */}
                 {duration && (
