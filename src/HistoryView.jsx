@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import {
     Sparkles, LineChart as LineChartIcon, NotebookText,
+    RotateCcw, Search
+} from 'lucide-react';
+// Removed DatePicker and its CSS as primary date filtering is now handled by graph modal
 
-@@ -18,7 +19,6 @@ import {
+/**
+ * Composant HistoryView pour afficher l'historique des entraînements de manière centrée sur les exercices.
+ * Permet de rechercher des exercices et d'afficher/masquer les exercices supprimés.
+ * @param {object[]} props.historicalDataForGraphs - Toutes les données historiques des entraînements.
+ * @param {boolean} props.showDeletedExercisesInHistory - Indique si les exercices supprimés doivent être affichés.
+ * @param {function} props.setShowDeletedExercisesInHistory - Fonction pour définir l'état d'affichage des exercices supprimés.
+ * @param {function} props.formatDate - Fonction utilitaire pour formater une date.
+ * @param {function} props.getSeriesDisplay - Fonction utilitaire pour afficher les séries d'un exercice.
+ * @param {function} props.handleReactivateExercise - Fonction pour réactiver un exercice supprimé.
+ * @param {function} props.openExerciseGraphModal - Fonction pour ouvrir la modale du graphique d'exercice.
  * @param {function} props.handleOpenNotesModal - Fonction pour ouvrir la modale des notes.
  * @param {function} props.handleAnalyzeProgressionClick - Fonction pour analyser la progression avec l'IA.
  * @param {object} props.personalBests - Les records personnels des exercices.
@@ -10,8 +22,13 @@ import {
  * @param {boolean} props.isAdvancedMode - Indique si le mode avancé est activé.
  */
 const HistoryView = ({
-
-@@ -32,178 +32,120 @@ const HistoryView = ({
+    historicalDataForGraphs,
+    showDeletedExercisesInHistory,
+    setShowDeletedExercisesInHistory,
+    formatDate,
+    getSeriesDisplay,
+    handleReactivateExercise,
+    openExerciseGraphModal,
     handleOpenNotesModal,
     handleAnalyzeProgressionClick,
     personalBests,
@@ -20,7 +37,6 @@ const HistoryView = ({
 }) => {
     const [exerciseSearchTerm, setExerciseSearchTerm] = useState('');
     const [uniqueExercises, setUniqueExercises] = useState([]);
-
 
     useEffect(() => {
         const processHistoricalData = () => {
@@ -128,12 +144,6 @@ const HistoryView = ({
         
         console.log(`Filtering: Exercise '${exercise.name}', isDeleted: ${exercise.isDeleted}, showDeleted: ${showDeletedExercisesInHistory}, matchesDeleted: ${matchesDeletedStatus}`);
 
-
-
-
-
-
-
         return matchesSearch && matchesDeletedStatus;
     });
 
@@ -161,21 +171,6 @@ const HistoryView = ({
                         className="mr-2 h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
                     />
                     <label htmlFor="showDeleted" className="text-gray-300 text-sm sm:text-base">Afficher les exercices supprimés</label>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                 </div>
             </div>
 
@@ -197,7 +192,6 @@ const HistoryView = ({
                                     <p className="text-yellow-400 text-xs sm:text-sm mt-1">
                                         Meilleur: {personalBests[exercise.id].maxWeight} kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}
                                     </p>
-
                                 )}
                                 {isAdvancedMode && progressionInsights[exercise.id] && (
                                     <p className="text-green-400 text-xs sm:text-sm mt-1">
@@ -210,26 +204,31 @@ const HistoryView = ({
                             <div className="flex space-x-2 mt-2 sm:mt-0">
                                 {exercise.isDeleted && (
                                     <button onClick={() => handleReactivateExercise(exercise.id)} className="p-1 rounded-full bg-green-500 hover:bg-green-600 text-white transition transform hover:scale-110" title="Réactiver l'exercice">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                                         <RotateCcw className="h-4 w-4" />
                                     </button>
                                 )}
-
-
-@@ -232,4 +174,4 @@ const HistoryView = ({
+                                <button onClick={() => openExerciseGraphModal(exercise)} className="p-1 rounded-full bg-purple-500 hover:bg-purple-600 text-white transition transform hover:scale-110" title="Voir le graphique">
+                                    <LineChartIcon className="h-4 w-4" />
+                                </button>
+                                {/* Pass exercise.dayName and exercise.categoryName for notes modal if needed, or remove them from the exercise object in HistoryView and modify handleOpenNotesModal to search globally if it only needs exercise.id */}
+                                <button onClick={() => handleOpenNotesModal(exercise.dayName, exercise.categoryName, exercise.id)} className="p-1 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition transform hover:scale-110" title="Notes de l'exercice">
+                                    <NotebookText className="h-4 w-4" />
+                                </button>
+                                {isAdvancedMode && (
+                                    <button onClick={() => handleAnalyzeProgressionClick(exercise)} className="p-1 rounded-full bg-sky-500 hover:bg-sky-600 text-white transition transform hover:scale-110" title="Analyser la progression avec l'IA">
+                                        <Sparkles className="h-4 w-4" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ))
+                ) : (
+                    <p className="text-gray-400 text-center mt-8 text-lg sm:text-xl">
+                        Aucun exercice trouvé correspondant à vos filtres.
+                    </p>
+                )}
+            </div>
+        </div>
     );
 };
 
