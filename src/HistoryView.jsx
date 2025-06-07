@@ -1,3 +1,4 @@
+// HistoryView.jsx
 import React, { useState, useEffect } from 'react';
 import {
     Sparkles, LineChart as LineChartIcon, NotebookText,
@@ -18,7 +19,6 @@ import {
  * @param {function} props.handleOpenNotesModal - Fonction pour ouvrir la modale des notes.
  * @param {function} props.handleAnalyzeProgressionClick - Fonction pour analyser la progression avec l'IA.
  * @param {object} props.personalBests - Les records personnels des exercices.
- * @param {object} props.progressionInsights - Les analyses de progression des exercices.
  * @param {boolean} props.isAdvancedMode - Indique si le mode avancé est activé.
  */
 const HistoryView = ({
@@ -32,178 +32,120 @@ const HistoryView = ({
     handleOpenNotesModal,
     handleAnalyzeProgressionClick,
     personalBests,
-    progressionInsights,
-    isAdvancedMode,
+    isAdvancedMode
 }) => {
-    const [exerciseSearchTerm, setExerciseSearchTerm] = useState('');
-    const [uniqueExercises, setUniqueExercises] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filteredExercises, setFilteredExercises] = useState([]);
+    const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
 
     useEffect(() => {
-        const processHistoricalData = () => {
-            const exerciseMap = {};
+        let exercises = historicalDataForGraphs
+            .flatMap(day =>
+                day.categories.flatMap(category =>
+                    category.exercises.map(exercise => ({
+                        ...exercise,
+                        date: day.date // Ajouter la date de l'entraînement à l'exercice
+                    }))
+                )
+            );
 
-            historicalDataForGraphs.forEach(session => {
-                const sessionDate = session.timestamp;
-                if (!sessionDate) return; // Skip if timestamp is null/undefined
-
-                const workoutData = session.workoutData;
-
-                // MODIFICATION: Ensure workoutData.days is an object before calling Object.values
-                const days = workoutData?.days || {};
-                Object.values(days).forEach(dayData => {
-                    // MODIFICATION: Ensure dayData.categories is an object before calling Object.values
-                    const categories = dayData?.categories || {};
-                    Object.values(categories).forEach(categoryExercises => {
-                        if (Array.isArray(categoryExercises)) {
-                            categoryExercises.forEach(exercise => {
-                                if (!exercise.id) return; // Skip if no ID
-
-                                if (!exerciseMap[exercise.id]) {
-                                    exerciseMap[exercise.id] = {
-                                        id: exercise.id,
-                                        name: exercise.name,
-                                        allSeries: [],
-                                        lastPerformance: null,
-                                        personalBest: { weight: 0, reps: 0, date: null },
-                                        isDeleted: exercise.isDeleted, // Track latest deletion status
-                                        // Store day and category name for notes modal if needed, or reactivate
-                                        dayName: '', // Will be updated by the last session it appears in
-                                        categoryName: '' // Will be updated by the last session it appears in
-                                    };
-                                }
-
-                                // Update latest deletion status and last known day/category
-                                exerciseMap[exercise.id].isDeleted = exercise.isDeleted;
-                                // This assumes the exercise name and structure is consistent across days/categories
-                                // If an exercise can move, this will store the last day/category it was found in.
-                                // For reactivating, we'll search globally in App.jsx anyway.
-                                // Find the actual dayName and categoryName from the original workoutData structure
-                                // This is a bit inefficient but necessary if we need these specific names for the modal.
-                                for (const dName in days) { // Use the already defined 'days'
-                                    if (days[dName] === dayData) {
-                                        exerciseMap[exercise.id].dayName = dName;
-                                        break;
-                                    }
-                                }
-                                for (const cName in categories) { // Use the already defined 'categories'
-                                    if (categories[cName] === categoryExercises) {
-                                        exerciseMap[exercise.id].categoryName = cName;
-                                        break;
-                                    }
-                                }
-
-
-                                // Aggregate all series for this exercise
-                                if (Array.isArray(exercise.series)) {
-                                    exercise.series.forEach(s => {
-                                        const weight = parseFloat(s.weight);
-                                        const reps = parseInt(s.reps);
-                                        if (!isNaN(weight) && !isNaN(reps)) {
-                                            exerciseMap[exercise.id].allSeries.push({
-                                                date: sessionDate,
-                                                weight: weight,
-                                                reps: reps
-                                            });
-
-                                            // Update last performance (based on session date)
-                                            if (!exerciseMap[exercise.id].lastPerformance || sessionDate > exerciseMap[exercise.id].lastPerformance.date) {
-                                                exerciseMap[exercise.id].lastPerformance = { date: sessionDate, weight, reps };
-                                            }
-
-                                            // Update personal best (simple max weight for now)
-                                            if (weight > exerciseMap[exercise.id].personalBest.weight) {
-                                                exerciseMap[exercise.id].personalBest = { weight, reps, date: sessionDate };
-                                            } else if (weight === exerciseMap[exercise.id].personalBest.weight && reps > exerciseMap[exercise.id].personalBest.reps) {
-                                                // If same weight, check for more reps
-                                                exerciseMap[exercise.id].personalBest = { weight, reps, date: sessionDate };
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                    });
-                });
-            });
-
-            // Convert map to array and sort by name
-            const exercisesArray = Object.values(exerciseMap).sort((a, b) => a.name.localeCompare(b.name));
-            setUniqueExercises(exercisesArray);
-        };
-
-        if (historicalDataForGraphs.length > 0) {
-            processHistoricalData();
-        } else {
-            setUniqueExercises([]);
+        if (!showDeletedExercisesInHistory) {
+            exercises = exercises.filter(exercise => exercise.isActive);
         }
-    }, [historicalDataForGraphs]);
 
-    const filteredExercises = uniqueExercises.filter(exercise => {
-        const matchesSearch = exercise.name.toLowerCase().includes(exerciseSearchTerm.toLowerCase());
-        const matchesDeletedStatus = showDeletedExercisesInHistory || !exercise.isDeleted;
-        
-        console.log(`Filtering: Exercise '${exercise.name}', isDeleted: ${exercise.isDeleted}, showDeleted: ${showDeletedExercisesInHistory}, matchesDeleted: ${matchesDeletedStatus}`);
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+        const matchedExercises = exercises.filter(exercise =>
+            exercise.name.toLowerCase().includes(lowerCaseSearchTerm)
+        );
 
-        return matchesSearch && matchesDeletedStatus;
-    });
+        // Sort by date
+        matchedExercises.sort((a, b) => {
+            const dateA = a.date instanceof Date ? a.date.getTime() : a.date.toDate().getTime();
+            const dateB = b.date instanceof Date ? b.date.getTime() : b.date.toDate().getTime();
+            return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+        });
+
+        setFilteredExercises(matchedExercises);
+    }, [historicalDataForGraphs, showDeletedExercisesInHistory, searchTerm, sortOrder]);
 
     return (
-        <div className="history-view bg-gray-900 p-4 sm:p-6 rounded-xl shadow-lg">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-blue-400 mb-6 text-center">Historique des Exercices</h2>
+        <div className="p-4 sm:p-6 bg-gray-800 min-h-screen text-white pb-20"> {/* Ajout de pb-20 */}
+            <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-purple-400 border-b-2 border-purple-500 pb-2 text-center">Historique des Entraînements</h2>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
-                <div className="relative w-full sm:w-auto flex-grow">
+            <div className="mb-6 flex flex-col sm:flex-row items-center justify-between space-y-3 sm:space-y-0 sm:space-x-4">
+                <div className="relative w-full sm:w-1/2">
                     <input
                         type="text"
                         placeholder="Rechercher un exercice..."
-                        value={exerciseSearchTerm}
-                        onChange={(e) => setExerciseSearchTerm(e.target.value)}
-                        className="w-full p-2 pl-10 rounded-md bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+                        className="w-full p-2 pl-10 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                     />
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                 </div>
-                <div className="flex items-center">
-                    <input
-                        type="checkbox"
-                        id="showDeleted"
-                        checked={showDeletedExercisesInHistory}
-                        onChange={(e) => setShowDeletedExercisesInHistory(e.target.checked)}
-                        className="mr-2 h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                    />
-                    <label htmlFor="showDeleted" className="text-gray-300 text-sm sm:text-base">Afficher les exercices supprimés</label>
+
+                <div className="flex items-center space-x-4 w-full sm:w-auto justify-end">
+                    <div className="flex items-center">
+                        <label htmlFor="sortOrder" className="text-gray-300 mr-2 text-sm sm:text-base">Trier par:</label>
+                        <select
+                            id="sortOrder"
+                            className="p-2 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 text-sm sm:text-base"
+                            value={sortOrder}
+                            onChange={(e) => setSortOrder(e.target.value)}
+                        >
+                            <option value="newest">Plus récent</option>
+                            <option value="oldest">Plus ancien</option>
+                        </select>
+                    </div>
+
+                    <label className="flex items-center text-sm sm:text-base cursor-pointer">
+                        <input
+                            type="checkbox"
+                            className="form-checkbox h-4 w-4 text-blue-600 rounded"
+                            checked={showDeletedExercisesInHistory}
+                            onChange={() => setShowDeletedExercisesInHistory(!showDeletedExercisesInHistory)}
+                        />
+                        <span className="ml-2 text-gray-300">Afficher supprimés</span>
+                    </label>
                 </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
                 {filteredExercises.length > 0 ? (
-                    filteredExercises.map((exercise) => (
-                        <div key={exercise.id} className={`bg-gray-800 p-3 sm:p-4 rounded-md shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center ${exercise.isDeleted ? 'opacity-60 border-red-500 border' : ''}`}>
-                            <div className="flex-grow mb-2 sm:mb-0">
-                                <p className="text-lg sm:text-xl font-semibold text-blue-300">
-                                    {exercise.name}
-                                    {exercise.isDeleted && <span className="ml-2 text-red-400 text-sm">(Supprimé)</span>}
-                                </p>
-                                {exercise.lastPerformance && (
-                                    <p className="text-gray-300 text-sm sm:text-base mt-1">
-                                        Dernière perf: {exercise.lastPerformance.weight} kg ({exercise.lastPerformance.reps} reps) le {formatDate(exercise.lastPerformance.date)}
+                    filteredExercises.map((exercise, index) => (
+                        <div key={exercise.id + '-' + index} className={`p-4 rounded-lg shadow-md ${exercise.isActive ? 'bg-gray-900' : 'bg-red-900 opacity-70'}`}>
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 border-b border-gray-700 pb-2">
+                                <div>
+                                    <h3 className="text-xl sm:text-2xl font-semibold text-white">{exercise.name}</h3>
+                                    <p className="text-gray-400 text-sm sm:text-base">
+                                        Date: {formatDate(exercise.date)}
+                                        {exercise.isDeleted && <span className="ml-2 text-red-300">(Supprimé)</span>}
                                     </p>
-                                )}
+                                </div>
                                 {isAdvancedMode && personalBests[exercise.id] && (
-                                    <p className="text-yellow-400 text-xs sm:text-sm mt-1">
-                                        Meilleur: {personalBests[exercise.id].maxWeight} kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}
-                                    </p>
+                                    <span className="mt-2 sm:mt-0 text-yellow-300 text-sm sm:text-base font-semibold">
+                                        BP: {personalBests[exercise.id].weight}kg x {personalBests[exercise.id].reps}
+                                        {personalBests[exercise.id].oneRM && ` (1RM: ${personalBests[exercise.id].oneRM.toFixed(1)}kg)`}
+                                    </span>
                                 )}
-                                {isAdvancedMode && progressionInsights[exercise.id] && (
-                                    <p className="text-green-400 text-xs sm:text-sm mt-1">
-                                        Analyse: {progressionInsights[exercise.id]}
-                                    </p>
-                                )}
-                                {/* Notes are not aggregated here, but can be viewed via modal */}
-                                {/* You might want to display a snippet of the latest note if available */}
                             </div>
-                            <div className="flex space-x-2 mt-2 sm:mt-0">
-                                {exercise.isDeleted && (
-                                    <button onClick={() => handleReactivateExercise(exercise.id)} className="p-1 rounded-full bg-green-500 hover:bg-green-600 text-white transition transform hover:scale-110" title="Réactiver l'exercice">
+                            <div className="mt-2">
+                                {exercise.series && exercise.series.map((series, sIndex) => (
+                                    <div key={sIndex} className="flex flex-col sm:flex-row sm:items-center">
+                                        <p className="text-gray-300 text-xs sm:text-sm">
+                                            {getSeriesDisplay(series)}
+                                        </p>
+                                        {isAdvancedMode && series.oneRM && (
+                                            <p className="text-blue-300 font-medium text-xs sm:text-sm mt-1 sm:mt-0 sm:ml-2">
+                                                (1RM: {series.oneRM.toFixed(1)} kg)
+                                            </p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex justify-end space-x-3 mt-4">
+                                {!exercise.isActive && (
+                                    <button onClick={() => handleReactivateExercise(exercise)} className="p-1 rounded-full bg-green-500 hover:bg-green-600 text-white transition transform hover:scale-110" title="Réactiver l'exercice">
                                         <RotateCcw className="h-4 w-4" />
                                     </button>
                                 )}
