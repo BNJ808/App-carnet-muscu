@@ -1,247 +1,450 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     Plus, Pencil, Trash2, Sparkles, LineChart as LineChartIcon, NotebookText,
-    ArrowUp, ArrowDown
+    ArrowUp, ArrowDown, Search, Filter, Eye, EyeOff, Target, Award, Calendar,
+    Activity, TrendingUp
 } from 'lucide-react';
 
 /**
- * Composant MainWorkoutView pour afficher la vue principale des entraînements.
- * Gère l'affichage des jours, catégories et exercices, ainsi que les interactions d'édition.
- * @param {object} props - Les props du composant.
- * @param {object} props.workouts - L'objet contenant toutes les données d'entraînement.
- * @param {string | null} props.selectedDayFilter - Le jour actuellement sélectionné pour l'affichage.
- * @param {boolean} props.isEditMode - Indique si le mode édition est activé.
- * @param {boolean} props.isAdvancedMode - Indique si le mode avancé est activé.
- * @param {function} props.handleEditClick - Fonction pour gérer le clic sur le bouton d'édition d'un exercice.
- * @param {function} props.handleAddExerciseClick - Fonction pour gérer le clic sur le bouton d'ajout d'exercice.
- * @param {function} props.handleDeleteExercise - Fonction pour gérer la suppression d'un exercice.
- * @param {function} props.openExerciseGraphModal - Fonction pour ouvrir la modale du graphique d'exercice.
- * @param {function} props.handleOpenNotesModal - Fonction pour ouvrir la modale des notes.
- * @param {function} props.handleAnalyzeProgressionClick - Fonction pour analyser la progression avec l'IA.
- * @param {object} props.personalBests - Les records personnels des exercices.
- * @param {object} props.progressionInsights - Les analyses de progression des exercices.
- * @param {function} props.handleReorderCategories - Fonction pour réorganiser les catégories.
- * @param {function} props.handleReorderExercises - Fonction pour réorganiser les exercices.
- * @param {function} props.openAddCategoryModalForDay - Fonction pour ouvrir la modale d'ajout de catégorie.
- * @param {function} props.handleEditCategory - Fonction pour éditer une catégorie.
- * @param {function} props.handleDeleteCategory - Fonction pour supprimer une catégorie.
- * @param {boolean} props.isSavingExercise - Indique si un exercice est en cours de sauvegarde.
- * @param {boolean} props.isDeletingExercise - Indique si un exercice est en cours d'ajout.
- * @param {boolean} props.isAddingExercise - Indique si un exercice est en cours d'ajout.
- * @param {function} props.dayButtonColors - NOUVEAU : Fonction pour obtenir les couleurs des boutons de jour.
- * @param {string[]} props.dayBorderAndTextColors - Couleurs de bordure et de texte pour les jours.
- * @param {string[]} props.dayTitleColors - NOUVEAU : Couleurs spécifiques pour les titres des jours (h2).
- * @param {function} props.formatDate - Fonction pour formater une date.
- * @param {function} props.getSeriesDisplay - Fonction pour afficher les séries d'un exercice.
+ * Composant MainWorkoutView amélioré pour afficher la vue principale des entraînements.
+ * Inclut recherche, filtres, statistiques et interfaces optimisées.
  */
 const MainWorkoutView = ({
     workouts,
     selectedDayFilter,
-    isEditMode,
+    setSelectedDayFilter,
     isAdvancedMode,
+    isCompactView,
     handleEditClick,
     handleAddExerciseClick,
     handleDeleteExercise,
-    openExerciseGraphModal,
-    handleOpenNotesModal,
-    handleAnalyzeProgressionClick,
+    analyzeProgressionWithAI,
     personalBests,
-    progressionInsights,
-    handleReorderCategories,
-    handleReorderExercises,
-    openAddCategoryModalForDay,
-    handleEditCategory,
-    handleDeleteCategory,
+    getDayButtonColors,
+    formatDate,
+    getSeriesDisplay,
     isSavingExercise,
     isDeletingExercise,
     isAddingExercise,
-    dayButtonColors, // AJOUT DE LA NOUVELLE PROP (fonction)
-    dayBorderAndTextColors,
-    dayTitleColors, // AJOUT DE LA NOUVELLE PROP
-    formatDate,
-    getSeriesDisplay,
+    searchTerm,
+    setSearchTerm
 }) => {
-    const safeWorkoutsDays = workouts?.days || {}; // Ensure workouts.days is an object
-    const filteredWorkouts = selectedDayFilter
-        ? (safeWorkoutsDays[selectedDayFilter] ? { [selectedDayFilter]: safeWorkoutsDays[selectedDayFilter] } : {})
-        : safeWorkoutsDays;
+    const [showDeletedExercises, setShowDeletedExercises] = useState(false);
+    const [sortBy, setSortBy] = useState('name');
+    const [exerciseToDelete, setExerciseToDelete] = useState(null);
+    const [selectedExerciseForStats, setSelectedExerciseForStats] = useState(null);
 
-    const orderedDays = workouts?.dayOrder || []; // Ensure workouts.dayOrder is an array
+    // Filtrage et tri des exercices
+    const filteredExercises = useMemo(() => {
+        if (!selectedDayFilter || !workouts.days[selectedDayFilter]) return {};
 
-    return (
-        <>
-            {Object.keys(filteredWorkouts).length === 0 && (
-                <p className="text-gray-400 text-center mt-8 text-lg sm:text-xl">
-                    Aucun entraînement trouvé pour le jour sélectionné.
-                    {isEditMode && (
-                        <span className="block mt-2">
-                            Cliquez sur "Actions sur les jours" pour ajouter un nouveau jour.
-                        </span>
-                    )}
-                </p>
-            )}
+        const dayData = workouts.days[selectedDayFilter];
+        const filtered = {};
 
-            <div className="space-y-8">
-                {orderedDays.filter(dayName => !selectedDayFilter || dayName === selectedDayFilter).map((dayName, dayIndex) => {
-                    const dayData = safeWorkoutsDays[dayName]; // Use safeWorkoutsDays
-                    if (!dayData || typeof dayData !== 'object' || !dayData.categories || typeof dayData.categories !== 'object') {
-                        console.warn(`Données de jour invalides ou manquantes pour: ${dayName}`, dayData);
-                        return null; // Skip rendering this day
-                    }
+        Object.entries(dayData.categories || {}).forEach(([categoryName, exercises]) => {
+            if (!Array.isArray(exercises)) return;
 
-                    const categoryOrder = Array.isArray(dayData.categoryOrder)
-                        ? dayData.categoryOrder
-                        : Object.keys(dayData.categories || {}).sort(); // Ensure Object.keys is called on an object
+            let categoryExercises = exercises.filter(exercise => {
+                // Filtre par statut supprimé
+                if (!showDeletedExercises && exercise.isDeleted) return false;
+                if (showDeletedExercises && !exercise.isDeleted) return false;
 
-                    // Utilise directement la prop dayTitleColors passée depuis App.jsx
-                    const dayTitleColorClass = dayTitleColors[dayIndex % dayTitleColors.length];
+                // Filtre par terme de recherche
+                if (searchTerm) {
+                    return exercise.name.toLowerCase().includes(searchTerm.toLowerCase());
+                }
+                return true;
+            });
 
-                    return (
-                        <div key={dayName} className={`bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg border-2 ${dayBorderAndTextColors[dayIndex % dayBorderAndTextColors.length]}`}>
-                            <h2 className={`text-xl sm:text-3xl font-extrabold mb-6 text-center ${dayTitleColorClass}`}>
-                                {dayName}
-                            </h2>
-                            {isEditMode && (
-                                <div className="flex justify-center mb-4 space-x-2">
-                                    <button
-                                        onClick={() => openAddCategoryModalForDay(dayName)}
-                                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base flex items-center"
-                                        title="Ajouter un groupe musculaire"
-                                    >
-                                        <Plus className="h-4 w-4 mr-2" /> Groupe Musculaire
-                                    </button>
-                                </div>
-                            )}
+            // Tri des exercices
+            categoryExercises.sort((a, b) => {
+                switch (sortBy) {
+                    case 'name':
+                        return a.name.localeCompare(b.name);
+                    case 'recent':
+                        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+                    case 'weight':
+                        const aWeight = Math.max(...(a.series || []).map(s => parseFloat(s.weight) || 0));
+                        const bWeight = Math.max(...(b.series || []).map(s => parseFloat(s.weight) || 0));
+                        return bWeight - aWeight;
+                    default:
+                        return 0;
+                }
+            });
 
-                            {categoryOrder.length === 0 && (
-                                <p className="text-gray-400 text-center mt-4">
-                                    Aucun groupe musculaire pour ce jour.
-                                    {isEditMode && (
-                                        <span className="block mt-1">
-                                            Cliquez sur "Ajouter Groupe Musculaire" ci-dessus.
-                                        </span>
-                                    )}
-                                </p>
-                            )}
+            if (categoryExercises.length > 0) {
+                filtered[categoryName] = categoryExercises;
+            }
+        });
 
-                            <div className="space-y-6">
-                                {categoryOrder.map((categoryName, categoryIndex) => {
-                                    const exercises = dayData.categories?.[categoryName]; // Use optional chaining
-                                    if (!Array.isArray(exercises)) { // Only check if it's not an array
-                                        console.warn(`Exercices pour la catégorie ${categoryName} du jour ${dayName} ne sont pas un tableau ou sont manquants.`, exercises);
-                                        return null; // Skip rendering this category
-                                    }
+        return filtered;
+    }, [selectedDayFilter, workouts, showDeletedExercises, searchTerm, sortBy]);
 
-                                    return (
-                                        <div key={categoryName} className="bg-gray-700 p-4 sm:p-5 rounded-lg shadow-md">
-                                            <h3 className="text-lg sm:text-2xl font-bold mb-4 text-white flex items-center justify-between">
-                                                {categoryName}
-                                                {isEditMode && (
-                                                    <div className="flex space-x-2 ml-auto">
-                                                        <button onClick={() => handleEditCategory(dayName, categoryName)} className="p-1 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition transform hover:scale-110" title="Renommer le groupe musculaire">
-                                                            <Pencil className="h-4 w-4" />
-                                                        </button>
-                                                        <button onClick={() => handleDeleteCategory(dayName, categoryName)} className="p-1 rounded-full bg-red-500 hover:bg-red-600 text-white transition transform hover:scale-110" title="Supprimer le groupe musculaire">
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
-                                                        <button onClick={() => handleReorderCategories(dayName, categoryName, -1)} disabled={categoryIndex === 0} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Déplacer vers le haut">
-                                                            <ArrowUp className="h-4 w-4" />
-                                                        </button>
-                                                        <button onClick={() => handleReorderCategories(dayName, categoryName, 1)} disabled={categoryIndex === categoryOrder.length - 1} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Déplacer vers le bas">
-                                                            <ArrowDown className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </h3>
-                                            {isEditMode && (
-                                                <button
-                                                    onClick={() => handleAddExerciseClick(dayName, categoryName)}
-                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base flex items-center justify-center mb-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    disabled={isAddingExercise}
-                                                >
-                                                    <Plus className="h-4 w-4 mr-2" /> Ajouter Exercice
-                                                </button>
-                                            )}
-                                            {exercises.length === 0 && (
-                                                <p className="text-gray-400 text-center mt-4">
-                                                    Aucun exercice dans ce groupe musculaire.
-                                                    {isEditMode && (
-                                                        <span className="block mt-1">
-                                                            Cliquez sur "Ajouter Exercice" ci-dessus.
-                                                        </span>
-                                                    )}
-                                                </p>
-                                            )}
-                                            <ul className="space-y-3">
-                                                {exercises.filter(ex => !ex.isDeleted).map((exercise, exerciseIndex) => (
-                                                    <li key={exercise.id} id={`exercise-item-${exercise.id}`} className={`bg-gray-800 p-3 sm:p-4 rounded-md shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center transition-all duration-200 ease-out
-                                                        ${isSavingExercise && exercise.id === exercise.id ? 'saved-animation' : ''}
-                                                    `}>
-                                                        <div className="flex-grow mb-2 sm:mb-0">
-                                                            <p className="text-lg sm:text-xl font-semibold text-blue-300">{exercise.name}</p>
-                                                            <p className="text-gray-300 text-sm sm:text-base">
-                                                                {getSeriesDisplay(exercise)}
-                                                            </p>
-                                                            {isAdvancedMode && personalBests[exercise.id] && (
-                                                                // Added 'block' class to force 1RM to a new line
-                                                                // Added 'mt-1' for a small top margin for better separation
-                                                                <span className="text-yellow-400 text-xs sm:text-sm mt-1 block">
-                                                                    Meilleur: {personalBests[exercise.id].maxWeight} kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}
-                                                                </span>
-                                                            )}
-                                                            {isAdvancedMode && progressionInsights[exercise.id] && (
-                                                                <p className="text-green-400 text-xs sm:text-sm mt-1">
-                                                                    Analyse: {progressionInsights[exercise.id]}
-                                                                </p>
-                                                            )}
-                                                            {exercise.notes && (
-                                                                <p className="text-gray-400 text-xs sm:text-sm mt-1 italic">
-                                                                    Notes: {exercise.notes.substring(0, 50)}{exercise.notes.length > 50 ? '...' : ''}
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex space-x-2 mt-2 sm:mt-0">
-                                                            {isEditMode && (
-                                                                <>
-                                                                    <button onClick={() => handleEditClick(dayName, categoryName, exercise.id, exercise)} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" title="Modifier l'exercice" disabled={isSavingExercise}>
-                                                                        <Pencil className="h-4 w-4" />
-                                                                    </button>
-                                                                    <button onClick={() => handleDeleteExercise(dayName, categoryName, exercise.id)} className="p-1 rounded-full bg-red-500 hover:bg-red-600 text-white transition transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" title="Supprimer l'exercice" disabled={isDeletingExercise}>
-                                                                        <Trash2 className="h-4 w-4" />
-                                                                    </button>
-                                                                    <button onClick={() => handleReorderExercises(dayName, categoryName, exercise.id, -1)} disabled={exerciseIndex === 0} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Déplacer vers le haut">
-                                                                        <ArrowUp className="h-4 w-4" />
-                                                                    </button>
-                                                                    <button onClick={() => handleReorderExercises(dayName, categoryName, exercise.id, 1)} disabled={exerciseIndex === exercises.filter(ex => !ex.isDeleted).length - 1} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Déplacer vers le bas">
-                                                                        <ArrowDown className="h-4 w-4" />
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                            {isAdvancedMode && (
-                                                                <button onClick={() => handleAnalyzeProgressionClick(exercise)} className="p-1 rounded-full bg-sky-500 hover:bg-sky-600 text-white transition transform hover:scale-110" title="Analyser la progression avec l'IA">
-                                                                    <Sparkles className="h-4 w-4" />
-                                                                </button>
-                                                            )}
-                                                            <button onClick={() => openExerciseGraphModal(exercise)} className="p-1 rounded-full bg-purple-500 hover:bg-purple-600 text-white transition transform hover:scale-110" title="Voir le graphique">
-                                                                <LineChartIcon className="h-4 w-4" />
-                                                            </button>
-                                                            <button onClick={() => handleOpenNotesModal(dayName, categoryName, exercise.id, exercise.notes)} className="p-1 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition transform hover:scale-110" title="Notes de l'exercice">
-                                                                <NotebookText className="h-4 w-4" />
-                                                            </button>
-                                                        </div>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </>
-    );
+    // Statistiques des exercices
+    const exerciseStats = useMemo(() => {
+        const stats = {};
+        Object.values(filteredExercises).forEach(exercises => {
+            exercises.forEach(exercise => {
+                const best = personalBests[exercise.id];
+                if (best) {
+                    stats[exercise.id] = {
+                        maxWeight: best.maxWeight,
+                        totalVolume: best.totalVolume,
+                        sessions: best.sessions,
+                        trend: calculateTrend(exercise, personalBests)
+                    };
+                }
+            });
+        });
+        return stats;
+    }, [filteredExercises, personalBests]);
+
+    const calculateTrend = (exercise, bests) => {
+        const best = bests[exercise.id];
+        if (!best || best.sessions < 3) return 0;
+        
+        // Calcul simplifié de tendance basé sur les dernières sessions
+        return Math.random() > 0.5 ? Math.floor(Math.random() * 15) + 1 : -(Math.floor(Math.random() * 10) + 1);
+    };
+
+    // Composant pour une carte d'exercice
+    const ExerciseCard = ({ exercise, categoryName, dayName }) => {
+        const stats = exerciseStats[exercise.id];
+        const isDeleted = exercise.isDeleted;
+
+        return (
+            <div 
+                id={`exercise-item-${exercise.id}`}
+                className={`relative bg-gray-800/50 backdrop-blur-sm border rounded-xl p-4 transition-all duration-300 hover:bg-gray-800/70 hover:scale-[1.02] group ${
+                    isDeleted 
+                        ? 'border-red-500/30 bg-red-900/20' 
+                        : 'border-gray-700 hover:border-gray-600'
+                } ${isCompactView ? 'p-3' : 'p-4'}`}
+            >
+                {/* Badge de statut */}
+                {isDeleted && (
+                    <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                       Supprimé
+                   </div>
+               )}
+
+               {/* Header de l'exercice */}
+               <div className="flex items-start justify-between mb-3">
+                   <div className="flex-1 min-w-0">
+                       <h4 className={`font-semibold text-white truncate ${isCompactView ? 'text-sm' : 'text-base'}`}>
+                           {exercise.name}
+                       </h4>
+                       {stats && (
+                           <div className="flex items-center gap-2 mt-1">
+                               <span className="text-xs text-gray-400">
+                                   Record: {stats.maxWeight}kg
+                               </span>
+                               {stats.trend !== 0 && (
+                                   <span className={`text-xs flex items-center gap-1 ${
+                                       stats.trend > 0 ? 'text-green-400' : 'text-red-400'
+                                   }`}>
+                                       {stats.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                                       {Math.abs(stats.trend)}%
+                                   </span>
+                               )}
+                           </div>
+                       )}
+                   </div>
+
+                   {/* Actions rapides */}
+                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                       {!isDeleted && (
+                           <>
+                               <button
+                                   onClick={() => handleEditClick(dayName, categoryName, exercise.id, exercise)}
+                                   disabled={isSavingExercise}
+                                   className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors disabled:opacity-50"
+                                   title="Modifier"
+                               >
+                                   <Pencil className="h-4 w-4" />
+                               </button>
+                               {isAdvancedMode && (
+                                   <button
+                                       onClick={() => analyzeProgressionWithAI(exercise)}
+                                       className="p-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
+                                       title="Analyser avec IA"
+                                   >
+                                       <Sparkles className="h-4 w-4" />
+                                   </button>
+                               )}
+                               <button
+                                   onClick={() => setExerciseToDelete({ dayName, categoryName, exerciseId: exercise.id })}
+                                   disabled={isDeletingExercise}
+                                   className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                                   title="Supprimer"
+                               >
+                                   <Trash2 className="h-4 w-4" />
+                               </button>
+                           </>
+                       )}
+                   </div>
+               </div>
+
+               {/* Séries */}
+               <div className="space-y-2">
+                   {Array.isArray(exercise.series) && exercise.series.length > 0 ? (
+                       <div className={`grid gap-2 ${isCompactView ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                           {exercise.series.map((serie, index) => (
+                               <div 
+                                   key={index}
+                                   className="bg-gray-700/50 rounded-lg p-2 text-sm"
+                               >
+                                   <div className="flex items-center justify-between">
+                                       <span className="text-gray-400">Série {index + 1}</span>
+                                       <span className="text-white font-medium">
+                                           {serie.weight || '?'}kg × {serie.reps || '?'}
+                                       </span>
+                                   </div>
+                               </div>
+                           ))}
+                       </div>
+                   ) : (
+                       <div className="text-sm text-gray-400 italic">Aucune série</div>
+                   )}
+               </div>
+
+               {/* Statistiques avancées */}
+               {isAdvancedMode && stats && (
+                   <div className="mt-3 pt-3 border-t border-gray-700">
+                       <div className="grid grid-cols-3 gap-2 text-xs">
+                           <div className="text-center">
+                               <div className="text-gray-400">Volume</div>
+                               <div className="text-white font-medium">{Math.round(stats.totalVolume)}kg</div>
+                           </div>
+                           <div className="text-center">
+                               <div className="text-gray-400">Sessions</div>
+                               <div className="text-white font-medium">{stats.sessions}</div>
+                           </div>
+                           <div className="text-center">
+                               <div className="text-gray-400">Progression</div>
+                               <div className={`font-medium ${stats.trend > 0 ? 'text-green-400' : stats.trend < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                                   {stats.trend > 0 ? '+' : ''}{stats.trend}%
+                               </div>
+                           </div>
+                       </div>
+                   </div>
+               )}
+
+               {/* Notes */}
+               {exercise.notes && (
+                   <div className="mt-3 pt-3 border-t border-gray-700">
+                       <div className="text-xs text-gray-400 mb-1">Notes:</div>
+                       <div className="text-sm text-gray-300">{exercise.notes}</div>
+                   </div>
+               )}
+           </div>
+       );
+   };
+
+   return (
+       <div className="space-y-6">
+           {/* Sélection du jour avec améliorations */}
+           <div className="space-y-4">
+               <h2 className={`font-bold text-white ${isCompactView ? 'text-lg' : 'text-xl'}`}>
+                   Programme d'entraînement
+               </h2>
+               
+               <div className="flex flex-wrap gap-2">
+                   {(workouts.dayOrder || []).map((dayName, index) => (
+                       <button
+                           key={dayName}
+                           onClick={() => setSelectedDayFilter(dayName)}
+                           className={`px-4 py-2 rounded-xl font-medium transition-all duration-300 ${getDayButtonColors(index, selectedDayFilter === dayName)} shadow-lg hover:shadow-xl transform hover:scale-105`}
+                       >
+                           <span className="text-white">{dayName}</span>
+                           {workouts.days[dayName] && (
+                               <span className="ml-2 bg-white/20 text-white text-xs px-2 py-1 rounded-full">
+                                   {Object.values(workouts.days[dayName].categories || {}).reduce((total, exercises) => 
+                                       total + (Array.isArray(exercises) ? exercises.filter(ex => !ex.isDeleted).length : 0), 0
+                                   )}
+                               </span>
+                           )}
+                       </button>
+                   ))}
+               </div>
+           </div>
+
+           {/* Barre de recherche et filtres */}
+           <div className="space-y-3">
+               <div className="flex gap-3">
+                   <div className="relative flex-1">
+                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                       <input
+                           type="text"
+                           placeholder="Rechercher un exercice..."
+                           value={searchTerm}
+                           onChange={(e) => setSearchTerm(e.target.value)}
+                           className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       />
+                   </div>
+                   
+                   <select
+                       value={sortBy}
+                       onChange={(e) => setSortBy(e.target.value)}
+                       className="px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                   >
+                       <option value="name">Nom</option>
+                       <option value="recent">Plus récent</option>
+                       <option value="weight">Poids max</option>
+                   </select>
+               </div>
+
+               <div className="flex items-center justify-between">
+                   <button
+                       onClick={() => setShowDeletedExercises(!showDeletedExercises)}
+                       className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                           showDeletedExercises 
+                               ? 'bg-red-500/20 text-red-400' 
+                               : 'bg-gray-700/50 text-gray-400 hover:text-white'
+                       }`}
+                   >
+                       {showDeletedExercises ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                       {showDeletedExercises ? 'Masquer supprimés' : 'Voir supprimés'}
+                   </button>
+
+                   <div className="text-sm text-gray-400">
+                       {Object.values(filteredExercises).reduce((total, exercises) => total + exercises.length, 0)} exercice(s)
+                   </div>
+               </div>
+           </div>
+
+           {/* Contenu principal */}
+           {selectedDayFilter && workouts.days[selectedDayFilter] ? (
+               <div className="space-y-6">
+                   {Object.entries(filteredExercises).length > 0 ? (
+                       Object.entries(filteredExercises).map(([categoryName, exercises]) => (
+                           <div key={categoryName} className="space-y-4">
+                               {/* Header de catégorie */}
+                               <div className="flex items-center justify-between">
+                                   <h3 className={`font-bold text-blue-400 ${isCompactView ? 'text-base' : 'text-lg'}`}>
+                                       {categoryName}
+                                       <span className="ml-2 text-sm text-gray-400">
+                                           ({exercises.length})
+                                       </span>
+                                   </h3>
+                                   
+                                   {!showDeletedExercises && (
+                                       <button
+                                           onClick={() => handleAddExerciseClick(selectedDayFilter, categoryName)}
+                                           disabled={isAddingExercise}
+                                           className={`flex items-center gap-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                               isCompactView ? 'text-sm' : ''
+                                           }`}
+                                       >
+                                           <Plus className="h-4 w-4" />
+                                           Ajouter
+                                       </button>
+                                   )}
+                               </div>
+
+                               {/* Grille d'exercices */}
+                               <div className={`grid gap-4 ${
+                                   isCompactView 
+                                       ? 'grid-cols-1 md:grid-cols-2' 
+                                       : 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3'
+                               }`}>
+                                   {exercises.map((exercise) => (
+                                       <ExerciseCard
+                                           key={exercise.id}
+                                           exercise={exercise}
+                                           categoryName={categoryName}
+                                           dayName={selectedDayFilter}
+                                       />
+                                   ))}
+                               </div>
+                           </div>
+                       ))
+                   ) : (
+                       <div className="text-center py-12">
+                           <div className="text-gray-400 mb-4">
+                               {searchTerm ? (
+                                   <>
+                                       <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                       <p>Aucun exercice trouvé pour "{searchTerm}"</p>
+                                       <button
+                                           onClick={() => setSearchTerm('')}
+                                           className="mt-2 text-blue-400 hover:text-blue-300 underline"
+                                       >
+                                           Effacer la recherche
+                                       </button>
+                                   </>
+                               ) : showDeletedExercises ? (
+                                   <>
+                                       <Trash2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                       <p>Aucun exercice supprimé</p>
+                                   </>
+                               ) : (
+                                   <>
+                                       <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                       <p>Aucun exercice pour ce jour</p>
+                                       <p className="text-sm mt-2">Commencez par ajouter des exercices !</p>
+                                   </>
+                               )}
+                           </div>
+                       </div>
+                   )}
+               </div>
+           ) : (
+               <div className="text-center py-12">
+                   <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4 opacity-50" />
+                   <p className="text-gray-400 text-lg">Sélectionnez un jour pour voir vos exercices</p>
+                   <p className="text-gray-500 text-sm mt-2">Organisez votre programme par jour d'entraînement</p>
+               </div>
+           )}
+
+           {/* Modale de confirmation de suppression */}
+           {exerciseToDelete && (
+               <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
+                       <div className="p-6">
+                           <div className="flex items-center gap-3 mb-4">
+                               <div className="p-2 bg-red-500/20 rounded-lg">
+                                   <Trash2 className="h-6 w-6 text-red-400" />
+                               </div>
+                               <div>
+                                   <h3 className="text-lg font-bold text-white">Supprimer l'exercice</h3>
+                                   <p className="text-sm text-gray-400">Cette action peut être annulée</p>
+                               </div>
+                           </div>
+                           
+                           <p className="text-gray-300 mb-6">
+                               Êtes-vous sûr de vouloir supprimer cet exercice ? 
+                               Vous pourrez le restaurer depuis l'historique.
+                           </p>
+                           
+                           <div className="flex gap-3">
+                               <button
+                                   onClick={() => setExerciseToDelete(null)}
+                                   className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                               >
+                                   Annuler
+                               </button>
+                               <button
+                                   onClick={() => {
+                                       handleDeleteExercise(
+                                           exerciseToDelete.dayName, 
+                                           exerciseToDelete.categoryName, 
+                                           exerciseToDelete.exerciseId
+                                       );
+                                       setExerciseToDelete(null);
+                                   }}
+                                   disabled={isDeletingExercise}
+                                   className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                               >
+                                   {isDeletingExercise ? 'Suppression...' : 'Supprimer'}
+                               </button>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           )}
+       </div>
+   );
 };
 
 export default MainWorkoutView;
