@@ -80,12 +80,13 @@ const MainWorkoutView = ({
                                                             </div>
                                                             <div className="mt-1">
                                                                 {exercise.series && exercise.series.map((series, sIndex) => (
-                                                                    <div key={sIndex} className="flex flex-col sm:flex-row sm:items-center">
+                                                                    // Modification ici pour que la 1RM s'affiche sur une nouvelle ligne si elle est présente
+                                                                    <div key={sIndex}>
                                                                         <p className="text-gray-300 text-xs sm:text-sm">
                                                                             {getSeriesDisplay(series)}
                                                                         </p>
                                                                         {isAdvancedMode && series.oneRM && (
-                                                                            <p className="text-blue-300 font-medium text-xs sm:text-sm mt-1 sm:mt-0 sm:ml-2">
+                                                                            <p className="text-blue-300 font-medium text-xs sm:text-sm mt-1">
                                                                                 (1RM: {series.oneRM.toFixed(1)} kg)
                                                                             </p>
                                                                         )}
