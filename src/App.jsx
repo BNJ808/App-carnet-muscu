@@ -1215,29 +1215,36 @@ const ImprovedWorkoutApp = () => {
                    </div>
                )}
 
-               {/* Navigation par onglets visible */}
-               <div className="flex justify-center mb-6">
-                   <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-1 border border-gray-700">
-                       {[
-                           { id: 'workout', label: 'Entraînement', icon: Dumbbell },
-                           { id: 'timer', label: 'Minuteur', icon: Clock },
-                           { id: 'history', label: 'Historique', icon: History }
-                       ].map((tab) => (
-                           <button
-                               key={tab.id}
-                               onClick={() => setCurrentView(tab.id)}
-                               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                                   currentView === tab.id
-                                       ? 'bg-blue-500 text-white shadow-lg'
-                                       : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                               }`}
-                           >
-                               <tab.icon className="h-4 w-4" />
-                               <span className="font-medium">{tab.label}</span>
-                           </button>
-                       ))}
-                   </div>
-               </div>
+               {/* Contenu principal */}
+<main className="p-4 pb-20 max-w-7xl mx-auto">
+    {/* Statistiques rapides en mode avancé */}
+    {isAdvancedMode && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {/* ... statistiques ... */}
+        </div>
+    )}
+
+    {/* PLUS DE NAVIGATION ICI - DIRECTEMENT LES VUES */}
+
+    {/* Contenu des vues */}
+    {currentView === 'workout' && (
+        <MainWorkoutView
+            // ... props
+        />
+    )}
+
+    {currentView === 'timer' && (
+        <TimerView
+            // ... props
+        />
+    )}
+
+    {currentView === 'history' && (
+        <HistoryView
+            // ... props
+        />
+    )}
+</main>
 
                {/* Contenu des vues */}
                {currentView === 'workout' && (
