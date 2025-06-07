@@ -1215,37 +1215,6 @@ const ImprovedWorkoutApp = () => {
                    </div>
                )}
 
-               {/* Contenu principal */}
-<main className="p-4 pb-20 max-w-7xl mx-auto">
-    {/* Statistiques rapides en mode avancé */}
-    {isAdvancedMode && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            {/* ... statistiques ... */}
-        </div>
-    )}
-
-    {/* PLUS DE NAVIGATION ICI - DIRECTEMENT LES VUES */}
-
-    {/* Contenu des vues */}
-    {currentView === 'workout' && (
-        <MainWorkoutView
-            // ... props
-        />
-    )}
-
-    {currentView === 'timer' && (
-        <TimerView
-            // ... props
-        />
-    )}
-
-    {currentView === 'history' && (
-        <HistoryView
-            // ... props
-        />
-    )}
-</main>
-
                {/* Contenu des vues */}
                {currentView === 'workout' && (
                    <MainWorkoutView
