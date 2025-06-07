@@ -896,45 +896,69 @@ const ImprovedWorkoutApp = () => {
    }, [workouts]);
 
    // Calculs mémorisés pour les statistiques
-   const workoutStats = useMemo(() => {
-       if (!workouts?.days || !historicalData) {
-           return {
-               totalExercises: 0,
-               totalSessions: 0,
-               thisWeekSessions: 0,
-               totalVolume: 0,
-               averageSessionsPerWeek: 0
-           };
-       }
+   // Calculs mémorisés pour les statistiques - VERSION SIMPLIFIÉE SANS useMemo
+const getWorkoutStats = useCallback(() => {
+    if (!workouts?.days || !historicalData) {
+        return {
+            totalExercises: 0,
+            totalSessions: 0,
+            thisWeekSessions: 0,
+            totalVolume: 0,
+            averageSessionsPerWeek: 0
+        };
+    }
 
-       const totalExercises = Object.values(workouts.days).reduce((total, day) => {
-           return total + Object.values(day.categories || {}).reduce((dayTotal, exercises) => {
-               return dayTotal + (Array.isArray(exercises) ? exercises.filter(ex => !ex.isDeleted).length : 0);
-           }, 0);
-       }, 0);
+    let totalExercises = 0;
+    try {
+        Object.values(workouts.days).forEach(day => {
+            Object.values(day.categories || {}).forEach(exercises => {
+                if (Array.isArray(exercises)) {
+                    totalExercises += exercises.filter(ex => !ex.isDeleted).length;
+                }
+            });
+        });
+    } catch (error) {
+        console.warn("Erreur calcul exercices:", error);
+        totalExercises = 0;
+    }
 
-       const totalSessions = historicalData.length;
-       const thisWeekSessions = historicalData.filter(session => {
-           const sessionDate = session.timestamp;
-           const weekAgo = new Date();
-           weekAgo.setDate(weekAgo.getDate() - 7);
-           return sessionDate > weekAgo;
-       }).length;
+    const totalSessions = historicalData.length || 0;
+    
+    let thisWeekSessions = 0;
+    try {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        thisWeekSessions = historicalData.filter(session => {
+            return session.timestamp && session.timestamp > weekAgo;
+        }).length;
+    } catch (error) {
+        console.warn("Erreur calcul sessions semaine:", error);
+        thisWeekSessions = 0;
+    }
 
-       const totalVolume = Object.values(personalBests || {}).reduce((total, best) => {
-           return total + (best.totalVolume || 0);
-       }, 0);
+    let totalVolume = 0;
+    try {
+        Object.values(personalBests || {}).forEach(best => {
+            totalVolume += (best.totalVolume || 0);
+        });
+    } catch (error) {
+        console.warn("Erreur calcul volume:", error);
+        totalVolume = 0;
+    }
 
-       const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
+    const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
 
-       return {
-           totalExercises,
-           totalSessions,
-           thisWeekSessions,
-           totalVolume: Math.round(totalVolume),
-           averageSessionsPerWeek
-       };
-   }, [workouts?.days, historicalData?.length, personalBests]);
+    return {
+        totalExercises,
+        totalSessions,
+        thisWeekSessions,
+        totalVolume: Math.round(totalVolume),
+        averageSessionsPerWeek
+    };
+}, []); // Aucune dépendance !
+
+// Calculer les stats à chaque rendu (sans useMemo)
+const workoutStats = getWorkoutStats();
 
    // Gestion des raccourcis clavier
    useEffect(() => {
