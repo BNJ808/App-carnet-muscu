@@ -887,35 +887,45 @@ const handleRedo = useCallback(() => {
 }, [redoStack.length, workouts]); // Changé redoStack en redoStack.length
 
    // Calculs mémorisés pour les statistiques
-   const workoutStats = useMemo(() => {
-       const totalExercises = Object.values(workouts.days).reduce((total, day) => {
-           return total + Object.values(day.categories || {}).reduce((dayTotal, exercises) => {
-               return dayTotal + (Array.isArray(exercises) ? exercises.filter(ex => !ex.isDeleted).length : 0);
-           }, 0);
-       }, 0);
+  const workoutStats = useMemo(() => {
+    if (!workouts?.days || !historicalData) {
+        return {
+            totalExercises: 0,
+            totalSessions: 0,
+            thisWeekSessions: 0,
+            totalVolume: 0,
+            averageSessionsPerWeek: 0
+        };
+    }
 
-       const totalSessions = historicalData.length;
-       const thisWeekSessions = historicalData.filter(session => {
-           const sessionDate = session.timestamp;
-           const weekAgo = new Date();
-           weekAgo.setDate(weekAgo.getDate() - 7);
-           return sessionDate > weekAgo;
-       }).length;
+    const totalExercises = Object.values(workouts.days).reduce((total, day) => {
+        return total + Object.values(day.categories || {}).reduce((dayTotal, exercises) => {
+            return dayTotal + (Array.isArray(exercises) ? exercises.filter(ex => !ex.isDeleted).length : 0);
+        }, 0);
+    }, 0);
 
-       const totalVolume = Object.values(personalBests).reduce((total, best) => {
-           return total + (best.totalVolume || 0);
-       }, 0);
+    const totalSessions = historicalData.length;
+    const thisWeekSessions = historicalData.filter(session => {
+        const sessionDate = session.timestamp;
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return sessionDate > weekAgo;
+    }).length;
 
-       const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
+    const totalVolume = Object.values(personalBests || {}).reduce((total, best) => {
+        return total + (best.totalVolume || 0);
+    }, 0);
 
-       return {
-           totalExercises,
-           totalSessions,
-           thisWeekSessions,
-           totalVolume: Math.round(totalVolume),
-           averageSessionsPerWeek
-       };
-   }, [workouts, historicalData, personalBests]);
+    const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
+
+    return {
+        totalExercises,
+        totalSessions,
+        thisWeekSessions,
+        totalVolume: Math.round(totalVolume),
+        averageSessionsPerWeek
+    };
+}, [workouts?.days, historicalData?.length, personalBests]); // Dépendances plus spécifiques
 
    // Gestion des raccourcis clavier
    useEffect(() => {
