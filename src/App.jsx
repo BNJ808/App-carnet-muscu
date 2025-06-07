@@ -7,7 +7,7 @@ import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ChevronUp, Pencil, Sparkles, ArrowUp, ArrowDown,
     Plus, Trash2, Play, Pause, RotateCcw, Search, Filter, Dumbbell, Clock, History, NotebookText,
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
-    Zap, Fire, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
+    Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
 } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -674,12 +674,12 @@ const ImprovedWorkoutApp = () => {
         setEditingExercise(null);
         setEditingExerciseName('');
         setIsSavingExercise(false);
-   }, [editingExercise, workouts, editingExerciseName, newWeight, newSets, newReps, applyChanges]);
+    }, [editingExercise, workouts, editingExerciseName, newWeight, newSets, newReps, applyChanges]);
 
-   const handleDeleteExercise = useCallback((day, category, exerciseId) => {
-       setIsDeletingExercise(true);
-       
-       const updatedWorkouts = { ...workouts };
+    const handleDeleteExercise = useCallback((day, category, exerciseId) => {
+        setIsDeletingExercise(true);
+        
+        const updatedWorkouts = { ...workouts };
        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
        
        if (!exercises) {
@@ -860,7 +860,7 @@ const ImprovedWorkoutApp = () => {
        
        // Reset input
        event.target.value = '';
-   }, [sanitizeWorkoutData, saveWorkoutsOptimized, handleUndo]);
+   }, [sanitizeWorkoutData, saveWorkoutsOptimized]);
 
    // Fonctions d'undo/redo optimisées
    const handleUndo = useCallback(() => {
@@ -1196,7 +1196,7 @@ const ImprovedWorkoutApp = () => {
                        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
                            <div className="flex items-center justify-between mb-2">
                                <div className="p-2 rounded-lg bg-purple-500/20">
-                                   <Fire className="h-5 w-5 text-purple-400" />
+                                   <Zap className="h-5 w-5 text-purple-400" />
                                </div>
                            </div>
                            <div className="text-2xl font-bold text-white mb-1">{workoutStats.thisWeekSessions}</div>

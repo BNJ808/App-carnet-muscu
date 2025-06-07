@@ -38,218 +38,218 @@ const HistoryView = ({
     ];
 
     // Traitement des données historiques pour extraire les exercices uniques
-   const processedExercises = useMemo(() => {
-       const exerciseMap = {};
-       const now = new Date();
-       const cutoffDate = selectedTimeRange === 'all' ? new Date(0) : new Date(now - parseInt(selectedTimeRange) * 24 * 60 * 60 * 1000);
+    const processedExercises = useMemo(() => {
+        const exerciseMap = {};
+        const now = new Date();
+        const cutoffDate = selectedTimeRange === 'all' ? new Date(0) : new Date(now - parseInt(selectedTimeRange) * 24 * 60 * 60 * 1000);
 
-       historicalData.forEach(session => {
-           const sessionDate = session.timestamp;
-           if (sessionDate < cutoffDate) return;
+        historicalData.forEach(session => {
+            const sessionDate = session.timestamp;
+            if (sessionDate < cutoffDate) return;
 
-           const workoutData = session.workoutData;
-           if (!workoutData?.days) return;
+            const workoutData = session.workoutData;
+            if (!workoutData?.days) return;
 
-           Object.entries(workoutData.days).forEach(([dayName, dayData]) => {
-               Object.entries(dayData.categories || {}).forEach(([categoryName, exercises]) => {
-                   if (!Array.isArray(exercises)) return;
+            Object.entries(workoutData.days).forEach(([dayName, dayData]) => {
+                Object.entries(dayData.categories || {}).forEach(([categoryName, exercises]) => {
+                    if (!Array.isArray(exercises)) return;
 
-                   exercises.forEach(exercise => {
-                       if (!exercise.id) return;
+                    exercises.forEach(exercise => {
+                        if (!exercise.id) return;
 
-                       if (!exerciseMap[exercise.id]) {
-                           exerciseMap[exercise.id] = {
-                               id: exercise.id,
-                               name: exercise.name,
-                               category: categoryName,
-                               dayName: dayName,
-                               allSeries: [],
-                               sessions: [],
-                               isDeleted: exercise.isDeleted,
-                               firstSeen: sessionDate,
-                               lastSeen: sessionDate,
-                               totalVolume: 0,
-                               maxWeight: 0,
-                               maxReps: 0
-                           };
-                       }
+                        if (!exerciseMap[exercise.id]) {
+                            exerciseMap[exercise.id] = {
+                                id: exercise.id,
+                                name: exercise.name,
+                                category: categoryName,
+                                dayName: dayName,
+                                allSeries: [],
+                                sessions: [],
+                                isDeleted: exercise.isDeleted,
+                                firstSeen: sessionDate,
+                                lastSeen: sessionDate,
+                                totalVolume: 0,
+                                maxWeight: 0,
+                                maxReps: 0
+                            };
+                        }
 
-                       const exerciseData = exerciseMap[exercise.id];
-                       exerciseData.isDeleted = exercise.isDeleted; // Dernière valeur connue
-                       exerciseData.lastSeen = sessionDate > exerciseData.lastSeen ? sessionDate : exerciseData.lastSeen;
+                        const exerciseData = exerciseMap[exercise.id];
+                        exerciseData.isDeleted = exercise.isDeleted; // Dernière valeur connue
+                        exerciseData.lastSeen = sessionDate > exerciseData.lastSeen ? sessionDate : exerciseData.lastSeen;
 
-                       // Ajouter la session
-                       exerciseData.sessions.push({
-                           date: sessionDate,
-                           series: exercise.series || [],
-                           notes: exercise.notes || ''
-                       });
+                        // Ajouter la session
+                        exerciseData.sessions.push({
+                            date: sessionDate,
+                            series: exercise.series || [],
+                            notes: exercise.notes || ''
+                        });
 
-                       // Traiter les séries
-                       if (Array.isArray(exercise.series)) {
-                           exercise.series.forEach(serie => {
-                               const weight = parseFloat(serie.weight) || 0;
-                               const reps = parseInt(serie.reps) || 0;
-                               const volume = weight * reps;
+                        // Traiter les séries
+                        if (Array.isArray(exercise.series)) {
+                            exercise.series.forEach(serie => {
+                                const weight = parseFloat(serie.weight) || 0;
+                                const reps = parseInt(serie.reps) || 0;
+                                const volume = weight * reps;
 
-                               if (weight > 0 && reps > 0) {
-                                   exerciseData.allSeries.push({
-                                       date: sessionDate,
-                                       weight: weight,
-                                       reps: reps,
-                                       volume: volume
-                                   });
+                                if (weight > 0 && reps > 0) {
+                                    exerciseData.allSeries.push({
+                                        date: sessionDate,
+                                        weight: weight,
+                                        reps: reps,
+                                        volume: volume
+                                    });
 
-                                   exerciseData.totalVolume += volume;
-                                   exerciseData.maxWeight = Math.max(exerciseData.maxWeight, weight);
-                                   exerciseData.maxReps = Math.max(exerciseData.maxReps, reps);
-                               }
-                           });
-                       }
-                   });
-               });
-           });
-       });
+                                    exerciseData.totalVolume += volume;
+                                    exerciseData.maxWeight = Math.max(exerciseData.maxWeight, weight);
+                                    exerciseData.maxReps = Math.max(exerciseData.maxReps, reps);
+                                }
+                            });
+                        }
+                    });
+                });
+            });
+        });
 
-       return Object.values(exerciseMap);
-   }, [historicalData, selectedTimeRange]);
+        return Object.values(exerciseMap);
+    }, [historicalData, selectedTimeRange]);
 
-   // Filtrage des exercices
-   const filteredExercises = useMemo(() => {
-       return processedExercises.filter(exercise => {
-           // Filtre par statut supprimé
-           if (showDeletedOnly && !exercise.isDeleted) return false;
-           if (!showDeletedOnly && exercise.isDeleted) return false;
+    // Filtrage des exercices
+    const filteredExercises = useMemo(() => {
+        return processedExercises.filter(exercise => {
+            // Filtre par statut supprimé
+            if (showDeletedOnly && !exercise.isDeleted) return false;
+            if (!showDeletedOnly && exercise.isDeleted) return false;
 
-           // Filtre par catégorie
-           if (selectedCategory !== 'all' && exercise.category !== selectedCategory) return false;
+            // Filtre par catégorie
+            if (selectedCategory !== 'all' && exercise.category !== selectedCategory) return false;
 
-           // Filtre par recherche
-           if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+            // Filtre par recherche
+            if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
 
-           return true;
-       }).sort((a, b) => {
-           switch (sortBy) {
-               case 'name':
-                   return a.name.localeCompare(b.name);
-               case 'recent':
-                   return new Date(b.lastSeen) - new Date(a.lastSeen);
-               case 'volume':
-                   return b.totalVolume - a.totalVolume;
-               case 'sessions':
-                   return b.sessions.length - a.sessions.length;
-               default:
-                   return 0;
-           }
-       });
-   }, [processedExercises, showDeletedOnly, selectedCategory, searchTerm, sortBy]);
+            return true;
+        }).sort((a, b) => {
+            switch (sortBy) {
+                case 'name':
+                    return a.name.localeCompare(b.name);
+                case 'recent':
+                    return new Date(b.lastSeen) - new Date(a.lastSeen);
+                case 'volume':
+                    return b.totalVolume - a.totalVolume;
+                case 'sessions':
+                    return b.sessions.length - a.sessions.length;
+                default:
+                    return 0;
+            }
+        });
+    }, [processedExercises, showDeletedOnly, selectedCategory, searchTerm, sortBy]);
 
-   // Extraction des catégories uniques
-   const availableCategories = useMemo(() => {
-       const categories = new Set();
-       processedExercises.forEach(exercise => categories.add(exercise.category));
-       return ['all', ...Array.from(categories)].filter(Boolean);
-   }, [processedExercises]);
+    // Extraction des catégories uniques
+    const availableCategories = useMemo(() => {
+        const categories = new Set();
+        processedExercises.forEach(exercise => categories.add(exercise.category));
+        return ['all', ...Array.from(categories)].filter(Boolean);
+    }, [processedExercises]);
 
-   // Données pour les graphiques
-   const chartData = useMemo(() => {
-       if (!selectedExerciseForGraph) return [];
+    // Données pour les graphiques
+    const chartData = useMemo(() => {
+        if (!selectedExerciseForGraph) return [];
 
-       const exercise = processedExercises.find(ex => ex.id === selectedExerciseForGraph);
-       if (!exercise) return [];
+        const exercise = processedExercises.find(ex => ex.id === selectedExerciseForGraph);
+        if (!exercise) return [];
 
-       return exercise.allSeries.map((serie, index) => ({
-           session: index + 1,
-           date: serie.date.toLocaleDateString('fr-FR'),
-           weight: serie.weight,
-           reps: serie.reps,
-           volume: serie.volume
-       }));
-   }, [selectedExerciseForGraph, processedExercises]);
+        return exercise.allSeries.map((serie, index) => ({
+            session: index + 1,
+            date: serie.date.toLocaleDateString('fr-FR'),
+            weight: serie.weight,
+            reps: serie.reps,
+            volume: serie.volume
+        }));
+    }, [selectedExerciseForGraph, processedExercises]);
 
-   // Statistiques globales
-   const globalStats = useMemo(() => {
-       const activeExercises = processedExercises.filter(ex => !ex.isDeleted);
-       const totalSessions = historicalData.filter(session => {
-           const now = new Date();
-           const cutoffDate = selectedTimeRange === 'all' ? new Date(0) : new Date(now - parseInt(selectedTimeRange) * 24 * 60 * 60 * 1000);
-           return session.timestamp >= cutoffDate;
-       }).length;
+    // Statistiques globales
+    const globalStats = useMemo(() => {
+        const activeExercises = processedExercises.filter(ex => !ex.isDeleted);
+        const totalSessions = historicalData.filter(session => {
+            const now = new Date();
+            const cutoffDate = selectedTimeRange === 'all' ? new Date(0) : new Date(now - parseInt(selectedTimeRange) * 24 * 60 * 60 * 1000);
+            return session.timestamp >= cutoffDate;
+        }).length;
 
-       return {
-           totalExercises: activeExercises.length,
-           deletedExercises: processedExercises.filter(ex => ex.isDeleted).length,
-           totalSessions: totalSessions,
-           totalVolume: Math.round(activeExercises.reduce((sum, ex) => sum + ex.totalVolume, 0)),
-           avgSessionsPerExercise: activeExercises.length > 0 ? Math.round((activeExercises.reduce((sum, ex) => sum + ex.sessions.length, 0) / activeExercises.length) * 10) / 10 : 0
-       };
-   }, [processedExercises, historicalData, selectedTimeRange]);
+        return {
+            totalExercises: activeExercises.length,
+            deletedExercises: processedExercises.filter(ex => ex.isDeleted).length,
+            totalSessions: totalSessions,
+            totalVolume: Math.round(activeExercises.reduce((sum, ex) => sum + ex.totalVolume, 0)),
+            avgSessionsPerExercise: activeExercises.length > 0 ? Math.round((activeExercises.reduce((sum, ex) => sum + ex.sessions.length, 0) / activeExercises.length) * 10) / 10 : 0
+        };
+    }, [processedExercises, historicalData, selectedTimeRange]);
 
-   // Composant pour une carte d'exercice
-   const ExerciseCard = ({ exercise }) => {
-       const trend = calculateTrend(exercise);
-       const daysSinceLastWorkout = Math.floor((new Date() - exercise.lastSeen) / (1000 * 60 * 60 * 24));
+    // Composant pour une carte d'exercice
+    const ExerciseCard = ({ exercise }) => {
+        const trend = calculateTrend(exercise);
+        const daysSinceLastWorkout = Math.floor((new Date() - exercise.lastSeen) / (1000 * 60 * 60 * 24));
 
-       return (
-           <div className={`bg-gray-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all duration-300 hover:bg-gray-800/70 hover:scale-[1.02] group ${
-               exercise.isDeleted ? 'border-red-500/30 bg-red-900/20' : 'border-gray-700 hover:border-gray-600'
-           }`}>
-               {/* Header */}
-               <div className="flex items-start justify-between mb-4">
-                   <div className="flex-1 min-w-0">
-                       <h3 className={`text-lg font-semibold text-white truncate ${exercise.isDeleted ? 'line-through opacity-60' : ''}`}>
-                           {exercise.name}
-                       </h3>
-                       <div className="flex items-center gap-2 mt-1">
-                           <span className="text-sm text-blue-400 bg-blue-500/20 px-2 py-1 rounded-full">
-                               {exercise.category}
-                           </span>
-                           <span className="text-sm text-gray-400">
-                               {exercise.dayName}
-                           </span>
-                       </div>
-                   </div>
+        return (
+            <div className={`bg-gray-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all duration-300 hover:bg-gray-800/70 hover:scale-[1.02] group ${
+                exercise.isDeleted ? 'border-red-500/30 bg-red-900/20' : 'border-gray-700 hover:border-gray-600'
+            }`}>
+                {/* Header */}
+                <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1 min-w-0">
+                        <h3 className={`text-lg font-semibold text-white truncate ${exercise.isDeleted ? 'line-through opacity-60' : ''}`}>
+                            {exercise.name}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-sm text-blue-400 bg-blue-500/20 px-2 py-1 rounded-full">
+                                {exercise.category}
+                            </span>
+                            <span className="text-sm text-gray-400">
+                                {exercise.dayName}
+                            </span>
+                        </div>
+                    </div>
 
-                   {exercise.isDeleted && (
-                       <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                           Supprimé
-                       </span>
-                   )}
-               </div>
+                    {exercise.isDeleted && (
+                        <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                            Supprimé
+                        </span>
+                    )}
+                </div>
 
-               {/* Statistiques */}
-               <div className="grid grid-cols-2 gap-4 mb-4">
-                   <div className="bg-gray-700/50 rounded-lg p-3">
-                       <div className="text-sm text-gray-400">Sessions</div>
-                       <div className="text-xl font-bold text-white">{exercise.sessions.length}</div>
-                   </div>
-                   <div className="bg-gray-700/50 rounded-lg p-3">
-                       <div className="text-sm text-gray-400">Volume total</div>
-                       <div className="text-xl font-bold text-white">{Math.round(exercise.totalVolume)}kg</div>
-                   </div>
-                   <div className="bg-gray-700/50 rounded-lg p-3">
-                       <div className="text-sm text-gray-400">Poids max</div>
-                       <div className="text-xl font-bold text-white">{exercise.maxWeight}kg</div>
-                   </div>
-                   <div className="bg-gray-700/50 rounded-lg p-3">
-                       <div className="text-sm text-gray-400">Reps max</div>
-                       <div className="text-xl font-bold text-white">{exercise.maxReps}</div>
-                   </div>
-               </div>
+                {/* Statistiques */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="bg-gray-700/50 rounded-lg p-3">
+                        <div className="text-sm text-gray-400">Sessions</div>
+                        <div className="text-xl font-bold text-white">{exercise.sessions.length}</div>
+                    </div>
+                    <div className="bg-gray-700/50 rounded-lg p-3">
+                        <div className="text-sm text-gray-400">Volume total</div>
+                        <div className="text-xl font-bold text-white">{Math.round(exercise.totalVolume)}kg</div>
+                    </div>
+                    <div className="bg-gray-700/50 rounded-lg p-3">
+                        <div className="text-sm text-gray-400">Poids max</div>
+                        <div className="text-xl font-bold text-white">{exercise.maxWeight}kg</div>
+                    </div>
+                    <div className="bg-gray-700/50 rounded-lg p-3">
+                        <div className="text-sm text-gray-400">Reps max</div>
+                        <div className="text-xl font-bold text-white">{exercise.maxReps}</div>
+                    </div>
+                </div>
 
-               {/* Progression */}
-               {trend !== 0 && (
-                   <div className={`flex items-center gap-2 mb-4 p-2 rounded-lg ${
-                       trend > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                   }`}>
-                       <TrendingUp className={`h-4 w-4 ${trend < 0 ? 'rotate-180' : ''}`} />
-                       <span className="text-sm font-medium">
-                           {trend > 0 ? 'Progression' : 'Régression'} : {Math.abs(trend)}%
-                       </span>
-                   </div>
-               )}
+                {/* Progression */}
+                {trend !== 0 && (
+                    <div className={`flex items-center gap-2 mb-4 p-2 rounded-lg ${
+                        trend > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                        <TrendingUp className={`h-4 w-4 ${trend < 0 ? 'rotate-180' : ''}`} />
+                        <span className="text-sm font-medium">
+                            {trend > 0 ? 'Progression' : 'Régression'} : {Math.abs(trend)}%
+                        </span>
+                    </div>
+                )}
 
-               {/* Dernière activité */}
+                {/* Dernière activité */}
                <div className="text-sm text-gray-400 mb-4">
                    Dernière fois: {daysSinceLastWorkout === 0 ? "Aujourd'hui" : `il y a ${daysSinceLastWorkout} jour(s)`}
                </div>
