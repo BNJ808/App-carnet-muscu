@@ -8,16 +8,16 @@ import {
  * Composant HistoryView pour afficher l'historique des entraînements.
  */
 const HistoryView = ({
-    historicalData,
-    personalBests,
+    historicalData = [],
+    personalBests = {},
     handleReactivateExercise,
     analyzeProgressionWithAI,
     formatDate,
     getSeriesDisplay,
     isAdvancedMode,
-    searchTerm,
+    searchTerm = '',
     setSearchTerm,
-    sortBy,
+    sortBy = 'date-desc',
     setSortBy
 }) => {
     const [showDeletedExercises, setShowDeletedExercises] = useState(false);
@@ -43,6 +43,8 @@ const HistoryView = ({
 
     // Filtrage des données par plage temporelle
     const getFilteredDataByTime = useMemo(() => {
+        if (!Array.isArray(historicalData)) return [];
+        
         if (selectedTimeRange === 'all') return historicalData;
         
         const now = new Date();
@@ -71,6 +73,8 @@ const HistoryView = ({
     const getAllUniqueExercises = useMemo(() => {
         const exercises = new Set();
         
+        if (!Array.isArray(getFilteredDataByTime)) return [];
+        
         getFilteredDataByTime.forEach(session => {
             const workoutData = session.workoutData;
             if (!workoutData?.days) return;
@@ -83,7 +87,7 @@ const HistoryView = ({
                     
                     categoryExercises.forEach(exercise => {
                         if (!exercise.isDeleted || showDeletedExercises) {
-                            exercises.add(exercise.name);
+                            exercises.add(exercise.name || 'Exercice sans nom');
                         }
                     });
                 });
@@ -96,6 +100,8 @@ const HistoryView = ({
     // Données traitées et filtrées
     const processedData = useMemo(() => {
         let data = [];
+        
+        if (!Array.isArray(getFilteredDataByTime)) return data;
         
         getFilteredDataByTime.forEach(session => {
             const workoutData = session.workoutData;
@@ -111,7 +117,7 @@ const HistoryView = ({
                         if (exercise.isDeleted && !showDeletedExercises) return;
                         
                         // Filtrage par terme de recherche
-                        if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+                        if (searchTerm && exercise.name && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) {
                             return;
                         }
                         
@@ -140,7 +146,7 @@ const HistoryView = ({
                 data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
                 break;
             case 'exercise-name':
-                data.sort((a, b) => a.name.localeCompare(b.name));
+                data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                 break;
             case 'volume':
                 data.sort((a, b) => {
@@ -171,6 +177,8 @@ const HistoryView = ({
     const groupedBySessions = useMemo(() => {
         const sessions = new Map();
         
+        if (!Array.isArray(processedData)) return [];
+        
         processedData.forEach(exercise => {
             if (!sessions.has(exercise.sessionId)) {
                 sessions.set(exercise.sessionId, {
@@ -189,10 +197,10 @@ const HistoryView = ({
 
     // Statistiques de l'historique
     const historyStats = useMemo(() => {
-        const totalSessions = getFilteredDataByTime.length;
-        const totalExercises = processedData.length;
-        const totalVolume = processedData.reduce((sum, ex) => sum + calculateExerciseVolume(ex), 0);
-        const uniqueExercises = new Set(processedData.map(ex => ex.name)).size;
+        const totalSessions = Array.isArray(getFilteredDataByTime) ? getFilteredDataByTime.length : 0;
+        const totalExercises = Array.isArray(processedData) ? processedData.length : 0;
+        const totalVolume = Array.isArray(processedData) ? processedData.reduce((sum, ex) => sum + calculateExerciseVolume(ex), 0) : 0;
+        const uniqueExercises = Array.isArray(processedData) ? new Set(processedData.map(ex => ex.name)).size : 0;
         
         return {
             totalSessions,
@@ -221,13 +229,13 @@ const HistoryView = ({
                 <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                         <h4 className={`font-medium mb-1 ${exercise.isDeleted ? 'text-red-400 line-through' : 'text-white'}`}>
-                            {exercise.name}
+                            {exercise.name || 'Exercice sans nom'}
                             {exercise.isDeleted && <span className="ml-2 text-xs">(Supprimé)</span>}
                         </h4>
                         
                         {personalBest && (
                             <div className="text-xs text-yellow-400 mb-1">
-                                🏆 Record: {personalBest.maxWeight}kg × {personalBest.maxWeightReps} reps
+                                🏆 Record: {personalBest.maxWeight}kg × {personalBest.maxReps} reps
                             </div>
                         )}
                         
@@ -252,7 +260,7 @@ const HistoryView = ({
                         {isAdvancedMode && (
                             <>
                                 <button
-                                    onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise.name)}
+                                    onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise)}
                                     className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10 rounded transition-colors"
                                     title="Analyser avec IA"
                                 >
@@ -261,7 +269,7 @@ const HistoryView = ({
                                 
                                 {exercise.isDeleted && (
                                     <button
-                                        onClick={() => handleReactivateExercise && handleReactivateExercise(exercise)}
+                                        onClick={() => handleReactivateExercise && handleReactivateExercise(exercise.id)}
                                         className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 rounded transition-colors"
                                         title="Réactiver l'exercice"
                                     >
@@ -282,7 +290,8 @@ const HistoryView = ({
 
     const renderSessionCard = (session) => {
         const isExpanded = expandedSessions.has(session.id);
-        const totalVolume = session.exercises.reduce((sum, ex) => sum + calculateExerciseVolume(ex), 0);
+        const totalVolume = Array.isArray(session.exercises) ? session.exercises.reduce((sum, ex) => sum + calculateExerciseVolume(ex), 0) : 0;
+        const exerciseCount = Array.isArray(session.exercises) ? session.exercises.length : 0;
         
         return (
             <div key={session.id} className="bg-gray-800 rounded-lg border border-gray-700">
@@ -295,7 +304,7 @@ const HistoryView = ({
                         <div className="text-left">
                             <h3 className="font-medium text-white">{formatDate(session.timestamp)}</h3>
                             <p className="text-sm text-gray-400">
-                                {session.exercises.length} exercice{session.exercises.length !== 1 ? 's' : ''} • 
+                                {exerciseCount} exercice{exerciseCount !== 1 ? 's' : ''} • 
                                 {Math.round(totalVolume)}kg de volume
                             </p>
                         </div>
@@ -305,7 +314,7 @@ const HistoryView = ({
                 
                 {isExpanded && (
                     <div className="p-4 pt-0 space-y-3">
-                        {session.exercises.map(exercise => renderExerciseCard(exercise))}
+                        {Array.isArray(session.exercises) && session.exercises.map(exercise => renderExerciseCard(exercise))}
                     </div>
                 )}
             </div>
@@ -355,7 +364,7 @@ const HistoryView = ({
                             type="text"
                             placeholder="Rechercher un exercice..."
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => setSearchTerm && setSearchTerm(e.target.value)}
                             className="w-full bg-gray-700 text-white rounded-lg pl-10 pr-3 py-2 text-sm placeholder-gray-400"
                         />
                     </div>
@@ -386,7 +395,7 @@ const HistoryView = ({
                     {/* Tri */}
                     <select
                         value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
+                        onChange={(e) => setSortBy && setSortBy(e.target.value)}
                         className="bg-gray-700 text-white rounded-lg px-3 py-2 text-sm"
                     >
                         {sortOptions.map(option => (
@@ -427,10 +436,10 @@ const HistoryView = ({
                                     <span className="font-medium text-white text-sm">{exerciseName}</span>
                                     <div className="text-right">
                                         <div className="text-yellow-400 font-bold text-sm">
-                                            {best.maxWeight}kg × {best.maxWeightReps}
+                                            {best.maxWeight}kg × {best.maxReps}
                                         </div>
                                         <div className="text-xs text-gray-400">
-                                            {formatDate(best.lastUpdate)}
+                                            {formatDate(best.lastPerformed)}
                                         </div>
                                     </div>
                                 </div>

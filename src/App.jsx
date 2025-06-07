@@ -194,7 +194,7 @@ const ImprovedWorkoutApp = () => {
     const [loading, setLoading] = useState(true);
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
-    const [workouts, setWorkouts] = useState({ days: {}, dayOrder: [] });
+    const [workouts, setWorkouts] = useState(baseInitialData); // Initialisation avec données de base
     const [historicalData, setHistoricalData] = useState([]);
     const [personalBests, setPersonalBests] = useState({});
     
@@ -308,6 +308,8 @@ const ImprovedWorkoutApp = () => {
             } catch (error) {
                 console.error("Erreur traitement données:", error);
                 setToast({ message: "Erreur lors du chargement des données", type: 'error' });
+                // S'assurer qu'on a toujours des données valides même en cas d'erreur
+                setWorkouts(baseInitialData);
             } finally {
                 setLoading(false);
             }
@@ -315,6 +317,8 @@ const ImprovedWorkoutApp = () => {
             console.error("Erreur Firestore:", error);
             setToast({ message: `Erreur Firestore: ${error.message}`, type: 'error' });
             setLoading(false);
+            // S'assurer qu'on a toujours des données valides même en cas d'erreur
+            setWorkouts(baseInitialData);
         });
 
         loadHistoricalData();
@@ -347,12 +351,12 @@ const ImprovedWorkoutApp = () => {
 
     // Effet pour sélection automatique du jour
     useEffect(() => {
-        if (currentView === 'workout' && workouts.dayOrder?.length > 0) {
+        if (currentView === 'workout' && workouts?.dayOrder?.length > 0) {
             if (!selectedDayFilter || !workouts.dayOrder.includes(selectedDayFilter)) {
                 setSelectedDayFilter(workouts.dayOrder[0]);
             }
         }
-    }, [currentView, workouts.dayOrder, selectedDayFilter]);
+    }, [currentView, workouts?.dayOrder, selectedDayFilter]);
 
     // Fonctions utilitaires optimisées
     const sanitizeWorkoutData = useCallback((data) => {
@@ -361,37 +365,41 @@ const ImprovedWorkoutApp = () => {
         const sanitizedDays = {};
         const dayOrder = Array.isArray(data.dayOrder) ? data.dayOrder : Object.keys(data.days || {});
         
-        Object.entries(data.days || {}).forEach(([dayKey, dayData]) => {
-            if (!dayData || typeof dayData !== 'object') return;
-            
-            const sanitizedCategories = {};
-            const categoryOrder = Array.isArray(dayData.categoryOrder) 
-                ? dayData.categoryOrder 
-                : Object.keys(dayData.categories || {});
-            
-            Object.entries(dayData.categories || {}).forEach(([categoryKey, exercises]) => {
-                if (!Array.isArray(exercises)) return;
+        if (data.days && typeof data.days === 'object') {
+            Object.entries(data.days).forEach(([dayKey, dayData]) => {
+                if (!dayData || typeof dayData !== 'object') return;
                 
-                sanitizedCategories[categoryKey] = exercises.map(exercise => ({
-                    id: exercise.id || generateUUID(),
-                    name: exercise.name || 'Exercice sans nom',
-                    series: Array.isArray(exercise.series) 
-                        ? exercise.series.map(s => ({
-                            weight: String(s.weight || ''),
-                            reps: String(s.reps || '')
-                        }))
-                        : [{ weight: '', reps: '' }],
-                    isDeleted: Boolean(exercise.isDeleted),
-                    notes: String(exercise.notes || ''),
-                    createdAt: exercise.createdAt || new Date().toISOString()
-                }));
+                const sanitizedCategories = {};
+                const categoryOrder = Array.isArray(dayData.categoryOrder) 
+                    ? dayData.categoryOrder 
+                    : Object.keys(dayData.categories || {});
+                
+                if (dayData.categories && typeof dayData.categories === 'object') {
+                    Object.entries(dayData.categories).forEach(([categoryKey, exercises]) => {
+                        if (!Array.isArray(exercises)) return;
+                        
+                        sanitizedCategories[categoryKey] = exercises.map(exercise => ({
+                            id: exercise.id || generateUUID(),
+                            name: exercise.name || 'Exercice sans nom',
+                            series: Array.isArray(exercise.series) 
+                                ? exercise.series.map(s => ({
+                                    weight: String(s.weight || ''),
+                                    reps: String(s.reps || '')
+                                }))
+                                : [{ weight: '', reps: '' }],
+                            isDeleted: Boolean(exercise.isDeleted),
+                            notes: String(exercise.notes || ''),
+                            createdAt: exercise.createdAt || new Date().toISOString()
+                        }));
+                    });
+                }
+                
+                sanitizedDays[dayKey] = {
+                    categories: sanitizedCategories,
+                    categoryOrder
+                };
             });
-            
-            sanitizedDays[dayKey] = {
-                categories: sanitizedCategories,
-                categoryOrder
-            };
-        });
+        }
         
         return { days: sanitizedDays, dayOrder };
     }, []);
@@ -436,52 +444,54 @@ const ImprovedWorkoutApp = () => {
     const calculatePersonalBests = useCallback((data) => {
         const bests = {};
         
-        data.forEach(session => {
-            const workoutData = session.workoutData;
-            if (!workoutData?.days) return;
-            
-            Object.values(workoutData.days).forEach(day => {
-                if (!day.categories) return;
+        if (Array.isArray(data)) {
+            data.forEach(session => {
+                const workoutData = session.workoutData;
+                if (!workoutData?.days) return;
                 
-                Object.values(day.categories).forEach(exercises => {
-                    if (!Array.isArray(exercises)) return;
+                Object.values(workoutData.days).forEach(day => {
+                    if (!day.categories) return;
                     
-                    exercises.forEach(exercise => {
-                        if (!exercise.series || exercise.isDeleted) return;
+                    Object.values(day.categories).forEach(exercises => {
+                        if (!Array.isArray(exercises)) return;
                         
-                        exercise.series.forEach(serie => {
-                            const weight = parseFloat(serie.weight) || 0;
-                            const reps = parseInt(serie.reps) || 0;
-                            const volume = weight * reps;
+                        exercises.forEach(exercise => {
+                            if (!exercise.series || exercise.isDeleted) return;
                             
-                            if (weight === 0 && reps === 0) return;
-                            
-                            if (!bests[exercise.id]) {
-                                bests[exercise.id] = {
-                                    name: exercise.name,
-                                    maxWeight: weight,
-                                    maxReps: reps,
-                                    maxVolume: volume,
-                                    totalVolume: volume,
-                                    sessions: 1,
-                                    lastPerformed: session.timestamp
-                                };
-                            } else {
-                                const best = bests[exercise.id];
-                                best.maxWeight = Math.max(best.maxWeight, weight);
-                                best.maxReps = Math.max(best.maxReps, reps);
-                                best.maxVolume = Math.max(best.maxVolume, volume);
-                                best.totalVolume += volume;
-                                best.sessions++;
-                                if (session.timestamp > best.lastPerformed) {
-                                    best.lastPerformed = session.timestamp;
+                            exercise.series.forEach(serie => {
+                                const weight = parseFloat(serie.weight) || 0;
+                                const reps = parseInt(serie.reps) || 0;
+                                const volume = weight * reps;
+                                
+                                if (weight === 0 && reps === 0) return;
+                                
+                                if (!bests[exercise.id]) {
+                                    bests[exercise.id] = {
+                                        name: exercise.name,
+                                        maxWeight: weight,
+                                        maxReps: reps,
+                                        maxVolume: volume,
+                                        totalVolume: volume,
+                                        sessions: 1,
+                                        lastPerformed: session.timestamp
+                                    };
+                                } else {
+                                    const best = bests[exercise.id];
+                                    best.maxWeight = Math.max(best.maxWeight, weight);
+                                    best.maxReps = Math.max(best.maxReps, reps);
+                                    best.maxVolume = Math.max(best.maxVolume, volume);
+                                    best.totalVolume += volume;
+                                    best.sessions++;
+                                    if (session.timestamp > best.lastPerformed) {
+                                        best.lastPerformed = session.timestamp;
+                                    }
                                 }
-                            }
+                            });
                         });
                     });
                 });
             });
-        });
+        }
         
         setPersonalBests(bests);
     }, []);
@@ -896,69 +906,68 @@ const ImprovedWorkoutApp = () => {
    }, [workouts]);
 
    // Calculs mémorisés pour les statistiques
-   // Calculs mémorisés pour les statistiques - VERSION SIMPLIFIÉE SANS useMemo
-const getWorkoutStats = useCallback(() => {
-    if (!workouts?.days || !historicalData) {
-        return {
-            totalExercises: 0,
-            totalSessions: 0,
-            thisWeekSessions: 0,
-            totalVolume: 0,
-            averageSessionsPerWeek: 0
-        };
-    }
+   const getWorkoutStats = useCallback(() => {
+       if (!workouts?.days || !historicalData) {
+           return {
+               totalExercises: 0,
+               totalSessions: 0,
+               thisWeekSessions: 0,
+               totalVolume: 0,
+               averageSessionsPerWeek: 0
+           };
+       }
 
-    let totalExercises = 0;
-    try {
-        Object.values(workouts.days).forEach(day => {
-            Object.values(day.categories || {}).forEach(exercises => {
-                if (Array.isArray(exercises)) {
-                    totalExercises += exercises.filter(ex => !ex.isDeleted).length;
-                }
-            });
-        });
-    } catch (error) {
-        console.warn("Erreur calcul exercices:", error);
-        totalExercises = 0;
-    }
+       let totalExercises = 0;
+       try {
+           Object.values(workouts.days || {}).forEach(day => {
+               Object.values(day.categories || {}).forEach(exercises => {
+                   if (Array.isArray(exercises)) {
+                       totalExercises += exercises.filter(ex => !ex.isDeleted).length;
+                   }
+               });
+           });
+       } catch (error) {
+           console.warn("Erreur calcul exercices:", error);
+           totalExercises = 0;
+       }
 
-    const totalSessions = historicalData.length || 0;
-    
-    let thisWeekSessions = 0;
-    try {
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        thisWeekSessions = historicalData.filter(session => {
-            return session.timestamp && session.timestamp > weekAgo;
-        }).length;
-    } catch (error) {
-        console.warn("Erreur calcul sessions semaine:", error);
-        thisWeekSessions = 0;
-    }
+       const totalSessions = historicalData.length || 0;
+       
+       let thisWeekSessions = 0;
+       try {
+           const weekAgo = new Date();
+           weekAgo.setDate(weekAgo.getDate() - 7);
+           thisWeekSessions = historicalData.filter(session => {
+               return session.timestamp && session.timestamp > weekAgo;
+           }).length;
+       } catch (error) {
+           console.warn("Erreur calcul sessions semaine:", error);
+           thisWeekSessions = 0;
+       }
 
-    let totalVolume = 0;
-    try {
-        Object.values(personalBests || {}).forEach(best => {
-            totalVolume += (best.totalVolume || 0);
-        });
-    } catch (error) {
-        console.warn("Erreur calcul volume:", error);
-        totalVolume = 0;
-    }
+       let totalVolume = 0;
+       try {
+           Object.values(personalBests || {}).forEach(best => {
+               totalVolume += (best.totalVolume || 0);
+           });
+       } catch (error) {
+           console.warn("Erreur calcul volume:", error);
+           totalVolume = 0;
+       }
 
-    const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
+       const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
 
-    return {
-        totalExercises,
-        totalSessions,
-        thisWeekSessions,
-        totalVolume: Math.round(totalVolume),
-        averageSessionsPerWeek
-    };
-}, []); // Aucune dépendance !
+       return {
+           totalExercises,
+           totalSessions,
+           thisWeekSessions,
+           totalVolume: Math.round(totalVolume),
+           averageSessionsPerWeek
+       };
+   }, [workouts, historicalData, personalBests]);
 
-// Calculer les stats à chaque rendu (sans useMemo)
-const workoutStats = getWorkoutStats();
+   // Calculer les stats à chaque rendu
+   const workoutStats = getWorkoutStats();
 
    // Gestion des raccourcis clavier
    useEffect(() => {
@@ -975,7 +984,7 @@ const workoutStats = getWorkoutStats();
                        break;
                    case 's':
                        e.preventDefault();
-                       if (Object.keys(workouts.days).length > 0) {
+                       if (workouts && Object.keys(workouts.days || {}).length > 0) {
                            saveWorkoutsOptimized(workouts, "Sauvegarde manuelle effectuée");
                        }
                        break;
@@ -1265,8 +1274,8 @@ const workoutStats = getWorkoutStats();
                        isCompactView={isCompactView}
                        handleEditClick={handleEditClick}
                        handleAddExerciseClick={(day, category) => {
-                           setSelectedDayForAdd(day);
-                           setSelectedCategoryForAdd(category);
+                           setSelectedDayForAdd(day || (workouts?.dayOrder?.[0] || ''));
+                           setSelectedCategoryForAdd(category || 'PECS');
                            setShowAddExerciseModal(true);
                        }}
                        handleDeleteExercise={handleDeleteExercise}
@@ -1280,6 +1289,8 @@ const workoutStats = getWorkoutStats();
                        isAddingExercise={isAddingExercise}
                        searchTerm={debouncedSearchTerm}
                        setSearchTerm={setSearchTerm}
+                       days={workouts?.dayOrder || []}
+                       categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
                    />
                )}
 
@@ -1288,7 +1299,10 @@ const workoutStats = getWorkoutStats();
                        timerSeconds={timerSeconds}
                        timerIsRunning={timerIsRunning}
                        timerIsFinished={timerIsFinished}
-                       startTimer={startTimer}
+                       startTimer={(seconds) => {
+                           if (seconds) setTimerSeconds(seconds);
+                           startTimer();
+                       }}
                        pauseTimer={pauseTimer}
                        resetTimer={resetTimer}
                        setTimerSeconds={setTimerSeconds}
@@ -1357,6 +1371,38 @@ const workoutStats = getWorkoutStats();
                                    />
                                </div>
 
+                               <div>
+                                   <label className="block text-sm font-medium text-gray-300 mb-2">
+                                       Jour d'entraînement *
+                                   </label>
+                                   <select
+                                       value={selectedDayForAdd}
+                                       onChange={(e) => setSelectedDayForAdd(e.target.value)}
+                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   >
+                                       <option value="">Sélectionner un jour</option>
+                                       {(workouts?.dayOrder || []).map(day => (
+                                           <option key={day} value={day}>{day}</option>
+                                       ))}
+                                   </select>
+                               </div>
+
+                               <div>
+                                   <label className="block text-sm font-medium text-gray-300 mb-2">
+                                       Catégorie *
+                                   </label>
+                                   <select
+                                       value={selectedCategoryForAdd}
+                                       onChange={(e) => setSelectedCategoryForAdd(e.target.value)}
+                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   >
+                                       <option value="">Sélectionner une catégorie</option>
+                                       {['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS'].map(category => (
+                                           <option key={category} value={category}>{category}</option>
+                                       ))}
+                                   </select>
+                               </div>
+
                                <div className="grid grid-cols-2 gap-4">
                                    <div>
                                        <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -1417,7 +1463,7 @@ const workoutStats = getWorkoutStats();
                                </button>
                                <button
                                    onClick={handleAddExercise}
-                                   disabled={!newExerciseName.trim() || isAddingExercise}
+                                   disabled={!newExerciseName.trim() || !selectedDayForAdd || !selectedCategoryForAdd || isAddingExercise}
                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
                                        isAddingExercise
                                            ? 'bg-blue-500/50 text-white cursor-wait'
