@@ -183,9 +183,11 @@ const MainWorkoutView = ({
                                                                 {getSeriesDisplay(exercise)}
                                                             </p>
                                                             {isAdvancedMode && personalBests[exercise.id] && (
-                                                                <p className="text-yellow-400 text-xs sm:text-sm mt-1">
+                                                                // Added 'block' class to force 1RM to a new line
+                                                                // Added 'mt-1' for a small top margin for better separation
+                                                                <span className="text-yellow-400 text-xs sm:text-sm mt-1 block">
                                                                     Meilleur: {personalBests[exercise.id].maxWeight} kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}
-                                                                </p>
+                                                                </span>
                                                             )}
                                                             {isAdvancedMode && progressionInsights[exercise.id] && (
                                                                 <p className="text-green-400 text-xs sm:text-sm mt-1">
