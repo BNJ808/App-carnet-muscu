@@ -120,22 +120,22 @@ const MainWorkoutView = ({
         }
     };
 
-    // Filter exercises by search term
+    // Filter exercises by search term - CORRECTION DES VARIABLES
     const filteredWorkouts = useMemo(() => {
         if (!searchTerm || !workouts?.dayOrder) return workouts;
 
         const filtered = { ...workouts, days: {} };
         const dayOrder = workouts?.dayOrder || [];
-        const days = workouts?.days || {};
+        const workoutDays = workouts?.days || {};
         
-        dayOrder.forEach(dayId => {
-            const day = days[dayId];
-            if (day?.categories) {
+        dayOrder.forEach(dayIdentifier => {
+            const dayData = workoutDays[dayIdentifier];
+            if (dayData?.categories) {
                 const newCategories = {};
-                Object.entries(day.categories).forEach(([categoryName, exercises]) => {
-                    if (Array.isArray(exercises)) {
-                        const filteredExercises = exercises.filter(exercise =>
-                            exercise?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+                Object.entries(dayData.categories).forEach(([categoryName, exercisesList]) => {
+                    if (Array.isArray(exercisesList)) {
+                        const filteredExercises = exercisesList.filter(exerciseItem =>
+                            exerciseItem?.name?.toLowerCase().includes(searchTerm.toLowerCase())
                         );
                         if (filteredExercises.length > 0) {
                             newCategories[categoryName] = filteredExercises;
@@ -143,7 +143,7 @@ const MainWorkoutView = ({
                     }
                 });
                 if (Object.keys(newCategories).length > 0) {
-                    filtered.days[dayId] = { ...day, categories: newCategories };
+                    filtered.days[dayIdentifier] = { ...dayData, categories: newCategories };
                 }
             }
         });
@@ -154,12 +154,12 @@ const MainWorkoutView = ({
     const renderSeriesInput = (dayId, categoryName, exerciseId, series) => {
         if (!Array.isArray(series)) return null;
         
-        return series.map((s, sIndex) => (
-            <div key={s?.id || sIndex} className={`flex items-center space-x-2 py-1 ${s?.completed ? 'opacity-60' : ''}`}>
+        return series.map((seriesItem, seriesIndex) => (
+            <div key={seriesItem?.id || seriesIndex} className={`flex items-center space-x-2 py-1 ${seriesItem?.completed ? 'opacity-60' : ''}`}>
                 <input
                     type="number"
-                    value={s?.weight || ''}
-                    onChange={(e) => handleUpdateSeries(dayId, categoryName, exerciseId, s?.id, { weight: parseFloat(e.target.value) || 0 })}
+                    value={seriesItem?.weight || ''}
+                    onChange={(e) => handleUpdateSeries(dayId, categoryName, exerciseId, seriesItem?.id, { weight: parseFloat(e.target.value) || 0 })}
                     className="w-1/3 p-2 bg-gray-600 border border-gray-500 rounded text-white text-sm"
                     placeholder="Poids (kg)"
                     min="0"
@@ -167,21 +167,21 @@ const MainWorkoutView = ({
                 <span className="text-gray-300">x</span>
                 <input
                     type="number"
-                    value={s?.reps || ''}
-                    onChange={(e) => handleUpdateSeries(dayId, categoryName, exerciseId, s?.id, { reps: parseInt(e.target.value) || 0 })}
+                    value={seriesItem?.reps || ''}
+                    onChange={(e) => handleUpdateSeries(dayId, categoryName, exerciseId, seriesItem?.id, { reps: parseInt(e.target.value) || 0 })}
                     className="w-1/3 p-2 bg-gray-600 border border-gray-500 rounded text-white text-sm"
                     placeholder="Reps"
                     min="0"
                 />
                 <button
-                    onClick={() => handleToggleSeriesCompleted(dayId, categoryName, exerciseId, s?.id)}
-                    className={`p-1 rounded-full ${s?.completed ? 'bg-green-500' : 'bg-gray-500'} text-white transition-colors`}
-                    aria-label={s?.completed ? "Démarquer comme non complétée" : "Marquer comme complétée"}
+                    onClick={() => handleToggleSeriesCompleted(dayId, categoryName, exerciseId, seriesItem?.id)}
+                    className={`p-1 rounded-full ${seriesItem?.completed ? 'bg-green-500' : 'bg-gray-500'} text-white transition-colors`}
+                    aria-label={seriesItem?.completed ? "Démarquer comme non complétée" : "Marquer comme complétée"}
                 >
-                    {s?.completed ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                    {seriesItem?.completed ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
                 </button>
                 <button
-                    onClick={() => handleDeleteSeries(dayId, categoryName, exerciseId, s?.id)}
+                    onClick={() => handleDeleteSeries(dayId, categoryName, exerciseId, seriesItem?.id)}
                     className="p-1 text-red-400 hover:text-red-500 transition-colors"
                     aria-label="Supprimer la série"
                 >
@@ -199,19 +199,19 @@ const MainWorkoutView = ({
 
     const getProgressionGraphData = (exerciseName) => {
         const data = [];
-        Object.values(workouts?.days || {}).forEach(day => {
-            if (day?.categories) {
-                Object.values(day.categories).forEach(exercises => {
-                    if (Array.isArray(exercises)) {
-                        const exercise = exercises.find(ex => ex?.name === exerciseName && !ex?.isDeleted);
-                        if (exercise?.series && Array.isArray(exercise.series)) {
+        Object.values(workouts?.days || {}).forEach(dayRecord => {
+            if (dayRecord?.categories) {
+                Object.values(dayRecord.categories).forEach(exercisesData => {
+                    if (Array.isArray(exercisesData)) {
+                        const exerciseRecord = exercisesData.find(exerciseElement => exerciseElement?.name === exerciseName && !exerciseElement?.isDeleted);
+                        if (exerciseRecord?.series && Array.isArray(exerciseRecord.series)) {
                             let maxWeight = 0;
                             let maxReps = 0;
                             let maxVolume = 0;
 
-                            exercise.series.forEach(s => {
-                                const currentWeight = s?.weight || 0;
-                                const currentReps = s?.reps || 0;
+                            exerciseRecord.series.forEach(seriesRecord => {
+                                const currentWeight = seriesRecord?.weight || 0;
+                                const currentReps = seriesRecord?.reps || 0;
                                 const currentVolume = currentWeight * currentReps;
 
                                 if (currentWeight > maxWeight) maxWeight = currentWeight;
@@ -229,7 +229,7 @@ const MainWorkoutView = ({
                 });
             }
         });
-        return data.sort((a, b) => a.date.getTime() - b.date.getTime());
+        return data.sort((dataA, dataB) => dataA.date.getTime() - dataB.date.getTime());
     };
 
     return (
@@ -269,8 +269,8 @@ const MainWorkoutView = ({
                     </div>
                 ) : (
                     (filteredWorkouts.dayOrder || []).map(dayId => {
-                        const day = filteredWorkouts.days?.[dayId];
-                        if (!day) return null;
+                        const dayContent = filteredWorkouts.days?.[dayId];
+                        if (!dayContent) return null;
 
                         const isDayExpanded = expandedDays.has(dayId);
 
@@ -303,7 +303,7 @@ const MainWorkoutView = ({
                                 </div>
                                 {isDayExpanded && (
                                     <div className="p-4 pt-0">
-                                        {!day.categories || Object.keys(day.categories).length === 0 ? (
+                                        {!dayContent.categories || Object.keys(dayContent.categories).length === 0 ? (
                                             <div className="py-4 text-center text-gray-400">
                                                 Aucun exercice dans ce jour.
                                                 <button
@@ -314,8 +314,8 @@ const MainWorkoutView = ({
                                                 </button>
                                             </div>
                                         ) : (
-                                            Object.entries(day.categories).map(([categoryName, exercises]) => {
-                                                if (!Array.isArray(exercises) || exercises.length === 0) return null;
+                                            Object.entries(dayContent.categories).map(([categoryName, exercisesList]) => {
+                                                if (!Array.isArray(exercisesList) || exercisesList.length === 0) return null;
 
                                                 const isCategoryExpanded = expandedCategories.has(`${dayId}-${categoryName}`);
 
@@ -343,29 +343,29 @@ const MainWorkoutView = ({
                                                         {isCategoryExpanded && (
                                                             <div className="p-3 border-t border-gray-600">
                                                                 <ul className="space-y-4">
-                                                                    {exercises.map(exercise => {
-                                                                        if (!exercise) return null;
+                                                                    {exercisesList.map(exerciseData => {
+                                                                        if (!exerciseData) return null;
                                                                         
-                                                                        const pb = personalBests[exercise.name?.toLowerCase()];
-                                                                        const hasPb = pb && (pb.maxWeight > 0 || pb.maxReps > 0 || pb.maxVolume > 0);
-                                                                        const isEditingNotes = editingNotesExerciseId === exercise.id;
+                                                                        const personalBest = personalBests[exerciseData.name?.toLowerCase()];
+                                                                        const hasPb = personalBest && (personalBest.maxWeight > 0 || personalBest.maxReps > 0 || personalBest.maxVolume > 0);
+                                                                        const isEditingNotes = editingNotesExerciseId === exerciseData.id;
 
                                                                         return (
-                                                                            <li key={exercise.id} className="bg-gray-600 rounded-lg p-3 shadow border border-gray-500">
+                                                                            <li key={exerciseData.id} className="bg-gray-600 rounded-lg p-3 shadow border border-gray-500">
                                                                                 <div className="flex justify-between items-center mb-2">
-                                                                                    <h4 className="text-lg font-semibold text-white">{exercise.name}</h4>
+                                                                                    <h4 className="text-lg font-semibold text-white">{exerciseData.name}</h4>
                                                                                     <div className="flex space-x-2">
                                                                                         {isAdvancedMode && (
                                                                                             <>
                                                                                                 <button
-                                                                                                    onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise.name, [])}
+                                                                                                    onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exerciseData.name, [])}
                                                                                                     className="p-1 bg-purple-600 rounded-full text-white hover:bg-purple-700 transition-colors"
                                                                                                     title="Analyser avec l'IA"
                                                                                                 >
                                                                                                     <Sparkles className="h-4 w-4" />
                                                                                                 </button>
                                                                                                 <button
-                                                                                                    onClick={() => showProgressionGraphForExercise && showProgressionGraphForExercise(exercise.name, exercise.id)}
+                                                                                                    onClick={() => showProgressionGraphForExercise && showProgressionGraphForExercise(exerciseData.name, exerciseData.id)}
                                                                                                     className="p-1 bg-blue-600 rounded-full text-white hover:bg-blue-700 transition-colors"
                                                                                                     title="Voir le graphique de progression"
                                                                                                 >
@@ -374,7 +374,7 @@ const MainWorkoutView = ({
                                                                                             </>
                                                                                         )}
                                                                                         <button
-                                                                                            onClick={() => handleDeleteExercise(dayId, categoryName, exercise.id)}
+                                                                                            onClick={() => handleDeleteExercise(dayId, categoryName, exerciseData.id)}
                                                                                             className="p-1 bg-red-600 rounded-full text-white hover:bg-red-700 transition-colors"
                                                                                             title="Supprimer l'exercice"
                                                                                         >
@@ -384,12 +384,12 @@ const MainWorkoutView = ({
                                                                                 </div>
 
                                                                                 {isCompactView ? (
-                                                                                    <div className="text-gray-300 text-sm mb-2">{getSeriesDisplay(exercise.series)}</div>
+                                                                                    <div className="text-gray-300 text-sm mb-2">{getSeriesDisplay(exerciseData.series)}</div>
                                                                                 ) : (
                                                                                     <div className="space-y-2 mb-2">
-                                                                                        {renderSeriesInput(dayId, categoryName, exercise.id, exercise.series)}
+                                                                                        {renderSeriesInput(dayId, categoryName, exerciseData.id, exerciseData.series)}
                                                                                         <button
-                                                                                            onClick={() => handleAddSeries(dayId, categoryName, exercise.id)}
+                                                                                            onClick={() => handleAddSeries(dayId, categoryName, exerciseData.id)}
                                                                                             className="w-full py-2 border border-gray-500 text-gray-300 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-500 transition-colors"
                                                                                         >
                                                                                             <Plus className="h-4 w-4" /> Ajouter une série
@@ -402,15 +402,15 @@ const MainWorkoutView = ({
                                                                                     {isEditingNotes ? (
                                                                                         <div className="flex flex-col gap-2">
                                                                                             <textarea
-                                                                                                value={activeExerciseNotes[exercise.id] ?? exercise.notes}
-                                                                                                onChange={(e) => setActiveExerciseNotes(prev => ({ ...prev, [exercise.id]: e.target.value }))}
+                                                                                                value={activeExerciseNotes[exerciseData.id] ?? exerciseData.notes}
+                                                                                                onChange={(e) => setActiveExerciseNotes(prev => ({ ...prev, [exerciseData.id]: e.target.value }))}
                                                                                                 className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                                                                 rows="2"
                                                                                                 placeholder="Ajouter des notes..."
                                                                                             />
                                                                                             <div className="flex gap-2">
                                                                                                 <button
-                                                                                                    onClick={() => handleSaveNotes(dayId, categoryName, exercise.id)}
+                                                                                                    onClick={() => handleSaveNotes(dayId, categoryName, exerciseData.id)}
                                                                                                     className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                                                                                                 >
                                                                                                     Sauvegarder
@@ -427,13 +427,13 @@ const MainWorkoutView = ({
                                                                                         <div
                                                                                             className="flex items-start justify-between bg-gray-700 p-2 rounded-lg border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                                                                                             onClick={() => {
-                                                                                                setEditingNotesExerciseId(exercise.id);
-                                                                                                setActiveExerciseNotes(prev => ({ ...prev, [exercise.id]: exercise.notes || '' }));
+                                                                                                setEditingNotesExerciseId(exerciseData.id);
+                                                                                                setActiveExerciseNotes(prev => ({ ...prev, [exerciseData.id]: exerciseData.notes || '' }));
                                                                                             }}
                                                                                         >
-                                                                                            <p className={`flex-grow ${exercise.notes ? 'text-gray-300' : 'text-gray-500 italic'}`}>
+                                                                                            <p className={`flex-grow ${exerciseData.notes ? 'text-gray-300' : 'text-gray-500 italic'}`}>
                                                                                                 <NotebookText className="inline-block h-4 w-4 mr-1 align-text-bottom" />
-                                                                                                {exercise.notes || "Ajouter des notes..."}
+                                                                                                {exerciseData.notes || "Ajouter des notes..."}
                                                                                             </p>
                                                                                             <Pencil className="h-4 w-4 text-gray-400 ml-2" />
                                                                                         </div>
@@ -443,10 +443,10 @@ const MainWorkoutView = ({
                                                                                 {hasPb && isAdvancedMode && (
                                                                                     <div className="mt-2 text-xs text-gray-400 border-t border-gray-500 pt-2">
                                                                                         <p className="font-semibold text-yellow-400 flex items-center gap-1"><Award className="h-3 w-3" />Records Personnels :</p>
-                                                                                        {pb.bestWeightSeries && <p>Max Poids: {pb.bestWeightSeries.weight}kg x {pb.bestWeightSeries.reps} reps</p>}
-                                                                                        {pb.bestRepsSeries && <p>Max Reps: {pb.bestRepsSeries.reps} reps @ {pb.bestRepsSeries.weight}kg</p>}
-                                                                                        {pb.maxVolume > 0 && <p>Max Volume: {pb.maxVolume} kg</p>}
-                                                                                        {pb.lastAchieved && <p>Dernier record: {formatDate(pb.lastAchieved)}</p>}
+                                                                                        {personalBest.bestWeightSeries && <p>Max Poids: {personalBest.bestWeightSeries.weight}kg x {personalBest.bestWeightSeries.reps} reps</p>}
+                                                                                        {personalBest.bestRepsSeries && <p>Max Reps: {personalBest.bestRepsSeries.reps} reps @ {personalBest.bestRepsSeries.weight}kg</p>}
+                                                                                        {personalBest.maxVolume > 0 && <p>Max Volume: {personalBest.maxVolume} kg</p>}
+                                                                                        {personalBest.lastAchieved && <p>Dernier record: {formatDate(personalBest.lastAchieved)}</p>}
                                                                                     </div>
                                                                                 )}
                                                                             </li>
@@ -496,42 +496,6 @@ const MainWorkoutView = ({
                                 disabled={!newDayName?.trim()}
                                 className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                             >
-                                Ajouter
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal pour modifier un jour */}
-            {showEditDayModal && (
-                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
-                    <div className="bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm border border-gray-700">
-                        <h3 className="text-xl font-semibold text-white mb-4">Modifier le jour</h3>
-                        <input
-                            type="text"
-                            value={tempDayName}
-                            onChange={(e) => setTempDayName(e.target.value)}
-                            placeholder="Nouveau nom du jour"
-                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-base"
-                            autoFocus
-                        />
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => {
-                                    setEditingDay(null);
-                                    setTempDayName('');
-                                    setShowEditDayModal(false);
-                                }}
-                                className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95"
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                onClick={handleEditDaySubmit}
-                                disabled={!tempDayName?.trim()}
-                                className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
-                            >
                                 Sauvegarder
                             </button>
                         </div>
@@ -577,9 +541,9 @@ const MainWorkoutView = ({
                                     <option value={currentCategoryForExercise}>{currentCategoryForExercise}</option>
                                 )}
                                 {Object.keys(workouts?.days?.[currentDayIdForExercise]?.categories || {})
-                                    .filter(cat => cat !== currentCategoryForExercise)
-                                    .map(category => (
-                                        <option key={category} value={category}>{category}</option>
+                                    .filter(categoryOption => categoryOption !== currentCategoryForExercise)
+                                    .map(categoryOption => (
+                                        <option key={categoryOption} value={categoryOption}>{categoryOption}</option>
                                     ))}
                                 <option value="new-category">--- Nouvelle catégorie ---</option>
                             </select>
@@ -615,4 +579,40 @@ const MainWorkoutView = ({
     );
 };
 
-export default MainWorkoutView;
+export default MainWorkoutView;disabled:cursor-not-allowed transition-all active:scale-95"
+                            >
+                                Ajouter
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal pour modifier un jour */}
+            {showEditDayModal && (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+                    <div className="bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm border border-gray-700">
+                        <h3 className="text-xl font-semibold text-white mb-4">Modifier le jour</h3>
+                        <input
+                            type="text"
+                            value={tempDayName}
+                            onChange={(e) => setTempDayName(e.target.value)}
+                            placeholder="Nouveau nom du jour"
+                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-base"
+                            autoFocus
+                        />
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setEditingDay(null);
+                                    setTempDayName('');
+                                    setShowEditDayModal(false);
+                                }}
+                                className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={handleEditDaySubmit}
+                                disabled={!tempDayName?.trim()}
+                                className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50

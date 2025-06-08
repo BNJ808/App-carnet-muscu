@@ -45,42 +45,42 @@ const HistoryView = ({
         { value: 'thisYear', label: 'Cette année' }
     ];
 
-    // Calcul des exercices uniques et leurs catégories pour le filtre
+    // Calcul des exercices uniques et leurs catégories pour le filtre - CORRECTION DES VARIABLES
     const allExercises = useMemo(() => {
         const exerciseMap = new Map();
-        safeHistoricalData.forEach(session => {
-            if (session?.exercises && Array.isArray(session.exercises)) {
-                session.exercises.forEach(exercise => {
-                    if (exercise?.name && (!exercise.isDeleted || showDeletedExercises)) {
-                        exerciseMap.set(exercise.name, { 
-                            name: exercise.name, 
-                            category: exercise.category || 'Non catégorisé' 
+        safeHistoricalData.forEach(sessionData => {
+            if (sessionData?.exercises && Array.isArray(sessionData.exercises)) {
+                sessionData.exercises.forEach(exerciseItem => {
+                    if (exerciseItem?.name && (!exerciseItem.isDeleted || showDeletedExercises)) {
+                        exerciseMap.set(exerciseItem.name, { 
+                            name: exerciseItem.name, 
+                            category: exerciseItem.category || 'Non catégorisé' 
                         });
                     }
                 });
             }
         });
-        return Array.from(exerciseMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        return Array.from(exerciseMap.values()).sort((exerciseA, exerciseB) => exerciseA.name.localeCompare(exerciseB.name));
     }, [safeHistoricalData, showDeletedExercises]);
 
-    // Filtrage et tri de l'historique
+    // Filtrage et tri de l'historique - CORRECTION DES VARIABLES
     const filteredAndSortedSessions = useMemo(() => {
-        let sessions = [...safeHistoricalData];
+        let sessionsList = [...safeHistoricalData];
 
         // 1. Filtrer par état de suppression
-        sessions = sessions.map(session => ({
-            ...session,
-            exercises: (session?.exercises || []).filter(ex => 
-                showDeletedExercises ? ex?.isDeleted : !ex?.isDeleted
+        sessionsList = sessionsList.map(sessionRecord => ({
+            ...sessionRecord,
+            exercises: (sessionRecord?.exercises || []).filter(exerciseRecord => 
+                showDeletedExercises ? exerciseRecord?.isDeleted : !exerciseRecord?.isDeleted
             )
-        })).filter(session => session.exercises.length > 0);
+        })).filter(sessionRecord => sessionRecord.exercises.length > 0);
 
         // 2. Filtrer par plage temporelle
         const now = new Date();
-        sessions = sessions.filter(session => {
-            if (!session?.timestamp) return false;
+        sessionsList = sessionsList.filter(sessionRecord => {
+            if (!sessionRecord?.timestamp) return false;
             
-            const sessionDate = session.timestamp?.toDate ? session.timestamp.toDate() : new Date(session.timestamp);
+            const sessionDate = sessionRecord.timestamp?.toDate ? sessionRecord.timestamp.toDate() : new Date(sessionRecord.timestamp);
             switch (selectedTimeRange) {
                 case 'last30days':
                     return (now - sessionDate) / (1000 * 60 * 60 * 24) <= 30;
@@ -95,20 +95,20 @@ const HistoryView = ({
         });
 
         // 3. Filtrer par terme de recherche et exercice sélectionné
-        sessions = sessions.map(session => ({
-            ...session,
-            exercises: (session?.exercises || []).filter(exercise => {
-                if (!exercise?.name) return false;
-                const matchesSearch = searchTerm ? exercise.name.toLowerCase().includes(searchTerm.toLowerCase()) : true;
-                const matchesFilter = selectedExerciseFilter === 'all' ? true : exercise.name === selectedExerciseFilter;
+        sessionsList = sessionsList.map(sessionRecord => ({
+            ...sessionRecord,
+            exercises: (sessionRecord?.exercises || []).filter(exerciseRecord => {
+                if (!exerciseRecord?.name) return false;
+                const matchesSearch = searchTerm ? exerciseRecord.name.toLowerCase().includes(searchTerm.toLowerCase()) : true;
+                const matchesFilter = selectedExerciseFilter === 'all' ? true : exerciseRecord.name === selectedExerciseFilter;
                 return matchesSearch && matchesFilter;
             })
-        })).filter(session => session.exercises.length > 0);
+        })).filter(sessionRecord => sessionRecord.exercises.length > 0);
 
         // 4. Tri
-        sessions.sort((a, b) => {
-            const dateA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : (new Date(a.timestamp || 0)).getTime();
-            const dateB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : (new Date(b.timestamp || 0)).getTime();
+        sessionsList.sort((sessionA, sessionB) => {
+            const dateA = sessionA.timestamp?.toDate ? sessionA.timestamp.toDate().getTime() : (new Date(sessionA.timestamp || 0)).getTime();
+            const dateB = sessionB.timestamp?.toDate ? sessionB.timestamp.toDate().getTime() : (new Date(sessionB.timestamp || 0)).getTime();
 
             switch (sortBy) {
                 case 'date-desc':
@@ -116,15 +116,15 @@ const HistoryView = ({
                 case 'date-asc':
                     return dateA - dateB;
                 case 'exercise-name':
-                    const nameA = a.exercises?.[0]?.name || '';
-                    const nameB = b.exercises?.[0]?.name || '';
+                    const nameA = sessionA.exercises?.[0]?.name || '';
+                    const nameB = sessionB.exercises?.[0]?.name || '';
                     return nameA.localeCompare(nameB);
                 case 'volume':
-                    const volumeA = (a.exercises || []).reduce((sum, ex) => 
-                        sum + (ex?.series || []).reduce((sSum, s) => sSum + ((s?.reps || 0) * (s?.weight || 0)), 0), 0
+                    const volumeA = (sessionA.exercises || []).reduce((sessionSum, exerciseRecord) => 
+                        sessionSum + (exerciseRecord?.series || []).reduce((exerciseSum, seriesRecord) => exerciseSum + ((seriesRecord?.reps || 0) * (seriesRecord?.weight || 0)), 0), 0
                     );
-                    const volumeB = (b.exercises || []).reduce((sum, ex) => 
-                        sum + (ex?.series || []).reduce((sSum, s) => sSum + ((s?.reps || 0) * (s?.weight || 0)), 0), 0
+                    const volumeB = (sessionB.exercises || []).reduce((sessionSum, exerciseRecord) => 
+                        sessionSum + (exerciseRecord?.series || []).reduce((exerciseSum, seriesRecord) => exerciseSum + ((seriesRecord?.reps || 0) * (seriesRecord?.weight || 0)), 0), 0
                     );
                     return volumeB - volumeA;
                 default:
@@ -132,7 +132,7 @@ const HistoryView = ({
             }
         });
 
-        return sessions;
+        return sessionsList;
     }, [safeHistoricalData, showDeletedExercises, selectedTimeRange, searchTerm, selectedExerciseFilter, sortBy]);
 
     const toggleSessionExpansion = (sessionId) => {
@@ -148,12 +148,12 @@ const HistoryView = ({
     };
 
     const handleAnalyzeProgression = (exerciseName) => {
-        const exerciseHistory = safeHistoricalData.flatMap(session =>
-            (session?.exercises || [])
-                .filter(ex => ex?.name === exerciseName && !ex?.isDeleted)
-                .map(ex => ({
-                    timestamp: session.timestamp,
-                    series: ex.series || []
+        const exerciseHistory = safeHistoricalData.flatMap(sessionRecord =>
+            (sessionRecord?.exercises || [])
+                .filter(exerciseRecord => exerciseRecord?.name === exerciseName && !exerciseRecord?.isDeleted)
+                .map(exerciseRecord => ({
+                    timestamp: sessionRecord.timestamp,
+                    series: exerciseRecord.series || []
                 }))
         );
 
@@ -163,19 +163,19 @@ const HistoryView = ({
     };
 
     const getProgressionGraphData = (exerciseName) => {
-        const data = [];
-        safeHistoricalData.forEach(session => {
-            if (session?.exercises && Array.isArray(session.exercises)) {
-                const exercise = session.exercises.find(ex => ex?.name === exerciseName && !ex?.isDeleted);
-                if (exercise?.series && Array.isArray(exercise.series) && exercise.series.length > 0) {
+        const progressionData = [];
+        safeHistoricalData.forEach(sessionRecord => {
+            if (sessionRecord?.exercises && Array.isArray(sessionRecord.exercises)) {
+                const exerciseRecord = sessionRecord.exercises.find(exerciseItem => exerciseItem?.name === exerciseName && !exerciseItem?.isDeleted);
+                if (exerciseRecord?.series && Array.isArray(exerciseRecord.series) && exerciseRecord.series.length > 0) {
                     let maxWeight = 0;
                     let maxReps = 0;
                     let maxVolume = 0;
 
-                    exercise.series.forEach(s => {
-                        if (s && typeof s === 'object') {
-                            const currentWeight = s.weight || 0;
-                            const currentReps = s.reps || 0;
+                    exerciseRecord.series.forEach(seriesRecord => {
+                        if (seriesRecord && typeof seriesRecord === 'object') {
+                            const currentWeight = seriesRecord.weight || 0;
+                            const currentReps = seriesRecord.reps || 0;
                             const currentVolume = currentWeight * currentReps;
 
                             if (currentWeight > maxWeight) maxWeight = currentWeight;
@@ -184,8 +184,8 @@ const HistoryView = ({
                         }
                     });
                     
-                    data.push({
-                        date: session.timestamp?.toDate ? session.timestamp.toDate() : new Date(session.timestamp || 0),
+                    progressionData.push({
+                        date: sessionRecord.timestamp?.toDate ? sessionRecord.timestamp.toDate() : new Date(sessionRecord.timestamp || 0),
                         maxWeight,
                         maxReps,
                         maxVolume
@@ -193,72 +193,72 @@ const HistoryView = ({
                 }
             }
         });
-        return data.sort((a, b) => a.date.getTime() - b.date.getTime());
+        return progressionData.sort((dataA, dataB) => dataA.date.getTime() - dataB.date.getTime());
     };
 
-    const renderSessionCard = (session) => (
-        <div key={session?.id || Math.random()} className="bg-gray-800 rounded-lg shadow-md border border-gray-700">
+    const renderSessionCard = (sessionData) => (
+        <div key={sessionData?.id || Math.random()} className="bg-gray-800 rounded-lg shadow-md border border-gray-700">
             <button
-                onClick={() => toggleSessionExpansion(session?.id)}
+                onClick={() => toggleSessionExpansion(sessionData?.id)}
                 className="w-full flex justify-between items-center p-4 text-left focus:outline-none"
             >
                 <div>
                     <h4 className="text-lg font-semibold text-white">
-                        Séance du {formatDate(session?.timestamp)}
+                        Séance du {formatDate(sessionData?.timestamp)}
                     </h4>
                     <p className="text-sm text-gray-400">
-                        {(session?.exercises || []).length} {(session?.exercises || []).length > 1 ? 'exercices' : 'exercice'}
+                        {(sessionData?.exercises || []).length} {(sessionData?.exercises || []).length > 1 ? 'exercices' : 'exercice'}
                     </p>
                 </div>
-                {expandedSessions.has(session?.id) ? (
+                {expandedSessions.has(sessionData?.id) ? (
                     <ChevronUp className="h-6 w-6 text-gray-400" />
                 ) : (
                     <ChevronDown className="h-6 w-6 text-gray-400" />
                 )}
             </button>
 
-            {expandedSessions.has(session?.id) && (
+            {expandedSessions.has(sessionData?.id) && (
                 <div className="border-t border-gray-700 p-4">
-                    {!session?.exercises || session.exercises.length === 0 ? (
+                    {!sessionData?.exercises || sessionData.exercises.length === 0 ? (
                         <p className="text-gray-400 text-center">Aucun exercice enregistré pour cette séance.</p>
                     ) : (
                         <ul className="space-y-4">
-                            {session.exercises.map((exercise, index) => {
-                                if (!exercise) return null;
+                            {sessionData.exercises.map((exerciseData, exerciseIndex) => {
+                                if (!exerciseData) return null;
                                 
-                                const pb = personalBests[exercise.name?.toLowerCase()];
-                                const hasPb = pb && (pb.maxWeight > 0 || pb.maxReps > 0 || pb.maxVolume > 0);
-                                const isDeletedIndicator = exercise.isDeleted ? 
+                                const personalBest = personalBests[exerciseData.name?.toLowerCase()];
+                                const hasPb = personalBest && (personalBest.maxWeight > 0 || personalBest.maxReps > 0 || personalBest.maxVolume > 0);
+                                const isDeletedIndicator = exerciseData.isDeleted ? 
                                     <span className="text-red-500 text-xs font-semibold ml-2">(Supprimé)</span> : null;
 
                                 return (
-                                    <li key={`${exercise.id || index}-${index}`} className="bg-gray-700 rounded-lg p-3 border border-gray-600">
+                                    <li key={`${exerciseData.id || exerciseIndex}-${exerciseIndex}`} className="bg-gray-700 rounded-lg p-3 border border-gray-600">
                                         <div className="flex items-center justify-between mb-2">
                                             <h5 className="text-md font-medium text-white flex-grow">
-                                                {exercise.name || 'Exercice sans nom'} {isDeletedIndicator}
+                                                {exerciseData.name || 'Exercice sans nom'} {isDeletedIndicator}
                                             </h5>
                                             <div className="flex space-x-2">
-                                                {isAdvancedMode && !exercise.isDeleted && (
+                                                {isAdvancedMode && !exerciseData.isDeleted && (
                                                     <button
-                                                        onClick={() => handleAnalyzeProgression(exercise.name)}
+                                                        onClick={() => handleAnalyzeProgression(exerciseData.name)}
                                                         className="p-1 bg-purple-600 rounded-full text-white hover:bg-purple-700 transition-colors"
                                                         title="Analyser avec l'IA"
                                                     >
                                                         <Sparkles className="h-4 w-4" />
                                                     </button>
                                                 )}
-                                                {!exercise.isDeleted && (
+                                                {!exerciseData.isDeleted && (
                                                     <button
-                                                        onClick={() => showProgressionGraphForExercise && showProgressionGraphForExercise(exercise.name, exercise.id)}
+                                                        onClick={() => showProgressionGraphForExercise && showProgressionGraphForExercise(exerciseData.name, exerciseData.id)}
                                                         className="p-1 bg-blue-600 rounded-full text-white hover:bg-blue-700 transition-colors"
                                                         title="Voir le graphique de progression"
                                                     >
                                                         <LineChartIcon className="h-4 w-4" />
                                                     </button>
                                                 )}
-                                                {exercise.isDeleted && handleReactivateExercise && (
+                                                {exerciseData.isDeleted && handleReactivateExercise && (
                                                     <button
-                                                        onClick={() => handleReactivateExercise(exercise.id)}
+                                                        onClick={() => handleReactivateExercise(exerciseData.id)}
                                                         className="p-1 bg-green-600 rounded-full text-white hover:bg-green-700 transition-colors"
                                                         title="Réactiver l'exercice"
                                                     >
@@ -267,11 +267,11 @@ const HistoryView = ({
                                                 )}
                                             </div>
                                         </div>
-                                        <p className="text-gray-300 text-sm mb-2">{getSeriesDisplay(exercise.series)}</p>
-                                        {exercise.notes && (
+                                        <p className="text-gray-300 text-sm mb-2">{getSeriesDisplay(exerciseData.series)}</p>
+                                        {exerciseData.notes && (
                                             <p className="text-gray-400 text-xs mt-1 flex items-start">
                                                 <NotebookText className="h-4 w-4 mr-1 flex-shrink-0" />
-                                                <span className="italic">{exercise.notes}</span>
+                                                <span className="italic">{exerciseData.notes}</span>
                                             </p>
                                         )}
                                         {hasPb && (
@@ -279,10 +279,10 @@ const HistoryView = ({
                                                 <p className="font-semibold text-yellow-400 flex items-center gap-1">
                                                     <Award className="h-3 w-3" />Records Personnels :
                                                 </p>
-                                                {pb.bestWeightSeries && <p>Max Poids: {pb.bestWeightSeries.weight}kg x {pb.bestWeightSeries.reps} reps</p>}
-                                                {pb.bestRepsSeries && <p>Max Reps: {pb.bestRepsSeries.reps} reps @ {pb.bestRepsSeries.weight}kg</p>}
-                                                {pb.maxVolume > 0 && <p>Max Volume: {pb.maxVolume} kg</p>}
-                                                {pb.lastAchieved && <p>Dernier record: {formatDate(pb.lastAchieved)}</p>}
+                                                {personalBest.bestWeightSeries && <p>Max Poids: {personalBest.bestWeightSeries.weight}kg x {personalBest.bestWeightSeries.reps} reps</p>}
+                                                {personalBest.bestRepsSeries && <p>Max Reps: {personalBest.bestRepsSeries.reps} reps @ {personalBest.bestRepsSeries.weight}kg</p>}
+                                                {personalBest.maxVolume > 0 && <p>Max Volume: {personalBest.maxVolume} kg</p>}
+                                                {personalBest.lastAchieved && <p>Dernier record: {formatDate(personalBest.lastAchieved)}</p>}
                                             </div>
                                         )}
                                     </li>
@@ -328,8 +328,8 @@ const HistoryView = ({
                             onChange={(e) => setSortBy && setSortBy(e.target.value)}
                             className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                         >
-                            {sortOptions.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
+                            {sortOptions.map(sortOption => (
+                                <option key={sortOption.value} value={sortOption.value}>{sortOption.label}</option>
                             ))}
                         </select>
                     </div>
@@ -341,8 +341,8 @@ const HistoryView = ({
                             onChange={(e) => setSelectedTimeRange(e.target.value)}
                             className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                         >
-                            {timeRangeOptions.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
+                            {timeRangeOptions.map(timeOption => (
+                                <option key={timeOption.value} value={timeOption.value}>{timeOption.label}</option>
                             ))}
                         </select>
                     </div>
@@ -357,9 +357,9 @@ const HistoryView = ({
                         className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                     >
                         <option value="all">Tous les exercices</option>
-                        {allExercises.map(ex => (
-                            <option key={ex.name} value={ex.name}>
-                                {ex.name} {ex.category ? `(${ex.category})` : ''}
+                        {allExercises.map(exerciseOption => (
+                            <option key={exerciseOption.name} value={exerciseOption.name}>
+                                {exerciseOption.name} {exerciseOption.category ? `(${exerciseOption.category})` : ''}
                             </option>
                         ))}
                     </select>
@@ -391,8 +391,8 @@ const HistoryView = ({
                         Records Personnels
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {Object.entries(personalBests).map(([exerciseName, pb]) => {
-                            if (!pb || (pb.maxWeight === 0 && pb.maxReps === 0 && pb.maxVolume === 0)) {
+                        {Object.entries(personalBests).map(([exerciseName, personalBest]) => {
+                            if (!personalBest || (personalBest.maxWeight === 0 && personalBest.maxReps === 0 && personalBest.maxVolume === 0)) {
                                 return null;
                             }
 
@@ -425,13 +425,13 @@ const HistoryView = ({
                                             </div>
                                         </h4>
                                         <ul className="text-sm text-gray-300">
-                                            {pb.maxWeight > 0 && <li>Poids Max: {pb.bestWeightSeries?.weight || pb.maxWeight}kg x {pb.bestWeightSeries?.reps || '?'} reps</li>}
-                                            {pb.maxReps > 0 && <li>Reps Max: {pb.bestRepsSeries?.reps || pb.maxReps} reps @ {pb.bestRepsSeries?.weight || '?'}kg</li>}
-                                            {pb.maxVolume > 0 && <li>Volume Max: {pb.maxVolume} kg</li>}
+                                            {personalBest.maxWeight > 0 && <li>Poids Max: {personalBest.bestWeightSeries?.weight || personalBest.maxWeight}kg x {personalBest.bestWeightSeries?.reps || '?'} reps</li>}
+                                            {personalBest.maxReps > 0 && <li>Reps Max: {personalBest.bestRepsSeries?.reps || personalBest.maxReps} reps @ {personalBest.bestRepsSeries?.weight || '?'}kg</li>}
+                                            {personalBest.maxVolume > 0 && <li>Volume Max: {personalBest.maxVolume} kg</li>}
                                         </ul>
                                     </div>
                                     <p className="text-xs text-gray-500 mt-2">
-                                        Dernier record: {pb.lastAchieved ? formatDate(pb.lastAchieved.toDate ? pb.lastAchieved.toDate() : pb.lastAchieved) : 'N/A'}.
+                                        Dernier record: {personalBest.lastAchieved ? formatDate(personalBest.lastAchieved.toDate ? personalBest.lastAchieved.toDate() : personalBest.lastAchieved) : 'N/A'}.
                                     </p>
                                 </div>
                             );
@@ -460,7 +460,7 @@ const HistoryView = ({
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {filteredAndSortedSessions.map(session => renderSessionCard(session))}
+                        {filteredAndSortedSessions.map(sessionItem => renderSessionCard(sessionItem))}
                     </div>
                 )}
             </div>
