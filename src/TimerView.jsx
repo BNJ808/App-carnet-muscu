@@ -15,8 +15,7 @@ const TimerView = ({
     restTimeInput,
     setRestTimeInput,
     formatTime,
-    setTimerPreset,
-    isAdvancedMode
+    setTimerPreset
 }) => {
     const [customMinutes, setCustomMinutes] = useState(1);
     const [customSeconds, setCustomSeconds] = useState(30);
@@ -45,15 +44,16 @@ const TimerView = ({
     const handleCustomTimerStart = () => {
         const totalSeconds = (customMinutes * 60) + customSeconds;
         if (totalSeconds > 0) {
-            startTimer(totalSeconds);
+            setTimerSeconds(totalSeconds);
+            setSelectedPreset(totalSeconds);
+            startTimer();
         }
     };
 
-    const adjustTime = (increment) => {
-        if (timerIsRunning) return;
-        
-        const newTime = Math.max(0, timerSeconds + increment);
-        setTimerSeconds(newTime);
+    const handlePresetStart = (seconds) => {
+        setSelectedPreset(seconds);
+        setTimerSeconds(seconds);
+        startTimer();
     };
 
     const getTimerDisplay = () => {
@@ -110,27 +110,35 @@ const TimerView = ({
 
                 {/* Contrôles du minuteur */}
                 <div className="flex justify-center gap-4 mb-6">
+                    {timerSeconds === 0 && !timerIsFinished && (
+                        <div className="text-gray-400 text-lg">
+                            Choisissez un temps de repos ci-dessous
+                        </div>
+                    )}
+                    
                     {timerSeconds > 0 && !timerIsFinished && (
-                        <button
-                            onClick={pauseTimer}
-                            className={`px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2 ${
-                                timerIsRunning 
-                                    ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
-                                    : 'bg-green-600 hover:bg-green-700 text-white'
-                            }`}
-                        >
-                            {timerIsRunning ? (
-                                <>
-                                    <Pause className="h-5 w-5" />
-                                    Pause
-                                </>
-                            ) : (
-                                <>
-                                    <Play className="h-5 w-5" />
-                                    Reprendre
-                                </>
-                            )}
-                        </button>
+                        <>
+                            <button
+                                onClick={timerIsRunning ? pauseTimer : startTimer}
+                                className={`px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2 ${
+                                    timerIsRunning 
+                                        ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
+                                        : 'bg-green-600 hover:bg-green-700 text-white'
+                                }`}
+                            >
+                                {timerIsRunning ? (
+                                    <>
+                                        <Pause className="h-5 w-5" />
+                                        Pause
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play className="h-5 w-5" />
+                                        Démarrer
+                                    </>
+                                )}
+                            </button>
+                        </>
                     )}
                     
                     {(timerSeconds > 0 || timerIsFinished) && (
@@ -143,40 +151,6 @@ const TimerView = ({
                         </button>
                     )}
                 </div>
-
-                {/* Ajustement rapide du temps (mode avancé) */}
-                {isAdvancedMode && !timerIsRunning && timerSeconds > 0 && (
-                    <div className="flex justify-center gap-2 mb-6">
-                        <button
-                            onClick={() => adjustTime(-10)}
-                            className="bg-red-600/20 hover:bg-red-600/30 text-red-400 px-3 py-2 rounded-lg transition-all flex items-center gap-1"
-                        >
-                            <Minus className="h-4 w-4" />
-                            10s
-                        </button>
-                        <button
-                            onClick={() => adjustTime(-30)}
-                            className="bg-red-600/20 hover:bg-red-600/30 text-red-400 px-3 py-2 rounded-lg transition-all flex items-center gap-1"
-                        >
-                            <Minus className="h-4 w-4" />
-                            30s
-                        </button>
-                        <button
-                            onClick={() => adjustTime(30)}
-                            className="bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-2 rounded-lg transition-all flex items-center gap-1"
-                        >
-                            <Plus className="h-4 w-4" />
-                            30s
-                        </button>
-                        <button
-                            onClick={() => adjustTime(60)}
-                            className="bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-2 rounded-lg transition-all flex items-center gap-1"
-                        >
-                            <Plus className="h-4 w-4" />
-                            1min
-                        </button>
-                    </div>
-                )}
             </div>
 
             {/* Presets de temps */}
@@ -193,10 +167,7 @@ const TimerView = ({
                             {presets.map(preset => (
                                 <button
                                     key={preset.value}
-                                    onClick={() => {
-                                        setSelectedPreset(preset.value);
-                                        startTimer(preset.value);
-                                    }}
+                                    onClick={() => handlePresetStart(preset.value)}
                                     disabled={timerIsRunning}
                                     className={`p-3 rounded-lg font-medium transition-all ${
                                         selectedPreset === preset.value && timerSeconds > 0
@@ -213,52 +184,50 @@ const TimerView = ({
             </div>
 
             {/* Minuteur personnalisé */}
-            {isAdvancedMode && (
-                <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                    <h3 className="text-lg font-semibold text-white mb-4">Temps personnalisé</h3>
-                    
-                    <div className="flex items-center justify-center gap-4 mb-4">
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="number"
-                                min="0"
-                                max="59"
-                                value={customMinutes}
-                                onChange={(e) => setCustomMinutes(parseInt(e.target.value) || 0)}
-                                className="bg-gray-700 text-white text-center rounded-lg px-3 py-2 w-16"
-                                disabled={timerIsRunning}
-                            />
-                            <span className="text-gray-400">min</span>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="number"
-                                min="0"
-                                max="59"
-                                value={customSeconds}
-                                onChange={(e) => setCustomSeconds(parseInt(e.target.value) || 0)}
-                                className="bg-gray-700 text-white text-center rounded-lg px-3 py-2 w-16"
-                                disabled={timerIsRunning}
-                            />
-                            <span className="text-gray-400">sec</span>
-                        </div>
-                        
-                        <button
-                            onClick={handleCustomTimerStart}
-                            disabled={timerIsRunning || (customMinutes === 0 && customSeconds === 0)}
-                            className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-all flex items-center gap-2"
-                        >
-                            <Play className="h-4 w-4" />
-                            Démarrer
-                        </button>
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4">Temps personnalisé</h3>
+                
+                <div className="flex items-center justify-center gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={customMinutes}
+                            onChange={(e) => setCustomMinutes(parseInt(e.target.value) || 0)}
+                            className="bg-gray-700 text-white text-center rounded-lg px-3 py-2 w-16"
+                            disabled={timerIsRunning}
+                        />
+                        <span className="text-gray-400">min</span>
                     </div>
                     
-                    <div className="text-center text-gray-400 text-sm">
-                        Temps total: {formatTime((customMinutes * 60) + customSeconds)}
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={customSeconds}
+                            onChange={(e) => setCustomSeconds(parseInt(e.target.value) || 0)}
+                            className="bg-gray-700 text-white text-center rounded-lg px-3 py-2 w-16"
+                            disabled={timerIsRunning}
+                        />
+                        <span className="text-gray-400">sec</span>
                     </div>
+                    
+                    <button
+                        onClick={handleCustomTimerStart}
+                        disabled={timerIsRunning || (customMinutes === 0 && customSeconds === 0)}
+                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-all flex items-center gap-2"
+                    >
+                        <Play className="h-4 w-4" />
+                        Démarrer
+                    </button>
                 </div>
-            )}
+                
+                <div className="text-center text-gray-400 text-sm">
+                    Temps total: {formatTime((customMinutes * 60) + customSeconds)}
+                </div>
+            </div>
 
             {/* Conseils de repos */}
             <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
@@ -278,25 +247,6 @@ const TimerView = ({
                     </div>
                 </div>
             </div>
-
-            {/* Historique des temps de repos (mode avancé) */}
-            {isAdvancedMode && (
-                <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                    <h3 className="text-lg font-semibold text-white mb-4">Derniers temps utilisés</h3>
-                    <div className="flex flex-wrap gap-2">
-                        {[90, 120, 60, 180, 45].map(time => (
-                            <button
-                                key={time}
-                                onClick={() => startTimer(time)}
-                                disabled={timerIsRunning}
-                                className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-300 px-3 py-2 rounded-lg text-sm transition-all"
-                            >
-                                {formatTime(time)}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

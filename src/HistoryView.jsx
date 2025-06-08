@@ -1,4 +1,20 @@
-import React, { useState, useMemo } from 'react';
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {Object.entries(personalBests).slice(0, 6).map(([exerciseId, best]) => (
+                            <div key={exerciseId} className="bg-gray-700/50 rounded-lg p-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="font-medium text-white text-sm">{best.name}</span>
+                                    <div className="text-right">
+                                        <div className="text-yellow-400 font-bold text-sm">
+                                            {best.maxWeight}kg × {best.maxReps}
+                                        </div>
+                                        <div className="text-xs text-gray-400">
+                                            {formatDate(best.lastPerformed)}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>import React, { useState, useMemo } from 'react';
 import {
     Sparkles, LineChart as LineChartIcon, NotebookText, RotateCcw, Search,
     Filter, Calendar, Award, TrendingUp, Activity, Eye, EyeOff, ChevronDown, ChevronUp

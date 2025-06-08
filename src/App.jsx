@@ -16,6 +16,7 @@ import Toast from './Toast.jsx';
 import MainWorkoutView from './MainWorkoutView.jsx';
 import HistoryView from './HistoryView.jsx';
 import TimerView from './TimerView.jsx';
+import StatsView from './StatsView.jsx';
 import BottomNavigationBar from './BottomNavigationBar.jsx';
 
 // Configuration Firebase sécurisée
@@ -456,7 +457,7 @@ const ImprovedWorkoutApp = () => {
                         if (!Array.isArray(exercises)) return;
                         
                         exercises.forEach(exercise => {
-                            if (!exercise.series || exercise.isDeleted) return;
+                            if (!exercise.series || exercise.isDeleted || !exercise.name) return;
                             
                             exercise.series.forEach(serie => {
                                 const weight = parseFloat(serie.weight) || 0;
@@ -465,8 +466,9 @@ const ImprovedWorkoutApp = () => {
                                 
                                 if (weight === 0 && reps === 0) return;
                                 
-                                if (!bests[exercise.id]) {
-                                    bests[exercise.id] = {
+                                // Utiliser le nom de l'exercice comme clé au lieu de l'ID
+                                if (!bests[exercise.name]) {
+                                    bests[exercise.name] = {
                                         name: exercise.name,
                                         maxWeight: weight,
                                         maxReps: reps,
@@ -476,7 +478,7 @@ const ImprovedWorkoutApp = () => {
                                         lastPerformed: session.timestamp
                                     };
                                 } else {
-                                    const best = bests[exercise.id];
+                                    const best = bests[exercise.name];
                                     best.maxWeight = Math.max(best.maxWeight, weight);
                                     best.maxReps = Math.max(best.maxReps, reps);
                                     best.maxVolume = Math.max(best.maxVolume, volume);
@@ -496,7 +498,7 @@ const ImprovedWorkoutApp = () => {
         setPersonalBests(bests);
     }, []);
 
-    const saveWorkoutsOptimized = useCallback(async (workoutsData, successMessage = "Sauvegardé !") => {
+    const saveWorkoutsOptimized = useCallback(async (workoutsData, successMessage = "Sauvegardé !", saveOnlyModified = false) => {
         if (!userId) {
             setToast({ message: "Utilisateur non connecté", type: 'error' });
             return;
@@ -516,12 +518,15 @@ const ImprovedWorkoutApp = () => {
                     lastModified: serverTimestamp()
                 }, { merge: true });
                 
-                const sessionsRef = collection(db, 'users', userId, 'sessions');
-                await addDoc(sessionsRef, {
-                    timestamp: serverTimestamp(),
-                    workoutData: workoutsData,
-                    version: '2.0'
-                });
+                // Sauvegarder en session seulement si c'est une modification importante
+                if (!saveOnlyModified) {
+                    const sessionsRef = collection(db, 'users', userId, 'sessions');
+                    await addDoc(sessionsRef, {
+                        timestamp: serverTimestamp(),
+                        workoutData: workoutsData,
+                        version: '2.0'
+                    });
+                }
                 
                 setLastSaveTime(new Date());
                 setToast({ message: successMessage, type: 'success' });
@@ -532,7 +537,7 @@ const ImprovedWorkoutApp = () => {
                     type: 'error',
                     action: { 
                         label: 'Réessayer', 
-                        onClick: () => saveWorkoutsOptimized(workoutsData, successMessage) 
+                        onClick: () => saveWorkoutsOptimized(workoutsData, successMessage, saveOnlyModified) 
                     }
                 });
             }
@@ -713,7 +718,53 @@ const ImprovedWorkoutApp = () => {
        setIsDeletingExercise(false);
    }, [workouts, applyChanges]);
 
-   const handleReactivateExercise = useCallback((exerciseId) => {
+    // Fonctions de gestion des jours
+    const handleAddDay = useCallback((dayName) => {
+        const updatedWorkouts = { ...workouts };
+        updatedWorkouts.days[dayName] = {
+            categories: {},
+            categoryOrder: []
+        };
+        updatedWorkouts.dayOrder = [...(updatedWorkouts.dayOrder || []), dayName];
+        
+        applyChanges(updatedWorkouts, `Jour "${dayName}" ajouté !`);
+    }, [workouts, applyChanges]);
+
+    const handleEditDay = useCallback((oldDayName, newDayName) => {
+        const updatedWorkouts = { ...workouts };
+        
+        // Renommer le jour
+        updatedWorkouts.days[newDayName] = updatedWorkouts.days[oldDayName];
+        delete updatedWorkouts.days[oldDayName];
+        
+        // Mettre à jour l'ordre
+        const dayIndex = updatedWorkouts.dayOrder.indexOf(oldDayName);
+        if (dayIndex !== -1) {
+            updatedWorkouts.dayOrder[dayIndex] = newDayName;
+        }
+        
+        // Ajuster le filtre si nécessaire
+        if (selectedDayFilter === oldDayName) {
+            setSelectedDayFilter(newDayName);
+        }
+        
+        applyChanges(updatedWorkouts, `Jour renommé en "${newDayName}" !`);
+    }, [workouts, applyChanges, selectedDayFilter]);
+
+    const handleDeleteDay = useCallback((dayName) => {
+        const updatedWorkouts = { ...workouts };
+        
+        // Supprimer le jour
+        delete updatedWorkouts.days[dayName];
+        updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(day => day !== dayName);
+        
+        // Réinitialiser le filtre si nécessaire
+        if (selectedDayFilter === dayName) {
+            setSelectedDayFilter('');
+        }
+        
+        applyChanges(updatedWorkouts, `Jour "${dayName}" supprimé !`);
+    }, [workouts, applyChanges, selectedDayFilter]);
        const updatedWorkouts = { ...workouts };
        let found = false;
        
@@ -1219,51 +1270,6 @@ const ImprovedWorkoutApp = () => {
 
            {/* Contenu principal */}
            <main className="p-4 pb-20 max-w-7xl mx-auto">
-               {/* Statistiques rapides en mode avancé */}
-               {isAdvancedMode && (
-                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
-                           <div className="flex items-center justify-between mb-2">
-                               <div className="p-2 rounded-lg bg-blue-500/20">
-                                   <Activity className="h-5 w-5 text-blue-400" />
-                               </div>
-                           </div>
-                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalExercises}</div>
-                           <div className="text-xs text-gray-400">Exercices actifs</div>
-                       </div>
-
-                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
-                           <div className="flex items-center justify-between mb-2">
-                               <div className="p-2 rounded-lg bg-green-500/20">
-                                   <Calendar className="h-5 w-5 text-green-400" />
-                               </div>
-                           </div>
-                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalSessions}</div>
-                           <div className="text-xs text-gray-400">Sessions totales</div>
-                       </div>
-
-                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
-                           <div className="flex items-center justify-between mb-2">
-                               <div className="p-2 rounded-lg bg-purple-500/20">
-                                   <Zap className="h-5 w-5 text-purple-400" />
-                               </div>
-                           </div>
-                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.thisWeekSessions}</div>
-                           <div className="text-xs text-gray-400">Cette semaine</div>
-                       </div>
-
-                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
-                           <div className="flex items-center justify-between mb-2">
-                               <div className="p-2 rounded-lg bg-yellow-500/20">
-                                   <Target className="h-5 w-5 text-yellow-400" />
-                               </div>
-                           </div>
-                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalVolume}</div>
-                           <div className="text-xs text-gray-400">Volume total (kg)</div>
-                       </div>
-                   </div>
-               )}
-
                {/* Contenu des vues */}
                {currentView === 'workout' && (
                    <MainWorkoutView
@@ -1291,6 +1297,9 @@ const ImprovedWorkoutApp = () => {
                        setSearchTerm={setSearchTerm}
                        days={workouts?.dayOrder || []}
                        categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
+                       handleAddDay={handleAddDay}
+                       handleEditDay={handleEditDay}
+                       handleDeleteDay={handleDeleteDay}
                    />
                )}
 
@@ -1299,10 +1308,7 @@ const ImprovedWorkoutApp = () => {
                        timerSeconds={timerSeconds}
                        timerIsRunning={timerIsRunning}
                        timerIsFinished={timerIsFinished}
-                       startTimer={(seconds) => {
-                           if (seconds) setTimerSeconds(seconds);
-                           startTimer();
-                       }}
+                       startTimer={startTimer}
                        pauseTimer={pauseTimer}
                        resetTimer={resetTimer}
                        setTimerSeconds={setTimerSeconds}
@@ -1310,7 +1316,15 @@ const ImprovedWorkoutApp = () => {
                        setRestTimeInput={setRestTimeInput}
                        formatTime={formatTime}
                        setTimerPreset={setTimerPreset}
-                       isAdvancedMode={isAdvancedMode}
+                   />
+               )}
+
+               {currentView === 'stats' && (
+                   <StatsView
+                       workouts={workouts}
+                       historicalData={historicalData}
+                       personalBests={personalBests}
+                       formatDate={formatDate}
                    />
                )}
 
