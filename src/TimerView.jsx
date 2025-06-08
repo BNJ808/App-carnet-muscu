@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Play, Pause, RotateCcw, Plus, Minus, Clock, Zap } from 'lucide-react';
 
@@ -6,18 +5,17 @@ import { Play, Pause, RotateCcw, Plus, Minus, Clock, Zap } from 'lucide-react';
  * Composant TimerView pour la gestion du minuteur de repos.
  */
 const TimerView = ({
-    timerSeconds,
-    timerIsRunning,
-    timerIsFinished,
+    timerSeconds = 0,
+    timerIsRunning = false,
+    timerIsFinished = false,
     startTimer,
     pauseTimer,
     resetTimer,
     setTimerSeconds,
-    restTimeInput,
+    restTimeInput = '90',
     setRestTimeInput,
     formatTime,
     setTimerPreset
-
 }) => {
     const [customMinutes, setCustomMinutes] = useState(1);
     const [customSeconds, setCustomSeconds] = useState(30);
@@ -46,24 +44,23 @@ const TimerView = ({
     const handleCustomTimerStart = () => {
         const totalSeconds = (customMinutes * 60) + customSeconds;
         if (totalSeconds > 0) {
-            setTimerSeconds(totalSeconds);
+            if (setTimerSeconds) setTimerSeconds(totalSeconds);
             setSelectedPreset(totalSeconds);
-            startTimer();
+            if (startTimer) startTimer();
         }
     };
 
     const handlePresetStart = (seconds) => {
         setSelectedPreset(seconds);
-        setTimerSeconds(seconds);
-        startTimer();
-
+        if (setTimerSeconds) setTimerSeconds(seconds);
+        if (startTimer) startTimer();
     };
 
     const getTimerDisplay = () => {
         if (timerSeconds === 0 && !timerIsRunning) {
             return '00:00';
         }
-        return formatTime(timerSeconds);
+        return formatTime ? formatTime(timerSeconds) : '00:00';
     };
 
     const getTimerStatusColor = () => {
@@ -145,45 +142,15 @@ const TimerView = ({
                     )}
                     
                     {(timerSeconds > 0 || timerIsFinished) && (
-
-@@ -143,60 +151,23 @@
+                        <button
+                            onClick={resetTimer}
+                            className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2"
+                        >
+                            <RotateCcw className="h-5 w-5" />
+                            Reset
                         </button>
                     )}
                 </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
             </div>
 
             {/* Presets de temps */}
@@ -201,14 +168,19 @@ const TimerView = ({
                                 <button
                                     key={preset.value}
                                     onClick={() => handlePresetStart(preset.value)}
-
-
-
                                     disabled={timerIsRunning}
                                     className={`p-3 rounded-lg font-medium transition-all ${
                                         selectedPreset === preset.value && timerSeconds > 0
-
-@@ -213,92 +184,71 @@
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                >
+                                    {preset.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {/* Minuteur personnalisé */}
@@ -227,30 +199,6 @@ const TimerView = ({
                             disabled={timerIsRunning}
                         />
                         <span className="text-gray-400">min</span>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                     </div>
                     
                     <div className="flex items-center gap-2">
@@ -277,7 +225,7 @@ const TimerView = ({
                 </div>
                 
                 <div className="text-center text-gray-400 text-sm">
-                    Temps total: {formatTime((customMinutes * 60) + customSeconds)}
+                    Temps total: {formatTime ? formatTime((customMinutes * 60) + customSeconds) : '00:00'}
                 </div>
             </div>
 
@@ -299,25 +247,6 @@ const TimerView = ({
                     </div>
                 </div>
             </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         </div>
     );
 };
