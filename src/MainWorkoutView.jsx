@@ -16,8 +16,8 @@ const MainWorkoutView = ({
     handleEditClick,
     handleAddExerciseClick,
     handleDeleteExercise,
-    handleToggleSeriesCompleted, // New prop
-    handleUpdateSeries, // New prop
+    handleToggleSeriesCompleted, // Nouvelle prop
+    handleUpdateSeries, // Nouvelle prop
     analyzeProgressionWithAI,
     personalBests,
     getDayButtonColors,
@@ -32,9 +32,10 @@ const MainWorkoutView = ({
     categories = [],
     handleAddDay,
     handleEditDay,
-    handleDeleteDay
+    handleDeleteDay,
+    handleAddSeries // Nouvelle prop pour ajouter une série
 }) => {
-    const [expandedDays, setExpandedDays] = useState(new Set(workouts?.dayOrder)); // Initialize with all days expanded
+    const [expandedDays, setExpandedDays] = useState(new Set(workouts?.dayOrder)); // Initialiser avec tous les jours étendus
     const [expandedCategories, setExpandedCategories] = useState(new Set());
     const [showAddDayModal, setShowAddDayModal] = useState(false);
     const [newDayName, setNewDayName] = useState('');
@@ -72,7 +73,7 @@ const MainWorkoutView = ({
             return [];
         }
         
-        // Retourner les catégories qui ont des exercices
+        // Retourne les catégories qui ont des exercices
         return Object.keys(workouts.days[dayName].categories).filter(categoryName => {
             const exercises = workouts.days[dayName].categories[categoryName];
             return Array.isArray(exercises) && exercises.length > 0;
@@ -132,7 +133,7 @@ const MainWorkoutView = ({
                                 value={serie.reps}
                                 onChange={(e) => handleUpdateSeries(dayName, categoryName, exercise.id, serieIndex, 'reps', e.target.value)}
                                 className="bg-transparent text-white text-xs w-12 text-center border-b border-gray-500 focus:outline-none focus:border-blue-400"
-                                placeholder="Reps"
+                                placeholder="Répétitions"
                             />
                         </div>
                         
@@ -149,14 +150,6 @@ const MainWorkoutView = ({
                         >
                             {serie.completed ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                         </button>
-                        
-                        {/* <button
-                            onClick={() => console.log('Démarrer minuteur de repos')}
-                            className="p-1 text-blue-400 hover:text-blue-300 transition-colors"
-                            title="Démarrer minuteur de repos"
-                        >
-                            <Clock className="h-4 w-4" />
-                        </button> */}
                     </div>
                 ))}
             </div>
@@ -192,15 +185,11 @@ const MainWorkoutView = ({
                                 📝 {exercise.notes}
                             </div>
                         )}
-
-                        <div className="text-sm text-gray-300 mb-2">
-                            {getSeriesDisplay(exercise.series)}
-                        </div>
                     </div>
                     
                     <div className="flex items-center gap-1 ml-3">
-                        {/* Fonctionnalités par défaut (plus en mode avancé uniquement) */}
-                        {/* <button
+                        {/* Boutons d'analyse IA et Graphique ré-implémentés */}
+                        <button
                             onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise)}
                             className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10 rounded transition-colors"
                             title="Analyser avec IA"
@@ -217,13 +206,13 @@ const MainWorkoutView = ({
                         </button>
                         
                         <button
-                            onClick={() => console.log('Modifier les notes')}
-                            className="p-1.5 text-purple-400 hover:text-purple-300 hover:bg-purple-400/10 rounded transition-colors"
-                            title="Modifier les notes"
+                            onClick={() => handleAddSeries && handleAddSeries(dayName, categoryName, exercise.id)}
+                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
+                            title="Ajouter une série"
                         >
-                            <NotebookText className="h-4 w-4" />
-                        </button> */}
-                        
+                            <Plus className="h-4 w-4" />
+                        </button>
+
                         <button
                             onClick={() => handleEditClick && handleEditClick(dayName, categoryName, exercise.id, exercise)}
                             className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 rounded transition-colors"
@@ -254,7 +243,7 @@ const MainWorkoutView = ({
         }
 
         const activeExercises = exercises.filter(ex => ex && !ex.isDeleted);
-        if (activeExercises.length === 0 && !searchTerm) return null; // Hide if no active exercises and not searching
+        if (activeExercises.length === 0 && !searchTerm) return null; // Masquer si pas d'exercices actifs et pas de recherche
         
         const categoryKey = `${dayName}-${categoryName}`;
         const isExpanded = expandedCategories.has(categoryKey);
@@ -278,15 +267,7 @@ const MainWorkoutView = ({
                     <div className="space-y-3">
                         {activeExercises.map(exercise => renderExercise(exercise, dayName, categoryName))}
                         
-                        {/* Bouton toujours visible par défaut */}
-                        <button
-                            onClick={() => handleAddExerciseClick && handleAddExerciseClick(dayName, categoryName)}
-                            className="w-full bg-gray-600/20 hover:bg-gray-600/40 text-gray-300 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 border-2 border-dashed border-gray-600"
-                            disabled={isAddingExercise}
-                        >
-                            <Plus className="h-4 w-4" />
-                            Ajouter un exercice à {categoryName}
-                        </button>
+                        {/* Bouton "Ajouter un exercice à [Catégorie]" supprimé */}
                     </div>
                 )}
             </div>
@@ -315,7 +296,7 @@ const MainWorkoutView = ({
             'bg-pink-600/20 text-pink-400 border-pink-600/50',
         ];
         const currentDayColorClass = dayColors[dayIndex % dayColors.length];
-        
+
         return (
             <div key={dayName} className="mb-8">
                 <button
@@ -329,6 +310,17 @@ const MainWorkoutView = ({
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
+                        {/* Bouton d'ajout d'exercice pour le jour */}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddExerciseClick(dayName); // Passe le jour pour la présélection
+                            }}
+                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
+                            title="Ajouter un exercice à ce jour"
+                        >
+                            <Plus className="h-4 w-4" />
+                        </button>
                         {/* Boutons de gestion du jour */}
                         <button
                             onClick={(e) => {
@@ -345,7 +337,7 @@ const MainWorkoutView = ({
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                // Using confirm for now, will replace with custom modal if needed
+                                // Utilisation de confirm pour l'instant, sera remplacé par un modal personnalisé si besoin
                                 if (confirm(`Êtes-vous sûr de vouloir supprimer le jour "${dayName}" et tous ses exercices ?`)) { 
                                     handleDeleteDay(dayName);
                                 }
@@ -469,18 +461,29 @@ const MainWorkoutView = ({
                 )}
             </div>
 
-            {/* Modal d'ajout de jour */}
+            {/* Modal d'ajout de jour - optimisé mobile */}
             {showAddDayModal && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
+                <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-slide-up">
                         <div className="p-6">
-                            <h3 className="text-xl font-bold text-white mb-4">Ajouter un jour d'entraînement</h3>
+                            {/* Poignée pour glisser */}
+                            <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
+                            
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold text-white">Nouveau jour</h3>
+                                <button
+                                    onClick={() => setShowAddDayModal(false)}
+                                    className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
+                                >
+                                    <XCircle className="h-5 w-5" />
+                                </button>
+                            </div>
                             <input
                                 type="text"
                                 value={newDayName}
                                 onChange={(e) => setNewDayName(e.target.value)}
-                                placeholder="Ex: Lundi - Push, Mardi - Pull..."
-                                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                                placeholder="Ex: Push (Lundi)"
+                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-base"
                                 autoFocus
                             />
                             <div className="flex gap-3">
@@ -489,14 +492,14 @@ const MainWorkoutView = ({
                                         setShowAddDayModal(false);
                                         setNewDayName('');
                                     }}
-                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                    className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95"
                                 >
                                     Annuler
                                 </button>
                                 <button
                                     onClick={handleAddDaySubmit}
                                     disabled={!newDayName.trim()}
-                                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-50 transition-all active:scale-95"
                                 >
                                     Ajouter
                                 </button>
@@ -508,15 +511,26 @@ const MainWorkoutView = ({
 
             {/* Modal d'édition de jour */}
             {editingDay && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
+                <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-slide-up">
                         <div className="p-6">
-                            <h3 className="text-xl font-bold text-white mb-4">Modifier le jour d'entraînement</h3>
+                             {/* Poignée pour glisser */}
+                             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
+
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold text-white">Modifier le jour</h3>
+                                <button
+                                    onClick={() => setEditingDay(null)}
+                                    className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
+                                >
+                                    <XCircle className="h-5 w-5" />
+                                </button>
+                            </div>
                             <input
                                 type="text"
                                 value={newDayName}
                                 onChange={(e) => setNewDayName(e.target.value)}
-                                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-base"
                                 autoFocus
                             />
                             <div className="flex gap-3">
@@ -525,46 +539,24 @@ const MainWorkoutView = ({
                                         setEditingDay(null);
                                         setNewDayName('');
                                     }}
-                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                    className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95"
                                 >
                                     Annuler
                                 </button>
                                 <button
                                     onClick={handleEditDaySubmit}
                                     disabled={!newDayName.trim()}
-                                    className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                                 >
-                                    Modifier
+                                    Sauvegarder
                                 </button>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
-            
-            {/* Indicateurs de statut */}
-            {isSavingExercise && (
-                <div className="fixed bottom-20 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-40">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    Sauvegarde...
-                </div>
-            )}
-
-            {isDeletingExercise && (
-                <div className="fixed bottom-20 right-4 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-40">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    Suppression...
-                </div>
-            )}
-
-            {isAddingExercise && (
-                <div className="fixed bottom-20 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-40">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    Ajout...
-                </div>
-            )}
         </div>
     );
 };
 
-export default MainWorkoutView;
+export default WorkoutApp;

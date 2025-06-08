@@ -164,10 +164,10 @@ const Toast = ({ message, type = 'info', onClose, action, duration = 3000 }) => 
 // Composant Navigation inférieure optimisé
 const BottomNavigationBar = ({ currentView, setCurrentView }) => {
     const navItems = [
-        { name: 'Workout', icon: Dumbbell, view: 'workout', color: 'text-blue-400' },
-        { name: 'Timer', icon: Clock, view: 'timer', color: 'text-green-400' },
-        { name: 'Stats', icon: BarChart3, view: 'stats', color: 'text-purple-400' },
-        { name: 'History', icon: History, view: 'history', color: 'text-yellow-400' }
+        { name: 'Entraînement', icon: Dumbbell, view: 'workout', color: 'text-blue-400' },
+        { name: 'Minuteur', icon: Clock, view: 'timer', color: 'text-green-400' },
+        { name: 'Statistiques', icon: BarChart3, view: 'stats', color: 'text-purple-400' },
+        { name: 'Historique', icon: History, view: 'history', color: 'text-yellow-400' }
     ];
 
     return (
@@ -209,8 +209,8 @@ const WorkoutView = ({
     handleEditClick,
     handleAddExerciseClick,
     handleDeleteExercise,
-    handleToggleSeriesCompleted, // New prop
-    handleUpdateSeries, // New prop
+    handleToggleSeriesCompleted, // Nouvelle prop
+    handleUpdateSeries, // Nouvelle prop
     personalBests,
     getDayButtonColors,
     getSeriesDisplay,
@@ -218,13 +218,14 @@ const WorkoutView = ({
     setSearchTerm,
     handleAddDay,
     handleEditDay,
-    handleDeleteDay
+    handleDeleteDay,
+    handleAddSeries // Nouvelle prop
 }) => {
     const [expandedDays, setExpandedDays] = useState(new Set());
-    const [expandedCategories, setExpandedCategories] = useState(new Set()); // New state for categories
+    const [expandedCategories, setExpandedCategories] = useState(new Set()); // Nouvel état pour les catégories
     const [showAddDayModal, setShowAddDayModal] = useState(false);
     const [newDayName, setNewDayName] = useState('');
-    const [editingDay, setEditingDay] = useState(null); // State for editing day
+    const [editingDay, setEditingDay] = useState(null); // État pour l'édition du jour
 
     const toggleDayExpanded = (day) => {
         const newExpanded = new Set(expandedDays);
@@ -236,7 +237,7 @@ const WorkoutView = ({
         setExpandedDays(newExpanded);
     };
 
-    const toggleCategoryExpanded = (dayCategory) => { // New function
+    const toggleCategoryExpanded = (dayCategory) => { // Nouvelle fonction
         const newExpanded = new Set(expandedCategories);
         if (newExpanded.has(dayCategory)) {
             newExpanded.delete(dayCategory);
@@ -251,12 +252,12 @@ const WorkoutView = ({
         return selectedDayFilter ? [selectedDayFilter] : workouts.dayOrder;
     };
 
-    const getAvailableCategories = (dayName) => { // New function
+    const getAvailableCategories = (dayName) => { // Nouvelle fonction
         if (!workouts?.days?.[dayName]?.categories) {
             return [];
         }
         
-        // Return categories that have exercises
+        // Retourne les catégories qui ont des exercices
         return Object.keys(workouts.days[dayName].categories).filter(categoryName => {
             const exercises = workouts.days[dayName].categories[categoryName];
             return Array.isArray(exercises) && exercises.length > 0;
@@ -316,7 +317,7 @@ const WorkoutView = ({
                                 value={serie.reps}
                                 onChange={(e) => handleUpdateSeries(dayName, categoryName, exercise.id, serieIndex, 'reps', e.target.value)}
                                 className="bg-transparent text-white text-xs w-12 text-center border-b border-gray-500 focus:outline-none focus:border-blue-400"
-                                placeholder="Reps"
+                                placeholder="Répétitions"
                             />
                         </div>
                         
@@ -333,14 +334,6 @@ const WorkoutView = ({
                         >
                             {serie.completed ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                         </button>
-                        
-                        {/* <button
-                            onClick={() => console.log('Démarrer minuteur de repos')}
-                            className="p-1 text-blue-400 hover:text-blue-300 transition-colors"
-                            title="Démarrer minuteur de repos"
-                        >
-                            <Clock className="h-4 w-4" />
-                        </button> */}
                     </div>
                 ))}
             </div>
@@ -376,15 +369,11 @@ const WorkoutView = ({
                                 📝 {exercise.notes}
                             </div>
                         )}
-
-                        <div className="text-sm text-gray-300 mb-2">
-                            {getSeriesDisplay(exercise.series)}
-                        </div>
                     </div>
                     
                     <div className="flex items-center gap-1 ml-3">
-                        {/* Fonctionnalités par défaut (plus en mode avancé uniquement) */}
-                        {/* <button
+                        {/* Boutons d'analyse IA et Graphique ré-implémentés */}
+                        <button
                             onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise)}
                             className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10 rounded transition-colors"
                             title="Analyser avec IA"
@@ -401,13 +390,13 @@ const WorkoutView = ({
                         </button>
                         
                         <button
-                            onClick={() => console.log('Modifier les notes')}
-                            className="p-1.5 text-purple-400 hover:text-purple-300 hover:bg-purple-400/10 rounded transition-colors"
-                            title="Modifier les notes"
+                            onClick={() => handleAddSeries && handleAddSeries(dayName, categoryName, exercise.id)}
+                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
+                            title="Ajouter une série"
                         >
-                            <NotebookText className="h-4 w-4" />
-                        </button> */}
-                        
+                            <Plus className="h-4 w-4" />
+                        </button>
+
                         <button
                             onClick={() => handleEditClick && handleEditClick(dayName, categoryName, exercise.id, exercise)}
                             className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 rounded transition-colors"
@@ -420,7 +409,7 @@ const WorkoutView = ({
                             onClick={() => handleDeleteExercise && handleDeleteExercise(dayName, categoryName, exercise.id)}
                             className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors"
                             title="Supprimer l'exercice"
-                            // disabled={isDeletingExercise}
+                            disabled={isDeletingExercise}
                         >
                             <Trash2 className="h-4 w-4" />
                         </button>
@@ -438,7 +427,7 @@ const WorkoutView = ({
         }
 
         const activeExercises = exercises.filter(ex => ex && !ex.isDeleted);
-        if (activeExercises.length === 0) return null;
+        if (activeExercises.length === 0 && !searchTerm) return null; // Masquer si pas d'exercices actifs et pas de recherche
         
         const categoryKey = `${dayName}-${categoryName}`;
         const isExpanded = expandedCategories.has(categoryKey);
@@ -462,15 +451,7 @@ const WorkoutView = ({
                     <div className="space-y-3">
                         {activeExercises.map(exercise => renderExercise(exercise, dayName, categoryName))}
                         
-                        {/* Bouton toujours visible par défaut */}
-                        <button
-                            onClick={() => handleAddExerciseClick && handleAddExerciseClick(dayName, categoryName)}
-                            className="w-full bg-gray-600/20 hover:bg-gray-600/40 text-gray-300 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 border-2 border-dashed border-gray-600"
-                            // disabled={isAddingExercise}
-                        >
-                            <Plus className="h-4 w-4" />
-                            Ajouter un exercice à {categoryName}
-                        </button>
+                        {/* Bouton "Ajouter un exercice à [Catégorie]" supprimé */}
                     </div>
                 )}
             </div>
@@ -513,6 +494,17 @@ const WorkoutView = ({
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
+                        {/* Bouton d'ajout d'exercice pour le jour */}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddExerciseClick(dayName); // Passe le jour pour la présélection
+                            }}
+                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
+                            title="Ajouter un exercice à ce jour"
+                        >
+                            <Plus className="h-4 w-4" />
+                        </button>
                         {/* Boutons de gestion du jour */}
                         <button
                             onClick={(e) => {
@@ -529,7 +521,8 @@ const WorkoutView = ({
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (confirm(`Êtes-vous sûr de vouloir supprimer le jour "${dayName}" et tous ses exercices ?`)) { // Using confirm for now, will replace with custom modal if needed
+                                // Utilisation de confirm pour l'instant, sera remplacé par un modal personnalisé si besoin
+                                if (confirm(`Êtes-vous sûr de vouloir supprimer le jour "${dayName}" et tous ses exercices ?`)) { 
                                     handleDeleteDay(dayName);
                                 }
                             }}
@@ -556,7 +549,7 @@ const WorkoutView = ({
                                 <button
                                     onClick={() => handleAddExerciseClick && handleAddExerciseClick(dayName)}
                                     className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors flex items-center gap-2 mx-auto"
-                                    // disabled={isAddingExercise}
+                                    disabled={isAddingExercise}
                                 >
                                     <Plus className="h-4 w-4" />
                                     Ajouter le premier exercice
@@ -629,18 +622,6 @@ const WorkoutView = ({
                     )}
                 </div>
             </div>
-
-            {/* Supprimer le bouton d'ajout rapide car il fait doublon */}
-            {/* <div className="flex justify-center">
-                <button
-                    onClick={() => handleAddExerciseClick && handleAddExerciseClick()}
-                    disabled={isAddingExercise}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl transition-all flex items-center gap-2 shadow-lg"
-                >
-                    <Plus className="h-5 w-5" />
-                    {isAddingExercise ? 'Ajout en cours...' : 'Ajouter un exercice'}
-                </button>
-            </div> */}
             
             {/* Liste des jours */}
             <div className="space-y-6">
@@ -664,16 +645,16 @@ const WorkoutView = ({
                 )}
             </div>
 
-            {/* Modal d'ajout de jour - mobile optimized */}
+            {/* Modal d'ajout de jour - optimisé mobile */}
             {showAddDayModal && (
                 <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 p-4">
                     <div className="bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-slide-up">
                         <div className="p-6">
-                            {/* Handle pour glisser */}
+                            {/* Poignée pour glisser */}
                             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
                             
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">Nouveau jour</h3>
+                                <h3 className="text-xl font-bold text-white">Nouveau Jour</h3>
                                 <button
                                     onClick={() => setShowAddDayModal(false)}
                                     className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
@@ -717,11 +698,11 @@ const WorkoutView = ({
                 <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 p-4">
                     <div className="bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-slide-up">
                         <div className="p-6">
-                             {/* Handle pour glisser */}
+                             {/* Poignée pour glisser */}
                              <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
 
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">Modifier le jour</h3>
+                                <h3 className="text-xl font-bold text-white">Modifier le Jour</h3>
                                 <button
                                     onClick={() => setEditingDay(null)}
                                     className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
@@ -762,7 +743,7 @@ const WorkoutView = ({
     );
 };
 
-// Composant Timer optimisé mobile
+// Composant Minuteur optimisé mobile
 const TimerView = ({
     timerSeconds,
     timerIsRunning,
@@ -774,8 +755,8 @@ const TimerView = ({
     formatTime
 }) => {
     const [selectedPreset, setSelectedPreset] = useState(90);
-    const [customMinutes, setCustomMinutes] = useState(1); // New state for custom minutes
-    const [customSeconds, setCustomSeconds] = useState(30); // New state for custom seconds
+    const [customMinutes, setCustomMinutes] = useState(1); // Nouvel état pour les minutes personnalisées
+    const [customSeconds, setCustomSeconds] = useState(30); // Nouvel état pour les secondes personnalisées
     
     const timePresets = [
         { label: '30s', value: 30 },
@@ -803,10 +784,10 @@ const TimerView = ({
         return ((selectedPreset - timerSeconds) / selectedPreset) * 100;
     };
 
-    const handlePresetSelection = (value) => { // Modified function to only set preset, not start timer
+    const handlePresetSelection = (value) => { // Fonction modifiée pour seulement définir le préréglage, pas démarrer le minuteur
         setSelectedPreset(value);
         setTimerSeconds(value);
-        setTimerIsRunning(false); // Ensure timer is paused when a new preset is selected
+        setTimerIsRunning(false); // S'assurer que le minuteur est en pause quand un nouveau préréglage est sélectionné
         setTimerIsFinished(false);
     };
 
@@ -871,7 +852,7 @@ const TimerView = ({
                                 ) : (
                                     <>
                                         <Play className="h-6 w-6" />
-                                        Start
+                                        Démarrer
                                     </>
                                 )}
                             </button>
@@ -880,7 +861,7 @@ const TimerView = ({
                                 className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-4 rounded-2xl font-medium transition-all flex items-center gap-2 active:scale-95"
                             >
                                 <RotateCcw className="h-5 w-5" />
-                                Reset
+                                Réinitialiser
                             </button>
                         </>
                     ) : (
@@ -891,7 +872,7 @@ const TimerView = ({
                 </div>
             </div>
 
-            {/* Presets de temps */}
+            {/* Préréglages de temps */}
             <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                     <Zap className="h-5 w-5 text-yellow-400" />
@@ -902,7 +883,7 @@ const TimerView = ({
                     {timePresets.map(preset => (
                         <button
                             key={preset.value}
-                            onClick={() => handlePresetSelection(preset.value)} // Changed to handlePresetSelection
+                            onClick={() => handlePresetSelection(preset.value)} // Modifié pour handlePresetSelection
                             disabled={timerIsRunning}
                             className={`p-4 rounded-xl font-medium transition-all active:scale-95 ${
                                 selectedPreset === preset.value && timerSeconds > 0
@@ -962,13 +943,13 @@ const TimerView = ({
                 </div>
             </div>
 
-            {/* Conseils */}
+            {/* Conseils de repos */}
             <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
                 <h3 className="text-lg font-semibold text-white mb-4">💡 Conseils de repos</h3>
                 <div className="space-y-3 text-sm">
                     <div className="bg-gray-700/50 rounded-lg p-3">
                         <h4 className="font-medium text-green-400 mb-1">Force (1-5 reps)</h4>
-                        <p className="text-gray-300">3-5 minutes pour récupération complète</p>
+                        <p className="text-gray-300">3-5 minutes pour une récupération complète</p>
                     </div>
                     <div className="bg-gray-700/50 rounded-lg p-3">
                         <h4 className="font-medium text-blue-400 mb-1">Hypertrophie (6-12 reps)</h4>
@@ -984,7 +965,7 @@ const TimerView = ({
     );
 };
 
-// Composant Stats optimisé mobile
+// Composant Statistiques optimisé mobile
 const StatsView = ({ workouts = {}, historicalData = [], personalBests = {} }) => {
     const COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'];
 
@@ -1016,7 +997,7 @@ const StatsView = ({ workouts = {}, historicalData = [], personalBests = {} }) =
         const thisWeekSessions = historicalData.filter(session => {
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
-            return session.timestamp && session.timestamp > weekAgo;
+            return session.timestamp && session.timestamp >= weekAgo;
         }).length;
 
         return {
@@ -1063,7 +1044,7 @@ const StatsView = ({ workouts = {}, historicalData = [], personalBests = {} }) =
                         <Calendar className="h-8 w-8 text-green-400 p-1.5 bg-green-500/20 rounded-lg" />
                     </div>
                     <div className="text-2xl font-bold text-white">{mainStats.totalSessions}</div>
-                    <div className="text-sm text-gray-300">Sessions totales</div>
+                    <div className="text-sm text-gray-300">Séances totales</div>
                 </div>
                 
                 <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
@@ -1142,7 +1123,7 @@ const StatsView = ({ workouts = {}, historicalData = [], personalBests = {} }) =
     );
 };
 
-// Composant History optimisé mobile
+// Composant Historique optimisé mobile
 const HistoryView = ({ 
     historicalData = [], 
     personalBests = {}, 
@@ -1240,7 +1221,7 @@ const HistoryView = ({
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Rechercher..."
+                            placeholder="Rechercher un exercice..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm && setSearchTerm(e.target.value)}
                             className="w-full bg-gray-700 text-white rounded-xl pl-10 pr-4 py-3 text-base placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1286,12 +1267,12 @@ const HistoryView = ({
 
             {/* Sessions */}
             <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white">Sessions ({groupedSessions.length})</h3>
+                <h3 className="text-lg font-semibold text-white">Séances ({groupedSessions.length})</h3>
                 
                 {groupedSessions.length === 0 ? (
                     <div className="bg-gray-800 rounded-xl p-8 text-center border border-gray-700">
                         <History className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-400">Aucune session trouvée</p>
+                        <p className="text-gray-400">Aucune séance trouvée</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -1423,7 +1404,19 @@ const WorkoutApp = () => {
     }, []);
 
     // Fonctions d'exercices
-    const handleAddExercise = useCallback(() => {
+    const handleAddExercise = useCallback((dayName = '', categoryName = '') => {
+        // Définir le jour et la catégorie sélectionnés en fonction de l'endroit où le bouton d'ajout a été cliqué
+        setSelectedDayForAdd(dayName);
+        setSelectedCategoryForAdd(categoryName);
+        setEditingExercise(null); // S'assurer qu'aucun exercice n'est en cours d'édition
+        setNewExerciseName('');
+        setNewWeight('');
+        setNewSets('3');
+        setNewReps('');
+        setShowAddExerciseModal(true);
+    }, []);
+
+    const handleSaveNewExercise = useCallback(() => {
         if (!newExerciseName.trim()) {
             setToast({ message: "Le nom de l'exercice est requis", type: 'error' });
             return;
@@ -1450,7 +1443,7 @@ const WorkoutApp = () => {
             series: Array(setsNum).fill(null).map(() => ({
                 weight: newWeight.toString(),
                 reps: newReps.toString(),
-                completed: false, // Initialize as not completed
+                completed: false, // Initialiser comme non terminé
             })),
             isDeleted: false,
             notes: ''
@@ -1468,11 +1461,12 @@ const WorkoutApp = () => {
         setToast({ message: `Exercice "${newExerciseName}" ajouté !`, type: 'success' });
     }, [newExerciseName, selectedDayForAdd, selectedCategoryForAdd, newSets, newWeight, newReps, workouts]);
 
+
     const handleEditClick = useCallback((day, category, exerciseId, exercise) => {
         setEditingExercise({ day, category, exerciseId });
         setEditingExerciseName(exercise.name);
         
-        // For editing, populate with the first series' data, or empty if no series
+        // Pour l'édition, pré-remplir avec les données de la première série, ou vide si aucune série
         if (exercise.series && exercise.series.length > 0) {
             setNewWeight(exercise.series[0].weight);
             setNewSets(exercise.series.length.toString());
@@ -1482,7 +1476,7 @@ const WorkoutApp = () => {
             setNewSets('3');
             setNewReps('');
         }
-        setShowAddExerciseModal(true); // Open the modal for editing
+        setShowAddExerciseModal(true); // Ouvrir le modal pour l'édition
     }, []);
 
     const handleSaveEdit = useCallback(() => {
@@ -1498,12 +1492,12 @@ const WorkoutApp = () => {
         if (exerciseIndex === -1) return;
         
         const setsNum = parseInt(newSets) || 1;
-        // Keep existing completed status for series that remain, create new ones if sets change
+        // Conserver l'état d'achèvement existant pour les séries qui restent, créer de nouvelles si le nombre de séries change
         const existingSeries = exercises[exerciseIndex].series || [];
         const newSeriesArray = Array(setsNum).fill(null).map((_, index) => ({
             weight: newWeight,
             reps: newReps,
-            completed: existingSeries[index] ? existingSeries[index].completed : false // Preserve completion status
+            completed: existingSeries[index] ? existingSeries[index].completed : false // Préserver l'état d'achèvement
         }));
         
         exercises[exerciseIndex] = {
@@ -1514,7 +1508,7 @@ const WorkoutApp = () => {
         
         setWorkouts(updatedWorkouts);
         setEditingExercise(null);
-        setShowAddExerciseModal(false); // Close the modal after saving
+        setShowAddExerciseModal(false); // Fermer le modal après la sauvegarde
         setToast({ message: "Exercice modifié !", type: 'success' });
     }, [editingExercise, workouts, editingExerciseName, newWeight, newSets, newReps]);
 
@@ -1570,6 +1564,30 @@ const WorkoutApp = () => {
         });
     }, []);
 
+    const handleAddSeries = useCallback((dayName, categoryName, exerciseId) => {
+        setWorkouts(prevWorkouts => {
+            const newWorkouts = { ...prevWorkouts };
+            const day = newWorkouts.days[dayName];
+            if (!day) return prevWorkouts;
+
+            const category = day.categories[categoryName];
+            if (!category) return prevWorkouts;
+
+            const exercise = category.find(ex => ex.id === exerciseId);
+            if (!exercise) return prevWorkouts;
+
+            const newSerie = {
+                weight: newWeight || '0', // Poids par défaut de l'entrée du modal ou '0'
+                reps: newReps || '0',   // Répétitions par défaut de l'entrée du modal ou '0'
+                completed: false
+            };
+            exercise.series = [...(exercise.series || []), newSerie];
+            
+            setToast({ message: "Série ajoutée !", type: 'success' });
+            return newWorkouts;
+        });
+    }, [newWeight, newReps]);
+
     const handleAddDay = useCallback((dayName) => {
         const updatedWorkouts = { ...workouts };
         updatedWorkouts.days[dayName] = { categories: {} };
@@ -1611,7 +1629,7 @@ const WorkoutApp = () => {
     }, []);
 
     const resetTimer = useCallback(() => {
-        setTimerSeconds(90); // Reset to default preset
+        setTimerSeconds(90); // Réinitialiser au préréglage par défaut
         setTimerIsRunning(false);
         setTimerIsFinished(false);
     }, []);
@@ -1637,17 +1655,17 @@ const WorkoutApp = () => {
             }
         }
         
-        /* Optimisations touch */
+        /* Optimisations tactiles */
         button, [role="button"] {
             min-height: 44px;
             min-width: 44px;
         }
         
         input, select, textarea {
-            font-size: 16px; /* Évite le zoom sur iOS */
+            font-size: 16px; /* Empêche le zoom sur iOS */
         }
         
-        /* Scrollbar mobile */
+        /* Barre de défilement mobile */
         .scrollbar-hidden::-webkit-scrollbar {
             display: none;
         }
@@ -1695,7 +1713,7 @@ const WorkoutApp = () => {
                 />
             )}
 
-            {/* Header mobile optimisé */}
+            {/* En-tête optimisée mobile */}
             <header className="sticky top-0 z-40 bg-gray-800/95 backdrop-blur-md border-b border-gray-700/50 px-4 py-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -1715,7 +1733,7 @@ const WorkoutApp = () => {
                 </div>
             </header>
 
-            {/* Contenu principal avec padding pour navigation */}
+            {/* Contenu principal avec rembourrage pour la navigation */}
             <main className="p-4 pb-20">
                 {currentView === 'workout' && (
                     <WorkoutView
@@ -1723,16 +1741,7 @@ const WorkoutApp = () => {
                         selectedDayFilter={selectedDayFilter}
                         setSelectedDayFilter={setSelectedDayFilter}
                         handleEditClick={handleEditClick}
-                        handleAddExerciseClick={(day, category) => {
-                            setSelectedDayForAdd(day || (workouts?.dayOrder?.[0] || ''));
-                            setSelectedCategoryForAdd(category || 'PECS');
-                            setEditingExercise(null); // Ensure no exercise is being edited
-                            setNewExerciseName('');
-                            setNewWeight('');
-                            setNewSets('3');
-                            setNewReps('');
-                            setShowAddExerciseModal(true);
-                        }}
+                        handleAddExerciseClick={handleAddExercise} // Mis à jour vers la nouvelle fonction handleAddExercise
                         handleDeleteExercise={handleDeleteExercise}
                         handleToggleSeriesCompleted={handleToggleSeriesCompleted}
                         handleUpdateSeries={handleUpdateSeries}
@@ -1744,6 +1753,7 @@ const WorkoutApp = () => {
                         handleAddDay={handleAddDay}
                         handleEditDay={handleEditDay}
                         handleDeleteDay={handleDeleteDay}
+                        handleAddSeries={handleAddSeries} // Passé à WorkoutView
                     />
                 )}
 
@@ -1791,11 +1801,11 @@ const WorkoutApp = () => {
                 <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
                     <div className="bg-gray-800 rounded-t-3xl shadow-2xl w-full max-w-md border-t border-gray-700 animate-slide-up max-h-[90vh] overflow-y-auto">
                         <div className="p-6">
-                            {/* Handle pour glisser */}
+                            {/* Poignée pour glisser */}
                             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
                             
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">{editingExercise ? 'Modifier l\'Exercice' : 'Nouvel Exercice'}</h3>
+                                <h3 className="text-xl font-bold text-white">{editingExercise ? 'Modifier l\'exercice' : 'Nouvel exercice'}</h3>
                                 <button
                                     onClick={() => {
                                         setShowAddExerciseModal(false);
@@ -1861,7 +1871,7 @@ const WorkoutApp = () => {
                                     </div>
                                 )}
 
-                                {/* Poids et Reps */}
+                                {/* Poids et Répétitions */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -1927,7 +1937,7 @@ const WorkoutApp = () => {
                                     Annuler
                                 </button>
                                 <button
-                                    onClick={editingExercise ? handleSaveEdit : handleAddExercise}
+                                    onClick={editingExercise ? handleSaveEdit : handleSaveNewExercise}
                                     disabled={!(editingExercise ? editingExerciseName.trim() : (newExerciseName.trim() && selectedDayForAdd && selectedCategoryForAdd))}
                                     className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 font-medium"
                                 >
