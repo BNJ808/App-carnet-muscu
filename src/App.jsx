@@ -695,28 +695,28 @@ const ImprovedWorkoutApp = () => {
         setIsDeletingExercise(true);
         
         const updatedWorkouts = { ...workouts };
-       const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-       
-       if (!exercises) {
-           setToast({ message: "Exercice non trouvé", type: 'error' });
-           setIsDeletingExercise(false);
-           return;
-       }
-       
-       const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-       if (exerciseIndex === -1) {
-           setToast({ message: "Exercice non trouvé", type: 'error' });
-           setIsDeletingExercise(false);
-           return;
-       }
-       
-       exercises[exerciseIndex].isDeleted = true;
-       exercises[exerciseIndex].deletedAt = new Date().toISOString();
-       
-       applyChanges(updatedWorkouts, "Exercice supprimé");
-       setShowDeleteConfirm(false);
-       setIsDeletingExercise(false);
-   }, [workouts, applyChanges]);
+        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
+        
+        if (!exercises) {
+            setToast({ message: "Exercice non trouvé", type: 'error' });
+            setIsDeletingExercise(false);
+            return;
+        }
+        
+        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+        if (exerciseIndex === -1) {
+            setToast({ message: "Exercice non trouvé", type: 'error' });
+            setIsDeletingExercise(false);
+            return;
+        }
+        
+        exercises[exerciseIndex].isDeleted = true;
+        exercises[exerciseIndex].deletedAt = new Date().toISOString();
+        
+        applyChanges(updatedWorkouts, "Exercice supprimé");
+        setShowDeleteConfirm(false);
+        setIsDeletingExercise(false);
+    }, [workouts, applyChanges]);
 
     // Fonctions de gestion des jours
     const handleAddDay = useCallback((dayName) => {
