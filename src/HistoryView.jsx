@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
     Sparkles, LineChart as LineChartIcon, NotebookText, RotateCcw, Search,
-    Filter, Calendar, Award, TrendingUp, Activity, Eye, EyeOff, ChevronDown, ChevronUp
+    Filter, Calendar, Award, TrendingUp, Activity, Eye, EyeOff, ChevronDown, ChevronUp, History
 } from 'lucide-react';
 
 /**
@@ -12,7 +12,7 @@ const HistoryView = ({
     personalBests = {},
     handleReactivateExercise,
     analyzeProgressionWithAI,
-    showProgressionGraphForExercise, // Ajouté pour le graphique
+    showProgressionGraphForExercise,
     formatDate,
     getSeriesDisplay,
     isAdvancedMode,
@@ -25,6 +25,9 @@ const HistoryView = ({
     const [selectedTimeRange, setSelectedTimeRange] = useState('all');
     const [expandedSessions, setExpandedSessions] = useState(new Set());
     const [selectedExerciseFilter, setSelectedExerciseFilter] = useState('all');
+
+    // Assurer que historicalData est toujours un tableau
+    const safeHistoricalData = Array.isArray(historicalData) ? historicalData : [];
 
     // Options de tri
     const sortOptions = [
@@ -45,29 +48,38 @@ const HistoryView = ({
     // Calcul des exercices uniques et leurs catégories pour le filtre
     const allExercises = useMemo(() => {
         const exerciseMap = new Map();
-        historicalData.forEach(session => {
-            session.exercises.forEach(exercise => {
-                if (!exercise.isDeleted || showDeletedExercises) {
-                    exerciseMap.set(exercise.name, { name: exercise.name, category: exercise.category });
-                }
-            });
+        safeHistoricalData.forEach(session => {
+            if (session?.exercises && Array.isArray(session.exercises)) {
+                session.exercises.forEach(exercise => {
+                    if (exercise?.name && (!exercise.isDeleted || showDeletedExercises)) {
+                        exerciseMap.set(exercise.name, { 
+                            name: exercise.name, 
+                            category: exercise.category || 'Non catégorisé' 
+                        });
+                    }
+                });
+            }
         });
         return Array.from(exerciseMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-    }, [historicalData, showDeletedExercises]);
+    }, [safeHistoricalData, showDeletedExercises]);
 
     // Filtrage et tri de l'historique
     const filteredAndSortedSessions = useMemo(() => {
-        let sessions = [...historicalData];
+        let sessions = [...safeHistoricalData];
 
         // 1. Filtrer par état de suppression
         sessions = sessions.map(session => ({
             ...session,
-            exercises: session.exercises.filter(ex => showDeletedExercises ? ex.isDeleted : !ex.isDeleted)
-        })).filter(session => session.exercises.length > 0); // Supprimer les sessions sans exercices après filtrage
+            exercises: (session?.exercises || []).filter(ex => 
+                showDeletedExercises ? ex?.isDeleted : !ex?.isDeleted
+            )
+        })).filter(session => session.exercises.length > 0);
 
         // 2. Filtrer par plage temporelle
         const now = new Date();
         sessions = sessions.filter(session => {
+            if (!session?.timestamp) return false;
+            
             const sessionDate = session.timestamp?.toDate ? session.timestamp.toDate() : new Date(session.timestamp);
             switch (selectedTimeRange) {
                 case 'last30days':
@@ -85,18 +97,18 @@ const HistoryView = ({
         // 3. Filtrer par terme de recherche et exercice sélectionné
         sessions = sessions.map(session => ({
             ...session,
-            exercises: session.exercises.filter(exercise => {
+            exercises: (session?.exercises || []).filter(exercise => {
+                if (!exercise?.name) return false;
                 const matchesSearch = searchTerm ? exercise.name.toLowerCase().includes(searchTerm.toLowerCase()) : true;
                 const matchesFilter = selectedExerciseFilter === 'all' ? true : exercise.name === selectedExerciseFilter;
                 return matchesSearch && matchesFilter;
             })
         })).filter(session => session.exercises.length > 0);
 
-
         // 4. Tri
         sessions.sort((a, b) => {
-            const dateA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : (new Date(a.timestamp)).getTime();
-            const dateB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : (new Date(b.timestamp)).getTime();
+            const dateA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : (new Date(a.timestamp || 0)).getTime();
+            const dateB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : (new Date(b.timestamp || 0)).getTime();
 
             switch (sortBy) {
                 case 'date-desc':
@@ -104,25 +116,24 @@ const HistoryView = ({
                 case 'date-asc':
                     return dateA - dateB;
                 case 'exercise-name':
-                    // Trie par nom du premier exercice de la session
-                    const nameA = a.exercises[0]?.name || '';
-                    const nameB = b.exercises[0]?.name || '';
+                    const nameA = a.exercises?.[0]?.name || '';
+                    const nameB = b.exercises?.[0]?.name || '';
                     return nameA.localeCompare(nameB);
                 case 'volume':
-                    // Trie par volume total de la session (somme des volumes de tous les exercices)
-                    const volumeA = a.exercises.reduce((sum, ex) => sum + ex.series.reduce((sSum, s) => sSum + (s.reps * s.weight), 0), 0);
-                    const volumeB = b.exercises.reduce((sum, ex) => sum + ex.series.reduce((sSum, s) => sSum + (s.reps * s.weight), 0), 0);
-                    return volumeB - volumeA; // Volume décroissant
+                    const volumeA = (a.exercises || []).reduce((sum, ex) => 
+                        sum + (ex?.series || []).reduce((sSum, s) => sSum + ((s?.reps || 0) * (s?.weight || 0)), 0), 0
+                    );
+                    const volumeB = (b.exercises || []).reduce((sum, ex) => 
+                        sum + (ex?.series || []).reduce((sSum, s) => sSum + ((s?.reps || 0) * (s?.weight || 0)), 0), 0
+                    );
+                    return volumeB - volumeA;
                 default:
                     return 0;
             }
         });
 
         return sessions;
-    }, [historicalData, showDeletedExercises, selectedTimeRange, searchTerm, selectedExerciseFilter, sortBy]);
-
-    // Groupement par jour pour l'affichage (si souhaité)
-    const groupedBySessions = filteredAndSortedSessions; // Pour l'instant, on les garde comme des sessions individuelles
+    }, [safeHistoricalData, showDeletedExercises, selectedTimeRange, searchTerm, selectedExerciseFilter, sortBy]);
 
     const toggleSessionExpansion = (sessionId) => {
         setExpandedSessions(prev => {
@@ -137,92 +148,94 @@ const HistoryView = ({
     };
 
     const handleAnalyzeProgression = (exerciseName) => {
-        // Filter historical data for the specific exercise
-        const exerciseHistory = historicalData.flatMap(session =>
-            session.exercises
-                .filter(ex => ex.name === exerciseName && !ex.isDeleted)
+        const exerciseHistory = safeHistoricalData.flatMap(session =>
+            (session?.exercises || [])
+                .filter(ex => ex?.name === exerciseName && !ex?.isDeleted)
                 .map(ex => ({
                     timestamp: session.timestamp,
-                    series: ex.series
+                    series: ex.series || []
                 }))
         );
 
-        if (exerciseHistory.length > 0) {
+        if (exerciseHistory.length > 0 && analyzeProgressionWithAI) {
             analyzeProgressionWithAI(exerciseName, exerciseHistory);
-        } else {
-            // Show toast if no history found for the exercise
-            showToast("Pas assez de données pour cet exercice pour une analyse IA.", "warning");
         }
     };
 
-
     const getProgressionGraphData = (exerciseName) => {
         const data = [];
-        historicalData.forEach(session => {
-            const exercise = session.exercises.find(ex => ex.name === exerciseName && !ex.isDeleted);
-            if (exercise && exercise.series && exercise.series.length > 0) {
-                let maxWeight = 0;
-                let maxReps = 0;
-                let maxVolume = 0;
+        safeHistoricalData.forEach(session => {
+            if (session?.exercises && Array.isArray(session.exercises)) {
+                const exercise = session.exercises.find(ex => ex?.name === exerciseName && !ex?.isDeleted);
+                if (exercise?.series && Array.isArray(exercise.series) && exercise.series.length > 0) {
+                    let maxWeight = 0;
+                    let maxReps = 0;
+                    let maxVolume = 0;
 
-                exercise.series.forEach(s => {
-                    const currentWeight = s.weight || 0;
-                    const currentReps = s.reps || 0;
-                    const currentVolume = currentWeight * currentReps;
+                    exercise.series.forEach(s => {
+                        if (s && typeof s === 'object') {
+                            const currentWeight = s.weight || 0;
+                            const currentReps = s.reps || 0;
+                            const currentVolume = currentWeight * currentReps;
 
-                    if (currentWeight > maxWeight) maxWeight = currentWeight;
-                    if (currentReps > maxReps) maxReps = currentReps;
-                    if (currentVolume > maxVolume) maxVolume = currentVolume;
-                });
-                data.push({
-                    date: session.timestamp?.toDate ? session.timestamp.toDate() : new Date(session.timestamp),
-                    maxWeight,
-                    maxReps,
-                    maxVolume
-                });
+                            if (currentWeight > maxWeight) maxWeight = currentWeight;
+                            if (currentReps > maxReps) maxReps = currentReps;
+                            if (currentVolume > maxVolume) maxVolume = currentVolume;
+                        }
+                    });
+                    
+                    data.push({
+                        date: session.timestamp?.toDate ? session.timestamp.toDate() : new Date(session.timestamp || 0),
+                        maxWeight,
+                        maxReps,
+                        maxVolume
+                    });
+                }
             }
         });
         return data.sort((a, b) => a.date.getTime() - b.date.getTime());
     };
 
-
     const renderSessionCard = (session) => (
-        <div key={session.id} className="bg-gray-800 rounded-lg shadow-md border border-gray-700">
+        <div key={session?.id || Math.random()} className="bg-gray-800 rounded-lg shadow-md border border-gray-700">
             <button
-                onClick={() => toggleSessionExpansion(session.id)}
+                onClick={() => toggleSessionExpansion(session?.id)}
                 className="w-full flex justify-between items-center p-4 text-left focus:outline-none"
             >
                 <div>
                     <h4 className="text-lg font-semibold text-white">
-                        Séance du {formatDate(session.timestamp?.toDate ? session.timestamp.toDate() : session.timestamp)}
+                        Séance du {formatDate(session?.timestamp)}
                     </h4>
                     <p className="text-sm text-gray-400">
-                        {session.exercises.length} {session.exercises.length > 1 ? 'exercices' : 'exercice'}
+                        {(session?.exercises || []).length} {(session?.exercises || []).length > 1 ? 'exercices' : 'exercice'}
                     </p>
                 </div>
-                {expandedSessions.has(session.id) ? (
+                {expandedSessions.has(session?.id) ? (
                     <ChevronUp className="h-6 w-6 text-gray-400" />
                 ) : (
                     <ChevronDown className="h-6 w-6 text-gray-400" />
                 )}
             </button>
 
-            {expandedSessions.has(session.id) && (
+            {expandedSessions.has(session?.id) && (
                 <div className="border-t border-gray-700 p-4">
-                    {session.exercises.length === 0 ? (
+                    {!session?.exercises || session.exercises.length === 0 ? (
                         <p className="text-gray-400 text-center">Aucun exercice enregistré pour cette séance.</p>
                     ) : (
                         <ul className="space-y-4">
                             {session.exercises.map((exercise, index) => {
+                                if (!exercise) return null;
+                                
                                 const pb = personalBests[exercise.name?.toLowerCase()];
                                 const hasPb = pb && (pb.maxWeight > 0 || pb.maxReps > 0 || pb.maxVolume > 0);
-                                const isDeletedIndicator = exercise.isDeleted ? <span className="text-red-500 text-xs font-semibold ml-2">(Supprimé)</span> : null;
+                                const isDeletedIndicator = exercise.isDeleted ? 
+                                    <span className="text-red-500 text-xs font-semibold ml-2">(Supprimé)</span> : null;
 
                                 return (
-                                    <li key={`${exercise.id}-${index}`} className="bg-gray-700 rounded-lg p-3 border border-gray-600">
+                                    <li key={`${exercise.id || index}-${index}`} className="bg-gray-700 rounded-lg p-3 border border-gray-600">
                                         <div className="flex items-center justify-between mb-2">
                                             <h5 className="text-md font-medium text-white flex-grow">
-                                                {exercise.name} {isDeletedIndicator}
+                                                {exercise.name || 'Exercice sans nom'} {isDeletedIndicator}
                                             </h5>
                                             <div className="flex space-x-2">
                                                 {isAdvancedMode && !exercise.isDeleted && (
@@ -236,16 +249,16 @@ const HistoryView = ({
                                                 )}
                                                 {!exercise.isDeleted && (
                                                     <button
-                                                        onClick={() => showProgressionGraphForExercise(exercise.name, getProgressionGraphData(exercise.name))}
+                                                        onClick={() => showProgressionGraphForExercise && showProgressionGraphForExercise(exercise.name, exercise.id)}
                                                         className="p-1 bg-blue-600 rounded-full text-white hover:bg-blue-700 transition-colors"
                                                         title="Voir le graphique de progression"
                                                     >
                                                         <LineChartIcon className="h-4 w-4" />
                                                     </button>
                                                 )}
-                                                {exercise.isDeleted && (
+                                                {exercise.isDeleted && handleReactivateExercise && (
                                                     <button
-                                                        onClick={() => handleReactivateExercise(exercise.name)}
+                                                        onClick={() => handleReactivateExercise(exercise.id)}
                                                         className="p-1 bg-green-600 rounded-full text-white hover:bg-green-700 transition-colors"
                                                         title="Réactiver l'exercice"
                                                     >
@@ -263,7 +276,9 @@ const HistoryView = ({
                                         )}
                                         {hasPb && (
                                             <div className="mt-2 text-xs text-gray-400 border-t border-gray-600 pt-2">
-                                                <p className="font-semibold text-yellow-400 flex items-center gap-1"><Award className="h-3 w-3" />Records Personnels :</p>
+                                                <p className="font-semibold text-yellow-400 flex items-center gap-1">
+                                                    <Award className="h-3 w-3" />Records Personnels :
+                                                </p>
                                                 {pb.bestWeightSeries && <p>Max Poids: {pb.bestWeightSeries.weight}kg x {pb.bestWeightSeries.reps} reps</p>}
                                                 {pb.bestRepsSeries && <p>Max Reps: {pb.bestRepsSeries.reps} reps @ {pb.bestRepsSeries.weight}kg</p>}
                                                 {pb.maxVolume > 0 && <p>Max Volume: {pb.maxVolume} kg</p>}
@@ -298,7 +313,7 @@ const HistoryView = ({
                             id="search"
                             placeholder="Ex: Développé couché"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => setSearchTerm && setSearchTerm(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                     </div>
@@ -310,7 +325,7 @@ const HistoryView = ({
                         <select
                             id="sort-by"
                             value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value)}
+                            onChange={(e) => setSortBy && setSortBy(e.target.value)}
                             className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                         >
                             {sortOptions.map(option => (
@@ -343,7 +358,9 @@ const HistoryView = ({
                     >
                         <option value="all">Tous les exercices</option>
                         {allExercises.map(ex => (
-                            <option key={ex.name} value={ex.name}>{ex.name} {ex.category ? `(${ex.category})` : ''}</option>
+                            <option key={ex.name} value={ex.name}>
+                                {ex.name} {ex.category ? `(${ex.category})` : ''}
+                            </option>
                         ))}
                     </select>
                 </div>
@@ -376,7 +393,7 @@ const HistoryView = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {Object.entries(personalBests).map(([exerciseName, pb]) => {
                             if (!pb || (pb.maxWeight === 0 && pb.maxReps === 0 && pb.maxVolume === 0)) {
-                                return null; // Skip if no records
+                                return null;
                             }
 
                             const exerciseDataForGraph = getProgressionGraphData(exerciseName);
@@ -387,7 +404,7 @@ const HistoryView = ({
                                         <h4 className="font-medium text-white mb-1 flex items-center justify-between">
                                             {exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1)}
                                             <div className="flex space-x-2">
-                                                {isAdvancedMode && (
+                                                {isAdvancedMode && analyzeProgressionWithAI && (
                                                     <button
                                                         onClick={() => handleAnalyzeProgression(exerciseName)}
                                                         className="p-1 bg-purple-600 rounded-full text-white hover:bg-purple-700 transition-colors"
@@ -396,7 +413,7 @@ const HistoryView = ({
                                                         <Sparkles className="h-4 w-4" />
                                                     </button>
                                                 )}
-                                                {exerciseDataForGraph.length > 0 && (
+                                                {exerciseDataForGraph.length > 0 && showProgressionGraphForExercise && (
                                                     <button
                                                         onClick={() => showProgressionGraphForExercise(exerciseName, exerciseDataForGraph)}
                                                         className="p-1 bg-blue-600 rounded-full text-white hover:bg-blue-700 transition-colors"
@@ -427,10 +444,10 @@ const HistoryView = ({
             <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-green-400" />
-                    Historique des séances ({groupedBySessions.length})
+                    Historique des séances ({filteredAndSortedSessions.length})
                 </h3>
 
-                {groupedBySessions.length === 0 ? (
+                {filteredAndSortedSessions.length === 0 ? (
                     <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700">
                         <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                         <p className="text-gray-400 mb-2">Aucune séance trouvée</p>
@@ -443,7 +460,7 @@ const HistoryView = ({
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {groupedBySessions.map(session => renderSessionCard(session))}
+                        {filteredAndSortedSessions.map(session => renderSessionCard(session))}
                     </div>
                 )}
             </div>

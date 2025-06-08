@@ -1,14 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import {
     Plus, Pencil, Trash2, Sparkles, LineChart as LineChartIcon, NotebookText,
-    ArrowUp, ArrowDown, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Search, Dumbbell
+    ArrowUp, ArrowDown, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Search, Dumbbell, Award
 } from 'lucide-react';
 
 /**
  * Composant MainWorkoutView pour afficher la vue principale des entraînements.
  */
 const MainWorkoutView = ({
-    workouts,
+    workouts = { days: {}, dayOrder: [] },
     selectedDayFilter,
     setSelectedDayFilter,
     isAdvancedMode,
@@ -18,26 +18,26 @@ const MainWorkoutView = ({
     handleDeleteExercise,
     handleToggleSeriesCompleted,
     handleUpdateSeries,
-    handleDeleteSeries, // Nouvelle prop
-    handleAddSeries, // Nouvelle prop pour ajouter une série
+    handleDeleteSeries,
+    handleAddSeries,
     analyzeProgressionWithAI,
-    showProgressionGraphForExercise, // Nouvelle prop pour le graphique
-    personalBests,
+    showProgressionGraphForExercise,
+    personalBests = {},
     getDayButtonColors,
     formatDate,
     getSeriesDisplay,
     isSavingExercise,
     isDeletingExercise,
     isAddingExercise,
-    searchTerm,
+    searchTerm = '',
     setSearchTerm,
     days = [],
     categories = [],
-    handleAddDay, // Gestion des jours
-    handleEditDay, // Gestion des jours
-    handleDeleteDay, // Gestion des jours
+    handleAddDay,
+    handleEditDay,
+    handleDeleteDay,
 }) => {
-    const [expandedDays, setExpandedDays] = useState(new Set(workouts?.dayOrder));
+    const [expandedDays, setExpandedDays] = useState(new Set(workouts?.dayOrder || []));
     const [expandedCategories, setExpandedCategories] = useState(new Set());
     const [showAddDayModal, setShowAddDayModal] = useState(false);
     const [newDayName, setNewDayName] = useState('');
@@ -48,10 +48,10 @@ const MainWorkoutView = ({
     const [currentDayIdForExercise, setCurrentDayIdForExercise] = useState(null);
     const [currentCategoryForExercise, setCurrentCategoryForExercise] = useState(null);
     const [newExerciseName, setNewExerciseName] = useState('');
-    const [newExerciseCategory, setNewExerciseCategory] = useState(''); // Pour la création de nouvelles catégories
-    const [activeExerciseNotes, setActiveExerciseNotes] = useState({}); // État pour gérer les notes en cours d'édition
-    const [editingNotesExerciseId, setEditingNotesExerciseId] = useState(null); // État pour savoir quel exercice est en édition de notes
-    const [showDayOptions, setShowDayOptions] = useState(null); // État pour afficher les options d'un jour (ID du jour ou null)
+    const [newExerciseCategory, setNewExerciseCategory] = useState('');
+    const [activeExerciseNotes, setActiveExerciseNotes] = useState({});
+    const [editingNotesExerciseId, setEditingNotesExerciseId] = useState(null);
+    const [showDayOptions, setShowDayOptions] = useState(null);
 
     const toggleDayExpansion = (dayId) => {
         setExpandedDays(prev => {
@@ -78,7 +78,7 @@ const MainWorkoutView = ({
     };
 
     const handleAddDaySubmit = () => {
-        if (newDayName.trim()) {
+        if (newDayName?.trim()) {
             handleAddDay(newDayName);
             setNewDayName('');
             setShowAddDayModal(false);
@@ -87,12 +87,12 @@ const MainWorkoutView = ({
 
     const handleEditDayClick = (dayId) => {
         setEditingDay(dayId);
-        setTempDayName(workouts.days[dayId].name);
+        setTempDayName(dayId);
         setShowEditDayModal(true);
     };
 
     const handleEditDaySubmit = () => {
-        if (editingDay && tempDayName.trim()) {
+        if (editingDay && tempDayName?.trim()) {
             handleEditDay(editingDay, tempDayName);
             setShowEditDayModal(false);
             setEditingDay(null);
@@ -104,13 +104,13 @@ const MainWorkoutView = ({
         setCurrentDayIdForExercise(dayId);
         setCurrentCategoryForExercise(categoryName);
         setNewExerciseName('');
-        setNewExerciseCategory(''); // Reset new category name
+        setNewExerciseCategory('');
         setShowAddExerciseModal(true);
     };
 
     const handleAddExerciseSubmit = () => {
-        if (currentDayIdForExercise && (currentCategoryForExercise || newExerciseCategory.trim()) && newExerciseName.trim()) {
-            const categoryToUse = newExerciseCategory.trim() || currentCategoryForExercise;
+        if (currentDayIdForExercise && (currentCategoryForExercise || newExerciseCategory?.trim()) && newExerciseName?.trim()) {
+            const categoryToUse = newExerciseCategory?.trim() || currentCategoryForExercise;
             handleAddExerciseClick(currentDayIdForExercise, categoryToUse, newExerciseName);
             setNewExerciseName('');
             setNewExerciseCategory('');
@@ -122,19 +122,24 @@ const MainWorkoutView = ({
 
     // Filter exercises by search term
     const filteredWorkouts = useMemo(() => {
-        if (!searchTerm) return workouts;
+        if (!searchTerm || !workouts?.dayOrder) return workouts;
 
         const filtered = { ...workouts, days: {} };
-        workouts.dayOrder.forEach(dayId => {
-            const day = workouts.days[dayId];
-            if (day) {
+        const dayOrder = workouts?.dayOrder || [];
+        const days = workouts?.days || {};
+        
+        dayOrder.forEach(dayId => {
+            const day = days[dayId];
+            if (day?.categories) {
                 const newCategories = {};
                 Object.entries(day.categories).forEach(([categoryName, exercises]) => {
-                    const filteredExercises = exercises.filter(exercise =>
-                        exercise.name.toLowerCase().includes(searchTerm.toLowerCase())
-                    );
-                    if (filteredExercises.length > 0) {
-                        newCategories[categoryName] = filteredExercises;
+                    if (Array.isArray(exercises)) {
+                        const filteredExercises = exercises.filter(exercise =>
+                            exercise?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+                        );
+                        if (filteredExercises.length > 0) {
+                            newCategories[categoryName] = filteredExercises;
+                        }
                     }
                 });
                 if (Object.keys(newCategories).length > 0) {
@@ -142,18 +147,19 @@ const MainWorkoutView = ({
                 }
             }
         });
-        filtered.dayOrder = filtered.dayOrder.filter(dayId => filtered.days[dayId]);
+        filtered.dayOrder = (filtered.dayOrder || []).filter(dayId => filtered.days[dayId]);
         return filtered;
     }, [workouts, searchTerm]);
 
-
     const renderSeriesInput = (dayId, categoryName, exerciseId, series) => {
+        if (!Array.isArray(series)) return null;
+        
         return series.map((s, sIndex) => (
-            <div key={s.id || sIndex} className={`flex items-center space-x-2 py-1 ${s.completed ? 'opacity-60' : ''}`}>
+            <div key={s?.id || sIndex} className={`flex items-center space-x-2 py-1 ${s?.completed ? 'opacity-60' : ''}`}>
                 <input
                     type="number"
-                    value={s.weight || ''}
-                    onChange={(e) => handleUpdateSeries(dayId, categoryName, exerciseId, s.id, { weight: parseFloat(e.target.value) || 0 })}
+                    value={s?.weight || ''}
+                    onChange={(e) => handleUpdateSeries(dayId, categoryName, exerciseId, s?.id, { weight: parseFloat(e.target.value) || 0 })}
                     className="w-1/3 p-2 bg-gray-600 border border-gray-500 rounded text-white text-sm"
                     placeholder="Poids (kg)"
                     min="0"
@@ -161,21 +167,21 @@ const MainWorkoutView = ({
                 <span className="text-gray-300">x</span>
                 <input
                     type="number"
-                    value={s.reps || ''}
-                    onChange={(e) => handleUpdateSeries(dayId, categoryName, exerciseId, s.id, { reps: parseInt(e.target.value) || 0 })}
+                    value={s?.reps || ''}
+                    onChange={(e) => handleUpdateSeries(dayId, categoryName, exerciseId, s?.id, { reps: parseInt(e.target.value) || 0 })}
                     className="w-1/3 p-2 bg-gray-600 border border-gray-500 rounded text-white text-sm"
                     placeholder="Reps"
                     min="0"
                 />
                 <button
-                    onClick={() => handleToggleSeriesCompleted(dayId, categoryName, exerciseId, s.id, !s.completed)}
-                    className={`p-1 rounded-full ${s.completed ? 'bg-green-500' : 'bg-gray-500'} text-white transition-colors`}
-                    aria-label={s.completed ? "Démarquer comme non complétée" : "Marquer comme complétée"}
+                    onClick={() => handleToggleSeriesCompleted(dayId, categoryName, exerciseId, s?.id)}
+                    className={`p-1 rounded-full ${s?.completed ? 'bg-green-500' : 'bg-gray-500'} text-white transition-colors`}
+                    aria-label={s?.completed ? "Démarquer comme non complétée" : "Marquer comme complétée"}
                 >
-                    {s.completed ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                    {s?.completed ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
                 </button>
                 <button
-                    onClick={() => handleDeleteSeries(dayId, categoryName, exerciseId, s.id)}
+                    onClick={() => handleDeleteSeries(dayId, categoryName, exerciseId, s?.id)}
                     className="p-1 text-red-400 hover:text-red-500 transition-colors"
                     aria-label="Supprimer la série"
                 >
@@ -188,41 +194,43 @@ const MainWorkoutView = ({
     const handleSaveNotes = (dayId, categoryName, exerciseId) => {
         const notesToSave = activeExerciseNotes[exerciseId] || '';
         handleEditClick(dayId, categoryName, exerciseId, { notes: notesToSave });
-        setEditingNotesExerciseId(null); // Quitter le mode édition
+        setEditingNotesExerciseId(null);
     };
 
     const getProgressionGraphData = (exerciseName) => {
         const data = [];
-        Object.values(workouts.days).forEach(day => {
-            Object.values(day.categories).forEach(exercises => {
-                const exercise = exercises.find(ex => ex.name === exerciseName && !ex.isDeleted);
-                if (exercise && exercise.series && exercise.series.length > 0) {
-                    let maxWeight = 0;
-                    let maxReps = 0;
-                    let maxVolume = 0;
+        Object.values(workouts?.days || {}).forEach(day => {
+            if (day?.categories) {
+                Object.values(day.categories).forEach(exercises => {
+                    if (Array.isArray(exercises)) {
+                        const exercise = exercises.find(ex => ex?.name === exerciseName && !ex?.isDeleted);
+                        if (exercise?.series && Array.isArray(exercise.series)) {
+                            let maxWeight = 0;
+                            let maxReps = 0;
+                            let maxVolume = 0;
 
-                    exercise.series.forEach(s => {
-                        const currentWeight = s.weight || 0;
-                        const currentReps = s.reps || 0;
-                        const currentVolume = currentWeight * currentReps;
+                            exercise.series.forEach(s => {
+                                const currentWeight = s?.weight || 0;
+                                const currentReps = s?.reps || 0;
+                                const currentVolume = currentWeight * currentReps;
 
-                        if (currentWeight > maxWeight) maxWeight = currentWeight;
-                        if (currentReps > maxReps) maxReps = currentReps;
-                        if (currentVolume > maxVolume) maxVolume = currentVolume;
-                    });
-                    data.push({
-                        date: new Date(), // Using current date for simplicity in workout view, actual historical data will have real dates
-                        maxWeight,
-                        maxReps,
-                        maxVolume
-                    });
-                }
-            });
+                                if (currentWeight > maxWeight) maxWeight = currentWeight;
+                                if (currentReps > maxReps) maxReps = currentReps;
+                                if (currentVolume > maxVolume) maxVolume = currentVolume;
+                            });
+                            data.push({
+                                date: new Date(),
+                                maxWeight,
+                                maxReps,
+                                maxVolume
+                            });
+                        }
+                    }
+                });
+            }
         });
-        // Sort by date to ensure correct graph plotting
         return data.sort((a, b) => a.date.getTime() - b.date.getTime());
     };
-
 
     return (
         <div className="space-y-6">
@@ -238,7 +246,7 @@ const MainWorkoutView = ({
                     type="text"
                     placeholder="Rechercher un exercice..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => setSearchTerm && setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
             </div>
@@ -253,40 +261,39 @@ const MainWorkoutView = ({
 
             {/* Liste des jours d'entraînement */}
             <div className="space-y-4">
-                {filteredWorkouts.dayOrder.length === 0 ? (
+                {(!filteredWorkouts?.dayOrder || filteredWorkouts.dayOrder.length === 0) ? (
                     <div className="bg-gray-800 rounded-2xl p-8 text-center border border-gray-700">
                         <Dumbbell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                         <p className="text-gray-400 mb-2">Aucun jour d'entraînement ajouté.</p>
                         <p className="text-sm text-gray-500">Commencez par ajouter votre premier jour d'entraînement !</p>
                     </div>
                 ) : (
-                    filteredWorkouts.dayOrder.map(dayId => {
-                        const day = filteredWorkouts.days[dayId];
-                        if (!day) return null; // Should not happen with filteredWorkouts.dayOrder
+                    (filteredWorkouts.dayOrder || []).map(dayId => {
+                        const day = filteredWorkouts.days?.[dayId];
+                        if (!day) return null;
 
-                        const isDayExpanded = expandedDays.has(day.id);
-                        const hasCategories = Object.keys(day.categories).length > 0;
+                        const isDayExpanded = expandedDays.has(dayId);
 
                         return (
-                            <div key={day.id} className="bg-gray-800 rounded-2xl shadow-lg border border-gray-700 overflow-hidden">
-                                <div className={`flex justify-between items-center p-4 ${getDayButtonColors(day.id)} transition-all duration-300 ease-in-out`}>
+                            <div key={dayId} className="bg-gray-800 rounded-2xl shadow-lg border border-gray-700 overflow-hidden">
+                                <div className={`flex justify-between items-center p-4 ${getDayButtonColors(dayId)} transition-all duration-300 ease-in-out`}>
                                     <button
-                                        onClick={() => toggleDayExpansion(day.id)}
+                                        onClick={() => toggleDayExpansion(dayId)}
                                         className="flex-1 text-left flex items-center gap-2 focus:outline-none"
                                     >
                                         {isDayExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-                                        <h3 className="text-xl font-semibold">{day.name}</h3>
+                                        <h3 className="text-xl font-semibold">{dayId}</h3>
                                     </button>
                                     <div className="flex items-center space-x-2">
                                         <button
-                                            onClick={() => handleEditDayClick(day.id)}
+                                            onClick={() => handleEditDayClick(dayId)}
                                             className="p-2 bg-gray-600 rounded-full hover:bg-gray-500 transition-colors"
                                             title="Modifier le jour"
                                         >
                                             <Pencil className="h-5 w-5 text-gray-300" />
                                         </button>
                                         <button
-                                            onClick={() => handleDeleteDay(day.id)}
+                                            onClick={() => handleDeleteDay(dayId)}
                                             className="p-2 bg-red-600 rounded-full hover:bg-red-700 transition-colors"
                                             title="Supprimer le jour et ses exercices"
                                         >
@@ -296,20 +303,26 @@ const MainWorkoutView = ({
                                 </div>
                                 {isDayExpanded && (
                                     <div className="p-4 pt-0">
-                                        {Object.keys(day.categories).length === 0 ? (
+                                        {!day.categories || Object.keys(day.categories).length === 0 ? (
                                             <div className="py-4 text-center text-gray-400">
                                                 Aucun exercice dans ce jour.
+                                                <button
+                                                    onClick={() => handleAddExerciseModalOpen(dayId, 'Nouveau')}
+                                                    className="block mx-auto mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                                >
+                                                    Ajouter un exercice
+                                                </button>
                                             </div>
                                         ) : (
                                             Object.entries(day.categories).map(([categoryName, exercises]) => {
-                                                if (exercises.length === 0) return null; // Ne pas afficher la catégorie si elle est vide après filtrage
+                                                if (!Array.isArray(exercises) || exercises.length === 0) return null;
 
-                                                const isCategoryExpanded = expandedCategories.has(`${day.id}-${categoryName}`);
+                                                const isCategoryExpanded = expandedCategories.has(`${dayId}-${categoryName}`);
 
                                                 return (
                                                     <div key={categoryName} className="mt-4 bg-gray-700 rounded-xl border border-gray-600 overflow-hidden">
                                                         <button
-                                                            onClick={() => toggleCategoryExpansion(`${day.id}-${categoryName}`)}
+                                                            onClick={() => toggleCategoryExpansion(`${dayId}-${categoryName}`)}
                                                             className="w-full flex justify-between items-center p-3 bg-gray-700 text-left text-white font-medium focus:outline-none"
                                                         >
                                                             <span className="flex items-center gap-2">
@@ -318,8 +331,8 @@ const MainWorkoutView = ({
                                                             </span>
                                                             <button
                                                                 onClick={(e) => {
-                                                                    e.stopPropagation(); // Empêcher l'expansion/rétraction de la catégorie
-                                                                    handleAddExerciseModalOpen(day.id, categoryName);
+                                                                    e.stopPropagation();
+                                                                    handleAddExerciseModalOpen(dayId, categoryName);
                                                                 }}
                                                                 className="p-1 bg-blue-500 rounded-full text-white hover:bg-blue-600 transition-colors"
                                                                 title="Ajouter un exercice à cette catégorie"
@@ -331,6 +344,8 @@ const MainWorkoutView = ({
                                                             <div className="p-3 border-t border-gray-600">
                                                                 <ul className="space-y-4">
                                                                     {exercises.map(exercise => {
+                                                                        if (!exercise) return null;
+                                                                        
                                                                         const pb = personalBests[exercise.name?.toLowerCase()];
                                                                         const hasPb = pb && (pb.maxWeight > 0 || pb.maxReps > 0 || pb.maxVolume > 0);
                                                                         const isEditingNotes = editingNotesExerciseId === exercise.id;
@@ -343,14 +358,14 @@ const MainWorkoutView = ({
                                                                                         {isAdvancedMode && (
                                                                                             <>
                                                                                                 <button
-                                                                                                    onClick={() => analyzeProgressionWithAI(exercise.name, historicalData.flatMap(session => session.exercises.filter(ex => ex.name === exercise.name).map(ex => ({ timestamp: session.timestamp, series: ex.series }))))}
+                                                                                                    onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise.name, [])}
                                                                                                     className="p-1 bg-purple-600 rounded-full text-white hover:bg-purple-700 transition-colors"
                                                                                                     title="Analyser avec l'IA"
                                                                                                 >
                                                                                                     <Sparkles className="h-4 w-4" />
                                                                                                 </button>
                                                                                                 <button
-                                                                                                    onClick={() => showProgressionGraphForExercise(exercise.name, getProgressionGraphData(exercise.name))}
+                                                                                                    onClick={() => showProgressionGraphForExercise && showProgressionGraphForExercise(exercise.name, exercise.id)}
                                                                                                     className="p-1 bg-blue-600 rounded-full text-white hover:bg-blue-700 transition-colors"
                                                                                                     title="Voir le graphique de progression"
                                                                                                 >
@@ -359,7 +374,7 @@ const MainWorkoutView = ({
                                                                                             </>
                                                                                         )}
                                                                                         <button
-                                                                                            onClick={() => handleDeleteExercise(day.id, categoryName, exercise.id)}
+                                                                                            onClick={() => handleDeleteExercise(dayId, categoryName, exercise.id)}
                                                                                             className="p-1 bg-red-600 rounded-full text-white hover:bg-red-700 transition-colors"
                                                                                             title="Supprimer l'exercice"
                                                                                         >
@@ -372,9 +387,9 @@ const MainWorkoutView = ({
                                                                                     <div className="text-gray-300 text-sm mb-2">{getSeriesDisplay(exercise.series)}</div>
                                                                                 ) : (
                                                                                     <div className="space-y-2 mb-2">
-                                                                                        {renderSeriesInput(day.id, categoryName, exercise.id, exercise.series)}
+                                                                                        {renderSeriesInput(dayId, categoryName, exercise.id, exercise.series)}
                                                                                         <button
-                                                                                            onClick={() => handleAddSeries(day.id, categoryName, exercise.id)}
+                                                                                            onClick={() => handleAddSeries(dayId, categoryName, exercise.id)}
                                                                                             className="w-full py-2 border border-gray-500 text-gray-300 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-500 transition-colors"
                                                                                         >
                                                                                             <Plus className="h-4 w-4" /> Ajouter une série
@@ -395,7 +410,7 @@ const MainWorkoutView = ({
                                                                                             />
                                                                                             <div className="flex gap-2">
                                                                                                 <button
-                                                                                                    onClick={() => handleSaveNotes(day.id, categoryName, exercise.id)}
+                                                                                                    onClick={() => handleSaveNotes(dayId, categoryName, exercise.id)}
                                                                                                     className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                                                                                                 >
                                                                                                     Sauvegarder
@@ -413,7 +428,7 @@ const MainWorkoutView = ({
                                                                                             className="flex items-start justify-between bg-gray-700 p-2 rounded-lg border border-gray-600 cursor-pointer hover:bg-gray-600 transition-colors"
                                                                                             onClick={() => {
                                                                                                 setEditingNotesExerciseId(exercise.id);
-                                                                                                setActiveExerciseNotes(prev => ({ ...prev, [exercise.id]: exercise.notes }));
+                                                                                                setActiveExerciseNotes(prev => ({ ...prev, [exercise.id]: exercise.notes || '' }));
                                                                                             }}
                                                                                         >
                                                                                             <p className={`flex-grow ${exercise.notes ? 'text-gray-300' : 'text-gray-500 italic'}`}>
@@ -478,7 +493,7 @@ const MainWorkoutView = ({
                             </button>
                             <button
                                 onClick={handleAddDaySubmit}
-                                disabled={!newDayName.trim()}
+                                disabled={!newDayName?.trim()}
                                 className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                             >
                                 Ajouter
@@ -514,7 +529,7 @@ const MainWorkoutView = ({
                             </button>
                             <button
                                 onClick={handleEditDaySubmit}
-                                disabled={!tempDayName.trim()}
+                                disabled={!tempDayName?.trim()}
                                 className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                             >
                                 Sauvegarder
@@ -548,22 +563,21 @@ const MainWorkoutView = ({
                                 value={currentCategoryForExercise || newExerciseCategory}
                                 onChange={(e) => {
                                     if (e.target.value === 'new-category') {
-                                        setCurrentCategoryForExercise(null); // Clear selected if creating new
-                                        setNewExerciseCategory(''); // Allow typing for new category
+                                        setCurrentCategoryForExercise(null);
+                                        setNewExerciseCategory('');
                                     } else {
                                         setCurrentCategoryForExercise(e.target.value);
-                                        setNewExerciseCategory(''); // Clear new category input
+                                        setNewExerciseCategory('');
                                     }
                                 }}
                                 className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none mb-2 text-base"
                             >
                                 <option value="">Sélectionnez ou créez une catégorie</option>
-                                {/* Afficher la catégorie actuelle en premier si elle existe */}
                                 {currentCategoryForExercise && (
                                     <option value={currentCategoryForExercise}>{currentCategoryForExercise}</option>
                                 )}
-                                {Object.keys(workouts.days[currentDayIdForExercise]?.categories || {})
-                                    .filter(cat => cat !== currentCategoryForExercise) // Filter out the current category if already shown
+                                {Object.keys(workouts?.days?.[currentDayIdForExercise]?.categories || {})
+                                    .filter(cat => cat !== currentCategoryForExercise)
                                     .map(category => (
                                         <option key={category} value={category}>{category}</option>
                                     ))}
@@ -588,7 +602,7 @@ const MainWorkoutView = ({
                             </button>
                             <button
                                 onClick={handleAddExerciseSubmit}
-                                disabled={!newExerciseName.trim() || (!currentCategoryForExercise && !newExerciseCategory.trim())}
+                                disabled={!newExerciseName?.trim() || (!currentCategoryForExercise && !newExerciseCategory?.trim())}
                                 className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                             >
                                 Ajouter
