@@ -219,7 +219,10 @@ const WorkoutView = ({
     handleAddDay,
     handleEditDay,
     handleDeleteDay,
-    handleAddSeries // Nouvelle prop
+    handleAddSeries, // Nouvelle prop
+    isSavingExercise, // Ajout de la prop
+    isDeletingExercise, // Ajout de la prop
+    isAddingExercise // Ajout de la prop
 }) => {
     const [expandedDays, setExpandedDays] = useState(new Set());
     const [expandedCategories, setExpandedCategories] = useState(new Set()); // Nouvel état pour les catégories
@@ -654,7 +657,7 @@ const WorkoutView = ({
                             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
                             
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">Nouveau Jour</h3>
+                                <h3 className="text-xl font-bold text-white">Nouveau jour</h3>
                                 <button
                                     onClick={() => setShowAddDayModal(false)}
                                     className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
@@ -702,7 +705,7 @@ const WorkoutView = ({
                              <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
 
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">Modifier le Jour</h3>
+                                <h3 className="text-xl font-bold text-white">Modifier le jour</h3>
                                 <button
                                     onClick={() => setEditingDay(null)}
                                     className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
@@ -997,7 +1000,7 @@ const StatsView = ({ workouts = {}, historicalData = [], personalBests = {} }) =
         const thisWeekSessions = historicalData.filter(session => {
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
-            return session.timestamp && session.timestamp >= weekAgo;
+            return session.timestamp && session.timestamp >= cutoff;
         }).length;
 
         return {
@@ -1265,7 +1268,7 @@ const HistoryView = ({
                 </div>
             )}
 
-            {/* Sessions */}
+            {/* Séances */}
             <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-white">Séances ({groupedSessions.length})</h3>
                 
@@ -1353,6 +1356,11 @@ const WorkoutApp = () => {
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState('');
     const [newExerciseName, setNewExerciseName] = useState('');
     
+    // États de chargement/statut pour les opérations
+    const [isSavingExercise, setIsSavingExercise] = useState(false);
+    const [isDeletingExercise, setIsDeletingExercise] = useState(false);
+    const [isAddingExercise, setIsAddingExercise] = useState(false);
+
     // États du minuteur
     const [timerSeconds, setTimerSeconds] = useState(90);
     const [timerIsRunning, setTimerIsRunning] = useState(false);
@@ -1427,6 +1435,7 @@ const WorkoutApp = () => {
             return;
         }
         
+        setIsAddingExercise(true); // Début de l'ajout
         const setsNum = parseInt(newSets) || 1;
         const updatedWorkouts = { ...workouts };
         
@@ -1458,6 +1467,7 @@ const WorkoutApp = () => {
         setNewSets('3');
         setNewReps('');
         setShowAddExerciseModal(false);
+        setIsAddingExercise(false); // Fin de l'ajout
         setToast({ message: `Exercice "${newExerciseName}" ajouté !`, type: 'success' });
     }, [newExerciseName, selectedDayForAdd, selectedCategoryForAdd, newSets, newWeight, newReps, workouts]);
 
@@ -1482,6 +1492,7 @@ const WorkoutApp = () => {
     const handleSaveEdit = useCallback(() => {
         if (!editingExercise) return;
         
+        setIsSavingExercise(true); // Début de la sauvegarde
         const { day, category, exerciseId } = editingExercise;
         const updatedWorkouts = { ...workouts };
         const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
@@ -1509,10 +1520,12 @@ const WorkoutApp = () => {
         setWorkouts(updatedWorkouts);
         setEditingExercise(null);
         setShowAddExerciseModal(false); // Fermer le modal après la sauvegarde
+        setIsSavingExercise(false); // Fin de la sauvegarde
         setToast({ message: "Exercice modifié !", type: 'success' });
     }, [editingExercise, workouts, editingExerciseName, newWeight, newSets, newReps]);
 
     const handleDeleteExercise = useCallback((day, category, exerciseId) => {
+        setIsDeletingExercise(true); // Début de la suppression
         const updatedWorkouts = { ...workouts };
         const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
         
@@ -1523,6 +1536,7 @@ const WorkoutApp = () => {
         
         exercises[exerciseIndex].isDeleted = true;
         setWorkouts(updatedWorkouts);
+        setIsDeletingExercise(false); // Fin de la suppression
         setToast({ message: "Exercice supprimé", type: 'success' });
     }, [workouts]);
 
@@ -1754,6 +1768,9 @@ const WorkoutApp = () => {
                         handleEditDay={handleEditDay}
                         handleDeleteDay={handleDeleteDay}
                         handleAddSeries={handleAddSeries} // Passé à WorkoutView
+                        isSavingExercise={isSavingExercise} // Passé à WorkoutView
+                        isDeletingExercise={isDeletingExercise} // Passé à WorkoutView
+                        isAddingExercise={isAddingExercise} // Passé à WorkoutView
                     />
                 )}
 
