@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import {
     Activity, Calendar, Target, TrendingUp, Award, Zap,
-    BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon
+    BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, NotebookText, Sparkles
 } from 'lucide-react';
 
 /**
@@ -12,7 +12,11 @@ const StatsView = ({
     workouts = { days: {}, dayOrder: [] },
     historicalData = [],
     personalBests = {},
-    formatDate
+    formatDate,
+    globalNotes, // Nouvelle prop pour les notes globales
+    setGlobalNotes, // Nouvelle prop pour mettre à jour les notes globales
+    analyzeGlobalStatsWithAI, // Nouvelle prop pour l'analyse IA globale
+    aiAnalysisLoading // État de chargement de l'IA
 }) => {
     // Couleurs pour les graphiques
     const COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4', '#84CC16'];
@@ -22,34 +26,56 @@ const StatsView = ({
         let totalExercises = 0;
         let totalSeries = 0;
         let totalVolume = 0;
+        let totalSessions = historicalData.length;
+        let thisWeekSessions = 0;
+        let totalTimeInGym = 0; // en minutes
+        let exercisesPerSession = 0; // moyenne
 
-        // Compter les exercices actifs
+        const now = new Date();
+        const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7); // Lundi de cette semaine
+
+        // Compter les exercices actifs et les séries
         Object.values(workouts.days || {}).forEach(day => {
             Object.values(day.categories || {}).forEach(exercises => {
                 if (Array.isArray(exercises)) {
                     const activeExercises = exercises.filter(ex => !ex.isDeleted);
                     totalExercises += activeExercises.length;
-                    
-                    activeExercises.forEach(exercise => {
-                        if (Array.isArray(exercise.series)) {
-                            totalSeries += exercise.series.length;
+                    activeExercises.forEach(ex => {
+                        if (Array.isArray(ex.series)) {
+                            totalSeries += ex.series.length;
                         }
                     });
                 }
             });
         });
 
-        // Calculer le volume total
-        Object.values(personalBests).forEach(best => {
-            totalVolume += (best.totalVolume || 0);
+        // Calculer le volume total et les sessions de cette semaine
+        historicalData.forEach(session => {
+            let sessionVolume = 0;
+            Object.values(session.workoutData?.days || {}).forEach(day => {
+                Object.values(day.categories || {}).forEach(exercises => {
+                    if (Array.isArray(exercises)) {
+                        exercises.forEach(ex => {
+                            if (Array.isArray(ex.series)) {
+                                ex.series.forEach(serie => {
+                                    sessionVolume += (parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0);
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+            totalVolume += sessionVolume;
+
+            const sessionDate = session.timestamp instanceof Date ? session.timestamp : new Date(session.timestamp.seconds * 1000);
+            if (sessionDate >= startOfWeek) {
+                thisWeekSessions++;
+            }
         });
 
-        const totalSessions = historicalData.length;
-        const thisWeekSessions = historicalData.filter(session => {
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            return session.timestamp && session.timestamp > weekAgo;
-        }).length;
+        // Calcul du temps total en salle (estimation simple: 60min par session)
+        totalTimeInGym = totalSessions * 60;
+        exercisesPerSession = totalSessions > 0 ? (totalExercises / totalSessions).toFixed(1) : 0;
 
         return {
             totalExercises,
@@ -57,103 +83,86 @@ const StatsView = ({
             totalSessions,
             thisWeekSessions,
             totalVolume: Math.round(totalVolume),
-            averageSessionsPerWeek: totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0
+            averageSessionsPerWeek: totalSessions > 0 ? (totalSessions / (historicalData.length > 0 ? ((now.getTime() - historicalData[historicalData.length - 1].timestamp.getTime()) / (1000 * 60 * 60 * 24 * 7)) : 1)).toFixed(1) : 0,
+            totalTimeInGym,
+            exercisesPerSession
         };
-    }, [workouts, historicalData, personalBests]);
+    }, [workouts, historicalData]);
 
-    // Données pour le graphique de progression des sessions
-    const sessionProgressData = useMemo(() => {
-        const last30Days = [];
-        const today = new Date();
-        
-        for (let i = 29; i >= 0; i--) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
-            
-            const sessionsCount = historicalData.filter(session => {
-                if (!session.timestamp) return false;
-                const sessionDate = session.timestamp.toISOString ? 
-                    session.timestamp.toISOString().split('T')[0] : 
-                    new Date(session.timestamp).toISOString().split('T')[0];
-                return sessionDate === dateStr;
-            }).length;
-
-            last30Days.push({
-                date: dateStr,
-                sessions: sessionsCount,
-                displayDate: date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-            });
-        }
-        
-        return last30Days;
-    }, [historicalData]);
-
-    // Données pour le graphique de répartition par catégorie
-    const categoryData = useMemo(() => {
-        const categories = {};
-        
-        Object.values(workouts.days || {}).forEach(day => {
-            Object.entries(day.categories || {}).forEach(([categoryName, exercises]) => {
-                if (Array.isArray(exercises)) {
-                    const activeExercises = exercises.filter(ex => !ex.isDeleted);
-                    categories[categoryName] = (categories[categoryName] || 0) + activeExercises.length;
-                }
-            });
-        });
-
-        return Object.entries(categories).map(([name, value], index) => ({
-            name,
-            value,
-            fill: COLORS[index % COLORS.length]
-        }));
-    }, [workouts]);
-
-    // Top 5 des exercices par volume
-    const topExercisesByVolume = useMemo(() => {
-        return Object.entries(personalBests)
-            .map(([exerciseId, best]) => ({
-                name: best.name || 'Exercice sans nom',
-                volume: Math.round(best.totalVolume || 0),
-                sessions: best.sessions || 0,
-                maxWeight: best.maxWeight || 0
-            }))
-            .sort((a, b) => b.volume - a.volume)
-            .slice(0, 5);
-    }, [personalBests]);
-
-    // Données d'évolution du volume par semaine
+    // Données pour le graphique de volume par semaine
     const weeklyVolumeData = useMemo(() => {
         const weeks = {};
-        
         historicalData.forEach(session => {
-            if (!session.timestamp || !session.workoutData?.days) return;
-            
-            const weekStart = new Date(session.timestamp);
-            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-            const weekKey = weekStart.toISOString().split('T')[0];
-            
-            if (!weeks[weekKey]) {
-                weeks[weekKey] = {
-                    week: weekKey,
-                    volume: 0,
-                    sessions: 0,
-                    displayWeek: weekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-                };
-            }
-            
-            weeks[weekKey].sessions++;
-            
-            // Calculer le volume de cette session
-            Object.values(session.workoutData.days).forEach(day => {
+            const date = session.timestamp instanceof Date ? session.timestamp : new Date(session.timestamp.seconds * 1000);
+            const startOfWeek = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (date.getDay() + 6) % 7); // Lundi de la semaine
+            const weekKey = startOfWeek.toISOString().split('T')[0];
+
+            let sessionVolume = 0;
+            Object.values(session.workoutData?.days || {}).forEach(day => {
                 Object.values(day.categories || {}).forEach(exercises => {
                     if (Array.isArray(exercises)) {
-                        exercises.forEach(exercise => {
-                            if (Array.isArray(exercise.series)) {
-                                exercise.series.forEach(serie => {
-                                    const weight = parseFloat(serie.weight) || 0;
-                                    const reps = parseInt(serie.reps) || 0;
-                                    weeks[weekKey].volume += weight * reps;
+                        exercises.forEach(ex => {
+                            if (Array.isArray(ex.series)) {
+                                ex.series.forEach(serie => {
+                                    sessionVolume += (parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0);
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+
+            if (!weeks[weekKey]) {
+                weeks[weekKey] = { date: startOfWeek, volume: 0 };
+            }
+            weeks[weekKey].volume += sessionVolume;
+        });
+
+        const sortedWeeks = Object.values(weeks).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+        // Garder les 8 dernières semaines pour le graphique
+        return sortedWeeks.slice(-8).map(week => ({
+            name: formatDate(week.date).substring(0, formatDate(week.date).indexOf(',')), // Ex: "15 janv."
+            volume: Math.round(week.volume)
+        }));
+    }, [historicalData, formatDate]);
+
+    // Données pour le graphique de répartition par catégorie musculaire
+    const categoryData = useMemo(() => {
+        const categoryVolumes = {};
+        historicalData.forEach(session => {
+            Object.values(session.workoutData?.days || {}).forEach(day => {
+                Object.entries(day.categories || {}).forEach(([categoryName, exercises]) => {
+                    if (Array.isArray(exercises)) {
+                        exercises.forEach(ex => {
+                            if (Array.isArray(ex.series) && !ex.isDeleted) {
+                                ex.series.forEach(serie => {
+                                    const volume = (parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0);
+                                    categoryVolumes[categoryName] = (categoryVolumes[categoryName] || 0) + volume;
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+        });
+        return Object.entries(categoryVolumes)
+            .map(([name, value]) => ({ name, value: Math.round(value) }))
+            .sort((a, b) => b.value - a.value);
+    }, [historicalData]);
+
+    // Données pour le graphique des top 5 exercices par volume
+    const topExercisesData = useMemo(() => {
+        const exerciseVolumes = {};
+        historicalData.forEach(session => {
+            Object.values(session.workoutData?.days || {}).forEach(day => {
+                Object.values(day.categories || {}).forEach(exercises => {
+                    if (Array.isArray(exercises)) {
+                        exercises.forEach(ex => {
+                            if (Array.isArray(ex.series) && !ex.isDeleted) {
+                                ex.series.forEach(serie => {
+                                    const volume = (parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0);
+                                    exerciseVolumes[ex.name] = (exerciseVolumes[ex.name] || 0) + volume;
                                 });
                             }
                         });
@@ -162,296 +171,209 @@ const StatsView = ({
             });
         });
 
-        return Object.values(weeks)
-            .sort((a, b) => new Date(a.week) - new Date(b.week))
-            .slice(-8); // 8 dernières semaines
+        return Object.entries(exerciseVolumes)
+            .map(([name, value]) => ({ name, volume: Math.round(value) }))
+            .sort((a, b) => b.volume - a.volume)
+            .slice(0, 5); // Top 5
     }, [historicalData]);
 
-    const renderStatCard = (title, value, subtitle, icon, color) => (
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:bg-gray-700/50 transition-all">
-            <div className="flex items-center justify-between mb-4">
-                <div className={`p-3 rounded-lg ${color}`}>
-                    {icon}
-                </div>
-            </div>
-            <div className="text-3xl font-bold text-white mb-2">{value}</div>
-            <div className="text-sm font-medium text-gray-300 mb-1">{title}</div>
-            {subtitle && <div className="text-xs text-gray-400">{subtitle}</div>}
-        </div>
-    );
-
     return (
-        <div className="space-y-8">
-            {/* Titre */}
-            <div className="text-center">
-                <h1 className="text-3xl font-bold text-white mb-2">Statistiques d'entraînement</h1>
-                <p className="text-gray-400">Analysez vos performances et votre progression</p>
-            </div>
+        <div className="space-y-6">
+            <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+                <BarChart3 className="h-7 w-7 text-purple-400" />
+                Statistiques générales
+            </h2>
 
             {/* Statistiques principales */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {renderStatCard(
-                    "Exercices actifs",
-                    mainStats.totalExercises,
-                    `${mainStats.totalSeries} séries au total`,
-                    <Activity className="h-6 w-6 text-blue-400" />,
-                    "bg-blue-500/20"
-                )}
-                
-                {renderStatCard(
-                    "Sessions totales",
-                    mainStats.totalSessions,
-                    `${mainStats.thisWeekSessions} cette semaine`,
-                    <Calendar className="h-6 w-6 text-green-400" />,
-                    "bg-green-500/20"
-                )}
-                
-                {renderStatCard(
-                    "Volume total",
-                    `${mainStats.totalVolume}kg`,
-                    "Charge × Répétitions",
-                    <Target className="h-6 w-6 text-purple-400" />,
-                    "bg-purple-500/20"
-                )}
-                
-                {renderStatCard(
-                    "Moyenne/semaine",
-                    `${mainStats.averageSessionsPerWeek}`,
-                    "Sessions par semaine",
-                    <TrendingUp className="h-6 w-6 text-yellow-400" />,
-                    "bg-yellow-500/20"
-                )}
-                
-                {renderStatCard(
-                    "Records personnels",
-                    Object.keys(personalBests).length,
-                    "Exercices suivis",
-                    <Award className="h-6 w-6 text-red-400" />,
-                    "bg-red-500/20"
-                )}
-                
-                {renderStatCard(
-                    "Régularité",
-                    mainStats.thisWeekSessions > 0 ? "✅ Actif" : "⏸️ Pause",
-                    "Cette semaine",
-                    <Zap className="h-6 w-6 text-cyan-400" />,
-                    "bg-cyan-500/20"
-                )}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                    <p className="text-sm text-gray-400">Total Exercices</p>
+                    <p className="text-2xl font-bold text-blue-400">{mainStats.totalExercises}</p>
+                </div>
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                    <p className="text-sm text-gray-400">Total Séries</p>
+                    <p className="text-2xl font-bold text-green-400">{mainStats.totalSeries}</p>
+                </div>
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                    <p className="text-sm text-gray-400">Total Sessions</p>
+                    <p className="text-2xl font-bold text-yellow-400">{mainStats.totalSessions}</p>
+                </div>
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                    <p className="text-sm text-gray-400">Volume Total</p>
+                    <p className="text-2xl font-bold text-purple-400">{mainStats.totalVolume} kg</p>
+                </div>
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                    <p className="text-sm text-gray-400">Sessions cette semaine</p>
+                    <p className="text-2xl font-bold text-red-400">{mainStats.thisWeekSessions}</p>
+                </div>
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                    <p className="text-sm text-gray-400">Temps total en salle (est.)</p>
+                    <p className="text-2xl font-bold text-teal-400">{mainStats.totalTimeInGym} min</p>
+                </div>
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                    <p className="text-sm text-gray-400">Moy. Ex. par séance</p>
+                    <p className="text-2xl font-bold text-orange-400">{mainStats.exercisesPerSession}</p>
+                </div>
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                    <p className="text-sm text-gray-400">Records pers. suivis</p>
+                    <p className="text-2xl font-bold text-lime-400">{Object.keys(personalBests).length}</p>
+                </div>
+            </div>
+
+            {/* Section notes globales */}
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <NotebookText className="h-6 w-6 text-yellow-400" /> Notes Globales
+                </h3>
+                <textarea
+                    value={globalNotes}
+                    onChange={(e) => setGlobalNotes(e.target.value)}
+                    placeholder="Ajoutez des notes générales sur votre entraînement, vos objectifs à long terme, votre état de forme général, etc."
+                    rows="5"
+                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 text-sm whitespace-pre-wrap"
+                ></textarea>
+                <p className="text-xs text-gray-500 mt-2">
+                    Ces notes sont sauvegardées automatiquement.
+                </p>
+            </div>
+
+            {/* Analyse IA globale */}
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg text-center">
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center justify-center gap-2">
+                    <Sparkles className="h-6 w-6 text-purple-400" /> Analyse IA Générale
+                </h3>
+                <p className="text-gray-400 mb-4">
+                    Obtenez une analyse personnalisée de vos statistiques globales et des conseils pour votre progression.
+                </p>
+                <button
+                    onClick={analyzeGlobalStatsWithAI}
+                    className={`w-full px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
+                        aiAnalysisLoading
+                            ? 'bg-purple-500/50 text-white cursor-wait'
+                            : 'bg-purple-600 text-white hover:bg-purple-700'
+                    }`}
+                    disabled={aiAnalysisLoading}
+                >
+                    {aiAnalysisLoading ? (
+                        <>
+                            <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                            Analyse en cours...
+                        </>
+                    ) : (
+                        <>
+                            <Sparkles className="h-5 w-5" /> Obtenir l'analyse IA
+                        </>
+                    )}
+                </button>
             </div>
 
             {/* Graphiques */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Graphique de progression des sessions */}
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <LineChartIcon className="h-5 w-5 text-blue-400" />
-                        Sessions des 30 derniers jours
-                    </h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                        <LineChart data={sessionProgressData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis 
-                                dataKey="displayDate" 
-                                stroke="#9CA3AF" 
-                                fontSize={12}
-                                interval="preserveStartEnd"
-                            />
-                            <YAxis stroke="#9CA3AF" fontSize={12} />
-                            <Tooltip 
-                                contentStyle={{ 
-                                    backgroundColor: '#1F2937', 
-                                    border: '1px solid #374151',
-                                    borderRadius: '8px',
-                                    color: '#F3F4F6'
-                                }}
-                                labelStyle={{ color: '#F3F4F6' }}
-                            />
-                            <Line 
-                                type="monotone" 
-                                dataKey="sessions" 
-                                stroke="#3B82F6" 
-                                strokeWidth={2}
-                                dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                                activeDot={{ r: 6, fill: '#60A5FA' }}
-                            />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
-
-                {/* Répartition par catégorie */}
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <PieChartIcon className="h-5 w-5 text-purple-400" />
-                        Répartition par catégorie
-                    </h3>
-                    {categoryData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={250}>
-                            <PieChart>
-                                <Pie
-                                    data={categoryData}
-                                    cx="50%"
-                                    cy="50%"
-                                    outerRadius={80}
-                                    dataKey="value"
-                                    label={({ name, value }) => `${name}: ${value}`}
-                                    labelLine={false}
-                                >
-                                    {categoryData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                                    ))}
-                                </Pie>
-                                <Tooltip 
-                                    contentStyle={{ 
-                                        backgroundColor: '#1F2937', 
-                                        border: '1px solid #374151',
-                                        borderRadius: '8px',
-                                        color: '#F3F4F6'
-                                    }}
-                                />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div className="flex items-center justify-center h-250 text-gray-400">
-                            Aucune donnée disponible
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Top exercices et évolution hebdomadaire */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Top exercices par volume */}
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <BarChart3 className="h-5 w-5 text-green-400" />
-                        Top 5 - Volume d'entraînement
-                    </h3>
-                    {topExercisesByVolume.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={250}>
-                            <BarChart data={topExercisesByVolume} layout="horizontal">
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis type="number" stroke="#9CA3AF" fontSize={12} />
-                                <YAxis 
-                                    type="category" 
-                                    dataKey="name" 
-                                    stroke="#9CA3AF" 
-                                    fontSize={12}
-                                    width={100}
-                                />
-                                <Tooltip 
-                                    contentStyle={{ 
-                                        backgroundColor: '#1F2937', 
-                                        border: '1px solid #374151',
-                                        borderRadius: '8px',
-                                        color: '#F3F4F6'
-                                    }}
-                                    formatter={(value, name) => [
-                                        `${value}kg`,
-                                        'Volume total'
-                                    ]}
-                                />
-                                <Bar dataKey="volume" fill="#10B981" radius={[0, 4, 4, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div className="flex items-center justify-center h-250 text-gray-400">
-                            Commencez à vous entraîner pour voir vos statistiques
-                        </div>
-                    )}
-                </div>
-
-                {/* Évolution hebdomadaire du volume */}
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-yellow-400" />
-                        Volume par semaine (8 dernières)
+            <div className="space-y-6">
+                {/* Volume total par semaine */}
+                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <LineChartIcon className="h-6 w-6 text-blue-400" /> Volume total par semaine (8 dernières semaines)
                     </h3>
                     {weeklyVolumeData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={250}>
-                            <BarChart data={weeklyVolumeData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis 
-                                    dataKey="displayWeek" 
-                                    stroke="#9CA3AF" 
-                                    fontSize={12}
-                                />
-                                <YAxis stroke="#9CA3AF" fontSize={12} />
-                                <Tooltip 
-                                    contentStyle={{ 
-                                        backgroundColor: '#1F2937', 
-                                        border: '1px solid #374151',
-                                        borderRadius: '8px',
-                                        color: '#F3F4F6'
-                                    }}
-                                    formatter={(value, name) => [
-                                        `${Math.round(value)}kg`,
-                                        'Volume total'
-                                    ]}
-                                />
-                                <Bar 
-                                    dataKey="volume" 
-                                    fill="#F59E0B" 
-                                    radius={[4, 4, 0, 0]}
-                                />
-                            </BarChart>
-                        </ResponsiveContainer>
+                        <div className="h-80">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={weeklyVolumeData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#4a5568" />
+                                    <XAxis dataKey="name" stroke="#cbd5e0" />
+                                    <YAxis stroke="#cbd5e0" label={{ value: 'Volume (kg)', angle: -90, position: 'insideLeft', fill: '#cbd5e0' }} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#1f2937', borderColor: '#4a5568', borderRadius: '8px' }}
+                                        labelStyle={{ color: '#cbd5e0' }}
+                                        formatter={(value, name, props) => [`${value} kg`, 'Volume']}
+                                    />
+                                    <Legend wrapperStyle={{ color: '#cbd5e0', paddingTop: '10px' }} />
+                                    <Bar dataKey="volume" fill="#8884d8" name="Volume (kg)" radius={[10, 10, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
                     ) : (
-                        <div className="flex items-center justify-center h-250 text-gray-400">
-                            Données insuffisantes pour afficher l'évolution
+                        <div className="text-center text-gray-400 p-8">
+                            <Calendar className="h-10 w-10 mx-auto mb-3" />
+                            <p>Aucune donnée de volume hebdomadaire disponible.</p>
+                            <p className="text-sm text-gray-500">Enregistrez vos séances pour voir votre progression ici !</p>
                         </div>
                     )}
                 </div>
-            </div>
 
-            {/* Conseils et insights */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">💡 Insights et recommandations</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-gray-700/50 rounded-lg p-4">
-                        <h4 className="font-medium text-blue-400 mb-2">Fréquence d'entraînement</h4>
-                        <p className="text-gray-300 text-sm">
-                            {mainStats.thisWeekSessions === 0 ? 
-                                "🚨 Aucune session cette semaine. Il est temps de reprendre !" :
-                                mainStats.thisWeekSessions < 3 ?
-                                "⚠️ Fréquence faible cette semaine. Essayez d'augmenter à 3-4 sessions." :
-                                "✅ Excellente fréquence ! Maintenez ce rythme."
-                            }
-                        </p>
-                    </div>
-                    
-                    <div className="bg-gray-700/50 rounded-lg p-4">
-                        <h4 className="font-medium text-green-400 mb-2">Progression</h4>
-                        <p className="text-gray-300 text-sm">
-                            {Object.keys(personalBests).length === 0 ?
-                                "Commencez à vous entraîner pour établir vos premiers records !" :
-                                Object.keys(personalBests).length < 5 ?
-                                "🎯 Diversifiez vos exercices pour un développement équilibré." :
-                                "🏆 Excellent suivi ! Vous progressez sur plusieurs exercices."
-                            }
-                        </p>
-                    </div>
-                    
-                    <div className="bg-gray-700/50 rounded-lg p-4">
-                        <h4 className="font-medium text-purple-400 mb-2">Volume d'entraînement</h4>
-                        <p className="text-gray-300 text-sm">
-                            {mainStats.totalVolume === 0 ?
-                                "Commencez à enregistrer vos poids et répétitions !" :
-                                mainStats.totalVolume < 1000 ?
-                                "💪 Bon début ! Augmentez progressivement votre volume." :
-                                "🔥 Volume impressionnant ! Veillez à bien récupérer."
-                            }
-                        </p>
-                    </div>
-                    
-                    <div className="bg-gray-700/50 rounded-lg p-4">
-                        <h4 className="font-medium text-yellow-400 mb-2">Équilibre musculaire</h4>
-                        <p className="text-gray-300 text-sm">
-                            {categoryData.length < 3 ?
-                                "⚖️ Ajoutez plus de groupes musculaires pour un entraînement équilibré." :
-                                "✅ Bonne répartition des groupes musculaires !"
-                            }
-                        </p>
-                    </div>
+                {/* Répartition par catégorie musculaire */}
+                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <PieChartIcon className="h-6 w-6 text-green-400" /> Répartition par catégorie musculaire
+                    </h3>
+                    {categoryData.length > 0 ? (
+                        <div className="h-80 flex items-center justify-center">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={categoryData}
+                                        cx="50%"
+                                        cy="50%"
+                                        labelLine={false}
+                                        outerRadius={80}
+                                        fill="#8884d8"
+                                        dataKey="value"
+                                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                    >
+                                        {categoryData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#1f2937', borderColor: '#4a5568', borderRadius: '8px' }}
+                                        labelStyle={{ color: '#cbd5e0' }}
+                                        formatter={(value, name, props) => [`${value} kg`, name]}
+                                    />
+                                    <Legend wrapperStyle={{ color: '#cbd5e0', paddingTop: '10px' }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <div className="text-center text-gray-400 p-8">
+                            <Dumbbell className="h-10 w-10 mx-auto mb-3" />
+                            <p>Aucune donnée de catégorie musculaire disponible.</p>
+                            <p className="text-sm text-gray-500">Ajoutez des exercices et des catégories pour voir la répartition.</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Top 5 exercices par volume */}
+                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <Target className="h-6 w-6 text-red-400" /> Top 5 exercices par volume
+                    </h3>
+                    {topExercisesData.length > 0 ? (
+                        <div className="h-80">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                    data={topExercisesData}
+                                    layout="vertical"
+                                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#4a5568" />
+                                    <XAxis type="number" stroke="#cbd5e0" label={{ value: 'Volume (kg)', position: 'insideBottom', offset: -5, fill: '#cbd5e0' }} />
+                                    <YAxis type="category" dataKey="name" stroke="#cbd5e0" width={100} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#1f2937', borderColor: '#4a5568', borderRadius: '8px' }}
+                                        labelStyle={{ color: '#cbd5e0' }}
+                                        formatter={(value, name, props) => [`${value} kg`, 'Volume']}
+                                    />
+                                    <Legend wrapperStyle={{ color: '#cbd5e0', paddingTop: '10px' }} />
+                                    <Bar dataKey="volume" fill="#f59e0b" name="Volume (kg)" radius={[0, 10, 10, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <div className="text-center text-gray-400 p-8">
+                            <Award className="h-10 w-10 mx-auto mb-3" />
+                            <p>Aucune donnée pour les top exercices disponible.</p>
+                            <p className="text-sm text-gray-500">Enregistrez plus d'exercices pour voir vos meilleurs performers !</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
