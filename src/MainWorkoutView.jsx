@@ -16,6 +16,8 @@ const MainWorkoutView = ({
     handleEditClick,
     handleAddExerciseClick,
     handleDeleteExercise,
+    handleToggleSeriesCompleted, // New prop
+    handleUpdateSeries, // New prop
     analyzeProgressionWithAI,
     personalBests,
     getDayButtonColors,
@@ -32,7 +34,7 @@ const MainWorkoutView = ({
     handleEditDay,
     handleDeleteDay
 }) => {
-    const [expandedDays, setExpandedDays] = useState(new Set(days));
+    const [expandedDays, setExpandedDays] = useState(new Set(workouts?.dayOrder)); // Initialize with all days expanded
     const [expandedCategories, setExpandedCategories] = useState(new Set());
     const [showAddDayModal, setShowAddDayModal] = useState(false);
     const [newDayName, setNewDayName] = useState('');
@@ -111,25 +113,33 @@ const MainWorkoutView = ({
         return (
             <div className="space-y-2 mt-3">
                 {exercise.series.map((serie, serieIndex) => (
-                    <div key={serie.id || serieIndex} className="flex items-center gap-2 bg-gray-600/50 rounded-md p-2">
+                    <div key={serie.id || serieIndex} className={`flex items-center gap-2 bg-gray-600/50 rounded-md p-2 ${serie.completed ? 'opacity-60 grayscale' : ''}`}>
                         <span className="text-xs text-gray-400 w-6">#{serieIndex + 1}</span>
                         
                         <div className="flex items-center gap-1">
-                            <span className="text-xs text-gray-300">{serie.weight || '?'}kg</span>
+                            <input
+                                type="number"
+                                value={serie.weight}
+                                onChange={(e) => handleUpdateSeries(dayName, categoryName, exercise.id, serieIndex, 'weight', e.target.value)}
+                                className="bg-transparent text-white text-xs w-12 text-center border-b border-gray-500 focus:outline-none focus:border-blue-400"
+                                placeholder="Poids"
+                                step="0.5"
+                            />
+                            <span className="text-xs text-gray-300">kg</span>
                             <span className="text-gray-400">×</span>
-                            <span className="text-xs text-gray-300">{serie.reps || '?'}</span>
+                            <input
+                                type="number"
+                                value={serie.reps}
+                                onChange={(e) => handleUpdateSeries(dayName, categoryName, exercise.id, serieIndex, 'reps', e.target.value)}
+                                className="bg-transparent text-white text-xs w-12 text-center border-b border-gray-500 focus:outline-none focus:border-blue-400"
+                                placeholder="Reps"
+                            />
                         </div>
                         
                         <div className="flex-1"></div>
                         
                         <button
-                            onClick={() => {
-                                if (serie.completed) {
-                                    console.log('Série marquée comme non terminée');
-                                } else {
-                                    console.log('Série marquée comme terminée');
-                                }
-                            }}
+                            onClick={() => handleToggleSeriesCompleted(dayName, categoryName, exercise.id, serieIndex)}
                             className={`p-1 rounded transition-colors ${
                                 serie.completed 
                                     ? 'text-green-400 hover:text-green-300' 
@@ -140,13 +150,13 @@ const MainWorkoutView = ({
                             {serie.completed ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                         </button>
                         
-                        <button
+                        {/* <button
                             onClick={() => console.log('Démarrer minuteur de repos')}
                             className="p-1 text-blue-400 hover:text-blue-300 transition-colors"
                             title="Démarrer minuteur de repos"
                         >
                             <Clock className="h-4 w-4" />
-                        </button>
+                        </button> */}
                     </div>
                 ))}
             </div>
@@ -166,7 +176,7 @@ const MainWorkoutView = ({
         }
         
         return (
-            <div key={exercise.id} className={`bg-gray-700/50 rounded-lg border border-gray-600/50 transition-all ${isCompactView ? 'p-3' : 'p-4'}`}>
+            <div key={exercise.id} className={`bg-gray-700/50 rounded-lg border border-gray-600/50 transition-all p-4`}>
                 <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                         <h4 className="font-medium text-white mb-1">{exercise.name}</h4>
@@ -190,7 +200,7 @@ const MainWorkoutView = ({
                     
                     <div className="flex items-center gap-1 ml-3">
                         {/* Fonctionnalités par défaut (plus en mode avancé uniquement) */}
-                        <button
+                        {/* <button
                             onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise)}
                             className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10 rounded transition-colors"
                             title="Analyser avec IA"
@@ -212,7 +222,7 @@ const MainWorkoutView = ({
                             title="Modifier les notes"
                         >
                             <NotebookText className="h-4 w-4" />
-                        </button>
+                        </button> */}
                         
                         <button
                             onClick={() => handleEditClick && handleEditClick(dayName, categoryName, exercise.id, exercise)}
@@ -244,7 +254,7 @@ const MainWorkoutView = ({
         }
 
         const activeExercises = exercises.filter(ex => ex && !ex.isDeleted);
-        if (activeExercises.length === 0) return null;
+        if (activeExercises.length === 0 && !searchTerm) return null; // Hide if no active exercises and not searching
         
         const categoryKey = `${dayName}-${categoryName}`;
         const isExpanded = expandedCategories.has(categoryKey);
@@ -295,16 +305,25 @@ const MainWorkoutView = ({
             return total + (Array.isArray(exercises) ? exercises.filter(ex => ex && !ex.isDeleted).length : 0);
         }, 0);
         
-        const buttonColors = getDayButtonColors ? getDayButtonColors(dayIndex, false) : 'bg-gray-700 hover:bg-gray-600';
+        const dayColors = [
+            'bg-blue-600/20 text-blue-400 border-blue-600/50',
+            'bg-green-600/20 text-green-400 border-green-600/50',
+            'bg-purple-600/20 text-purple-400 border-purple-600/50',
+            'bg-yellow-600/20 text-yellow-400 border-yellow-600/50',
+            'bg-red-600/20 text-red-400 border-red-600/50',
+            'bg-indigo-600/20 text-indigo-400 border-indigo-600/50',
+            'bg-pink-600/20 text-pink-400 border-pink-600/50',
+        ];
+        const currentDayColorClass = dayColors[dayIndex % dayColors.length];
         
         return (
             <div key={dayName} className="mb-8">
                 <button
                     onClick={() => toggleDayExpanded(dayName)}
-                    className={`w-full flex items-center justify-between p-4 ${buttonColors} rounded-xl transition-all border border-gray-600/50`}
+                    className={`w-full flex items-center justify-between p-4 rounded-xl transition-all border ${currentDayColorClass}`}
                 >
                     <div className="flex items-center gap-3">
-                        <h2 className="text-xl font-bold text-blue-400">{dayName}</h2>
+                        <h2 className={`text-xl font-bold ${currentDayColorClass.includes('text-') ? currentDayColorClass.split(' ').find(cls => cls.startsWith('text-')) : 'text-white'}`}>{dayName}</h2>
                         <span className="text-sm bg-gray-600/50 text-gray-300 px-3 py-1 rounded-full">
                             {totalExercises} exercice{totalExercises !== 1 ? 's' : ''}
                         </span>
@@ -326,7 +345,8 @@ const MainWorkoutView = ({
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (handleDeleteDay && confirm(`Êtes-vous sûr de vouloir supprimer le jour "${dayName}" et tous ses exercices ?`)) {
+                                // Using confirm for now, will replace with custom modal if needed
+                                if (confirm(`Êtes-vous sûr de vouloir supprimer le jour "${dayName}" et tous ses exercices ?`)) { 
                                     handleDeleteDay(dayName);
                                 }
                             }}
@@ -425,18 +445,6 @@ const MainWorkoutView = ({
                         </button>
                     )}
                 </div>
-            </div>
-
-            {/* Bouton d'ajout rapide */}
-            <div className="flex justify-center">
-                <button
-                    onClick={() => handleAddExerciseClick && handleAddExerciseClick()}
-                    disabled={isAddingExercise}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl transition-all flex items-center gap-2 shadow-lg"
-                >
-                    <Plus className="h-5 w-5" />
-                    {isAddingExercise ? 'Ajout en cours...' : 'Ajouter un exercice'}
-                </button>
             </div>
             
             {/* Liste des jours */}
