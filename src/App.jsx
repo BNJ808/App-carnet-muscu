@@ -861,7 +861,7 @@ const ImprovedWorkoutApp = () => {
         setIsLoadingAI(true);
         
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5" });
             
             const workoutContext = JSON.stringify(workouts, null, 2);
             const prompt = `
