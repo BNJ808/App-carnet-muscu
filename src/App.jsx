@@ -765,6 +765,8 @@ const ImprovedWorkoutApp = () => {
         
         applyChanges(updatedWorkouts, `Jour "${dayName}" supprimé !`);
     }, [workouts, applyChanges, selectedDayFilter]);
+
+    const handleReactivateExercise = useCallback((exerciseId) => {
        const updatedWorkouts = { ...workouts };
        let found = false;
        
