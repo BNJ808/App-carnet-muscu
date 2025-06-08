@@ -7,17 +7,25 @@ import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ChevronUp, Pencil, Sparkles, ArrowUp, ArrowDown,
     Plus, Trash2, Play, Pause, RotateCcw, Search, Filter, Dumbbell, Clock, History, NotebookText,
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
-    Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity, Menu, Home, User
+    Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
 } from 'lucide-react';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Configuration Firebase
+// Import des composants
+import Toast from './Toast.jsx';
+import MainWorkoutView from './MainWorkoutView.jsx';
+import HistoryView from './History.jsx';
+import TimerView from './TimerView.jsx';
+import BottomNavigationBar from './BottomNavigationBar.jsx';
+
+// Configuration Firebase sécurisée
 const firebaseConfig = {
-    apiKey: "demo-key",
-    authDomain: "demo-domain",
-    projectId: "demo-project",
-    storageBucket: "demo-bucket",
-    messagingSenderId: "demo-sender",
-    appId: "demo-app",
+    apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "demo-key",
+    authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "demo-domain",
+    projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "demo-project",
+    storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "demo-bucket",
+    messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "demo-sender",
+    appId: import.meta.env?.VITE_FIREBASE_APP_ID || "demo-app",
 };
 
 // Initialisation
@@ -25,11 +33,16 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+// Configuration Gemini AI
+const genAI = new GoogleGenerativeAI(import.meta.env?.VITE_GEMINI_API_KEY || ""); // Ensure API key is not hardcoded here for security
+
 // Constantes
 const MAX_UNDO_STATES = 20;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const DEBOUNCE_DELAY = 300;
 const AUTO_SAVE_DELAY = 2000;
 
-// Utilitaires
+// Utilitaires optimisés
 const generateUUID = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 const formatTime = (seconds) => {
@@ -42,8 +55,9 @@ const formatDate = (timestamp) => {
     if (!timestamp) return 'Date invalide';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return new Intl.DateTimeFormat('fr-FR', {
+        year: 'numeric',
+        month: 'long',
         day: 'numeric',
-        month: 'short',
         hour: '2-digit',
         minute: '2-digit'
     }).format(date);
@@ -54,13 +68,26 @@ const getSeriesDisplay = (series) => {
     return series.map(s => `${s.weight || '?'}kg × ${s.reps || '?'}`).join(' | ');
 };
 
-// Hook pour le localStorage
+// Hook personnalisé pour le debouncing
+const useDebounce = (value, delay) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+    
+    useEffect(() => {
+        const handler = setTimeout(() => setDebouncedValue(value), delay);
+        return () => clearTimeout(handler);
+    }, [value, delay]);
+    
+    return debouncedValue;
+};
+
+// Hook pour le localStorage avec fallback
 const useLocalStorage = (key, initialValue) => {
     const [storedValue, setStoredValue] = useState(() => {
         try {
             const item = localStorage.getItem(key);
             return item ? JSON.parse(item) : initialValue;
-        } catch {
+        } catch (error) {
+            console.warn(`Erreur localStorage ${key}:`, error);
             return initialValue;
         }
     });
@@ -70,1327 +97,244 @@ const useLocalStorage = (key, initialValue) => {
             setStoredValue(value);
             localStorage.setItem(key, JSON.stringify(value));
         } catch (error) {
-            console.warn(`Erreur localStorage ${key}:`, error);
+            console.warn(`Erreur écriture localStorage ${key}:`, error);
         }
     }, [key]);
 
     return [storedValue, setValue];
 };
 
-// Données de base
+// Hook pour les notifications natives
+const useNotifications = () => {
+    const [permission, setPermission] = useState(Notification?.permission || 'default');
+
+    const requestPermission = useCallback(async () => {
+        if ('Notification' in window) {
+            const result = await Notification.requestPermission();
+            setPermission(result);
+            return result === 'granted';
+        }
+        return false;
+    }, []);
+
+    const showNotification = useCallback((title, options = {}) => {
+        if (permission === 'granted') {
+            return new Notification(title, {
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                ...options
+            });
+        }
+        return null;
+    }, [permission]);
+
+    return { permission, requestPermission, showNotification };
+};
+
+// Stub pour Tone.js si non disponible
+if (typeof window.Tone === 'undefined') {
+    console.warn("Tone.js non trouvé. Fonctionnalités audio désactivées.");
+    window.Tone = {
+        Synth: () => ({
+            toDestination: () => ({}),
+            triggerAttackRelease: () => {},
+            dispose: () => {}
+        }),
+        context: {
+            state: 'suspended',
+            resume: () => Promise.resolve()
+        },
+        start: () => Promise.resolve(),
+        now: () => 0
+    };
+}
+
+// Données de base optimisées
 const baseInitialData = {
     days: {
-        'Push (Lundi)': {
+        'Lundi + Jeudi': {
             categories: {
                 PECS: [
-                    { id: generateUUID(), name: 'Développé couché', series: [{ weight: '60', reps: '10', completed: false }, { weight: '65', reps: '8', completed: false }, { weight: '70', reps: '6', completed: false }], isDeleted: false, notes: '' },
-                    { id: generateUUID(), name: 'Développé incliné', series: [{ weight: '50', reps: '12', completed: false }, { weight: '55', reps: '10', completed: false }], isDeleted: false, notes: '' }
+                    { id: generateUUID(), name: 'D.Couché léger', series: [{ weight: '10', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() },
+                    { id: generateUUID(), name: 'D.Couché lourd', series: [{ weight: '14', reps: '8' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 EPAULES: [
-                    { id: generateUUID(), name: 'Développé épaules', series: [{ weight: '40', reps: '12', completed: false }, { weight: '42.5', reps: '10', completed: false }], isDeleted: false, notes: '' }
+                    { id: generateUUID(), name: 'D.Epaules léger', series: [{ weight: '8', reps: '15' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 TRICEPS: [
-                    { id: generateUUID(), name: 'Dips', series: [{ weight: '0', reps: '15', completed: false }, { weight: '0', reps: '12', completed: false }], isDeleted: false, notes: '' }
+                    { id: generateUUID(), name: 'Haltere Front léger', series: [{ weight: '4', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ]
-            }
+            },
+            categoryOrder: ['PECS', 'EPAULES', 'TRICEPS']
         },
-        'Pull (Mercredi)': {
+        'Mardi + Vendredi': {
             categories: {
                 DOS: [
-                    { id: generateUUID(), name: 'Tractions', series: [{ weight: '0', reps: '8', completed: false }, { weight: '0', reps: '6', completed: false }], isDeleted: false, notes: '' }
+                    { id: generateUUID(), name: 'R. Haltères Léger', series: [{ weight: '10', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 BICEPS: [
-                    { id: generateUUID(), name: 'Curl barre', series: [{ weight: '30', reps: '12', completed: false }, { weight: '32.5', reps: '10', completed: false }], isDeleted: false, notes: '' }
+                    { id: generateUUID(), name: 'Curl Léger', series: [{ weight: '8', reps: '15' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ]
-            }
-        },
-        'Legs (Vendredi)': {
-            categories: {
-                JAMBES: [
-                    { id: generateUUID(), name: 'Squat', series: [{ weight: '80', reps: '10', completed: false }, { weight: '85', reps: '8', completed: false }], isDeleted: false, notes: '' }
-                ]
-            }
+            },
+            categoryOrder: ['DOS', 'BICEPS']
         }
     },
-    dayOrder: ['Push (Lundi)', 'Pull (Mercredi)', 'Legs (Vendredi)']
+    dayOrder: ['Lundi + Jeudi', 'Mardi + Vendredi']
 };
 
-// Composant Toast optimisé mobile
-const Toast = ({ message, type = 'info', onClose, action, duration = 3000 }) => {
-    const getToastColors = () => {
-        switch (type) {
-            case 'success': return 'bg-green-500 border-green-400';
-            case 'error': return 'bg-red-500 border-red-400';
-            case 'warning': return 'bg-yellow-500 border-yellow-400';
-            default: return 'bg-blue-500 border-blue-400';
-        }
-    };
-
-    useEffect(() => {
-        if (duration > 0) {
-            const timer = setTimeout(() => onClose(), duration);
-            return () => clearTimeout(timer);
-        }
-    }, [onClose, duration]);
-
-    return (
-        <div className={`fixed bottom-20 left-2 right-2 mx-auto px-4 py-3 rounded-lg shadow-2xl ${getToastColors()} text-white font-medium z-50 max-w-sm border-l-4`}>
-            <div className="flex items-start justify-between">
-                <div className="flex-1">
-                    <p className="text-sm leading-relaxed">{message}</p>
-                    {action && (
-                        <button
-                            onClick={() => {
-                                action.onClick();
-                                onClose();
-                            }}
-                            className="mt-2 text-white underline text-xs"
-                        >
-                            {action.label}
-                        </button>
-                    )}
-                </div>
-                <button
-                    onClick={onClose}
-                    className="ml-3 text-white/80 text-lg leading-none"
-                >
-                    ×
-                </button>
-            </div>
-        </div>
-    );
-};
-
-// Composant Navigation inférieure optimisé
-const BottomNavigationBar = ({ currentView, setCurrentView }) => {
-    const navItems = [
-        { name: 'Entraînement', icon: Dumbbell, view: 'workout', color: 'text-blue-400' },
-        { name: 'Minuteur', icon: Clock, view: 'timer', color: 'text-green-400' },
-        { name: 'Statistiques', icon: BarChart3, view: 'stats', color: 'text-purple-400' },
-        { name: 'Historique', icon: History, view: 'history', color: 'text-yellow-400' }
-    ];
-
-    return (
-        <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md border-t border-gray-700/50 shadow-2xl z-50 safe-area-inset-bottom">
-            <div className="flex justify-around items-center h-16 max-w-lg mx-auto px-2">
-                {navItems.map((item) => (
-                    <button
-                        key={item.view}
-                        onClick={() => setCurrentView(item.view)}
-                        className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-200 min-w-0 flex-1 mx-1 ${
-                            currentView === item.view 
-                                ? `${item.color} bg-gray-800/50 scale-105` 
-                                : 'text-gray-400 hover:text-white hover:bg-gray-800/30'
-                        }`}
-                    >
-                        <item.icon className={`h-6 w-6 mb-1 ${
-                            currentView === item.view ? 'scale-110' : ''
-                        } transition-transform duration-200`} />
-                        <span className={`text-xs font-medium ${
-                            currentView === item.view ? 'font-semibold' : ''
-                        }`}>
-                            {item.name}
-                        </span>
-                        {currentView === item.view && (
-                            <div className={`absolute bottom-0 w-6 h-0.5 ${item.color.replace('text-', 'bg-')} rounded-full`}></div>
-                        )}
-                    </button>
-                ))}
-            </div>
-        </nav>
-    );
-};
-
-// Composant Vue Entraînement optimisé mobile
-const WorkoutView = ({ 
-    workouts, 
-    selectedDayFilter, 
-    setSelectedDayFilter,
-    handleEditClick,
-    handleAddExerciseClick,
-    handleDeleteExercise,
-    handleToggleSeriesCompleted, // Nouvelle prop
-    handleUpdateSeries, // Nouvelle prop
-    handleDeleteSeries, // Nouvelle prop pour supprimer une série
-    analyzeProgressionWithAI, // Passé pour réactiver
-    personalBests,
-    getDayButtonColors,
-    getSeriesDisplay,
-    // searchTerm, // Supprimé
-    // setSearchTerm, // Supprimé
-    handleAddDay,
-    handleEditDay,
-    handleDeleteDay,
-    handleAddSeries, // Nouvelle prop
-    isSavingExercise, // Ajout de la prop
-    isDeletingExercise, // Ajout de la prop
-    isAddingExercise // Ajout de la prop
-}) => {
-    const [expandedDays, setExpandedDays] = useState(new Set());
-    const [expandedCategories, setExpandedCategories] = useState(new Set()); // Nouvel état pour les catégories
-    const [showAddDayModal, setShowAddDayModal] = useState(false);
-    const [newDayName, setNewDayName] = useState('');
-    const [editingDay, setEditingDay] = useState(null); // État pour l'édition du jour
-
-    const toggleDayExpanded = (day) => {
-        const newExpanded = new Set(expandedDays);
-        if (newExpanded.has(day)) {
-            newExpanded.delete(day);
-        } else {
-            newExpanded.add(day);
-        }
-        setExpandedDays(newExpanded);
-    };
-
-    const toggleCategoryExpanded = (dayCategory) => { // Nouvelle fonction
-        const newExpanded = new Set(expandedCategories);
-        if (newExpanded.has(dayCategory)) {
-            newExpanded.delete(dayCategory);
-        } else {
-            newExpanded.add(dayCategory);
-        }
-        setExpandedCategories(newExpanded);
-    };
-
-    const getDaysToShow = () => {
-        if (!workouts?.dayOrder) return [];
-        return selectedDayFilter ? [selectedDayFilter] : workouts.dayOrder;
-    };
-
-    const getAvailableCategories = (dayName) => { // Nouvelle fonction
-        if (!workouts?.days?.[dayName]?.categories) {
-            return [];
-        }
-        
-        // Retourne les catégories qui ont des exercices
-        return Object.keys(workouts.days[dayName].categories).filter(categoryName => {
-            const exercises = workouts.days[dayName].categories[categoryName];
-            return Array.isArray(exercises) && exercises.length > 0;
-        });
-    };
-
-    const handleAddDaySubmit = () => {
-        if (!newDayName.trim()) return;
-        
-        if (handleAddDay) {
-            handleAddDay(newDayName.trim());
-        }
-        
-        setNewDayName('');
-        setShowAddDayModal(false);
-    };
-
-    const handleEditDaySubmit = () => {
-        if (!editingDay || !newDayName.trim()) return;
-        
-        if (handleEditDay) {
-            handleEditDay(editingDay, newDayName.trim());
-        }
-        
-        setEditingDay(null);
-        setNewDayName('');
-    };
-
-    const renderExerciseSeries = (exercise, dayName, categoryName) => {
-        if (!exercise.series || !Array.isArray(exercise.series) || exercise.series.length === 0) {
-            return (
-                <div className="text-gray-400 text-sm italic">
-                    Aucune série configurée
-                </div>
-            );
-        }
-
-        return (
-            <div className="space-y-2 mt-3">
-                {exercise.series.map((serie, serieIndex) => (
-                    <div key={serie.id || serieIndex} className={`flex items-center gap-2 bg-gray-600/50 rounded-md p-2 ${serie.completed ? 'opacity-90' : ''}`}>
-                        <span className="text-xs text-gray-400 w-6">#{serieIndex + 1}</span>
-                        
-                        <div className="flex items-center gap-1">
-                            <input
-                                type="number"
-                                value={serie.weight}
-                                onChange={(e) => handleUpdateSeries(dayName, categoryName, exercise.id, serieIndex, 'weight', e.target.value)}
-                                className="bg-transparent text-white text-xs w-12 text-center border-b border-gray-500 focus:outline-none focus:border-blue-400"
-                                placeholder="Poids"
-                                step="0.5"
-                            />
-                            <span className="text-xs text-gray-300">kg</span>
-                            <span className="text-gray-400">×</span>
-                            <input
-                                type="number"
-                                value={serie.reps}
-                                onChange={(e) => handleUpdateSeries(dayName, categoryName, exercise.id, serieIndex, 'reps', e.target.value)}
-                                className="bg-transparent text-white text-xs w-12 text-center border-b border-gray-500 focus:outline-none focus:border-blue-400"
-                                placeholder="Répétitions"
-                            />
-                        </div>
-                        
-                        <div className="flex-1"></div>
-                        
-                        <button
-                            onClick={() => handleToggleSeriesCompleted(dayName, categoryName, exercise.id, serieIndex)}
-                            className={`p-1 rounded transition-colors ${
-                                serie.completed 
-                                    ? 'text-green-400 hover:text-green-300' 
-                                    : 'text-gray-400 hover:text-white'
-                            }`}
-                            title={serie.completed ? 'Marquer comme non terminée' : 'Marquer comme terminée'}
-                        >
-                            {serie.completed ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                        </button>
-                        {/* Bouton pour supprimer une série */}
-                        <button
-                            onClick={() => handleDeleteSeries && handleDeleteSeries(dayName, categoryName, exercise.id, serieIndex)}
-                            className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
-                            title="Supprimer la série"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </button>
-                    </div>
-                ))}
-            </div>
-        );
-    };
-
-    const renderExercise = (exercise, dayName, categoryName) => {
-        if (!exercise || exercise.isDeleted) {
-            return null;
-        }
-
-        const personalBest = personalBests?.[exercise.id];
-        
-        // Filtrage par terme de recherche - SUPPRIMÉ car barre de recherche retirée
-        // if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-        //     return null;
-        // }
-        
-        return (
-            <div key={exercise.id} className={`bg-gray-700/50 rounded-lg border border-gray-600/50 transition-all p-4`}>
-                <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                        <h4 className="font-medium text-white mb-1">{exercise.name}</h4>
-                        
-                        {personalBest && (
-                            <div className="text-xs text-yellow-400 mb-1">
-                                🏆 Record: {personalBest.maxWeight}kg × {personalBest.maxReps} reps
-                            </div>
-                        )}
-                        
-                        {exercise.notes && (
-                            <div className="text-xs text-gray-400 mb-2">
-                                📝 {exercise.notes}
-                            </div>
-                        )}
-                    </div>
-                    
-                    <div className="flex items-center gap-1 ml-3">
-                        {/* Boutons d'analyse IA et Graphique ré-implémentés */}
-                        <button
-                            onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise)}
-                            className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10 rounded transition-colors"
-                            title="Analyser avec IA"
-                        >
-                            <Sparkles className="h-4 w-4" />
-                        </button>
-                        
-                        <button
-                            onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise, true)} // Utilise la même fonction pour la démo
-                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
-                            title="Voir graphique de progression"
-                        >
-                            <LineChartIcon className="h-4 w-4" />
-                        </button>
-                        
-                        <button
-                            onClick={() => handleAddSeries && handleAddSeries(dayName, categoryName, exercise.id)}
-                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
-                            title="Ajouter une série"
-                        >
-                            <Plus className="h-4 w-4" />
-                        </button>
-
-                        <button
-                            onClick={() => handleEditClick && handleEditClick(dayName, categoryName, exercise.id, exercise)}
-                            className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 rounded transition-colors"
-                            title="Modifier l'exercice (nom uniquement)"
-                        >
-                            <Pencil className="h-4 w-4" />
-                        </button>
-                        
-                        <button
-                            onClick={() => handleDeleteExercise && handleDeleteExercise(dayName, categoryName, exercise.id)}
-                            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors"
-                            title="Supprimer l'exercice"
-                            disabled={isDeletingExercise}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </button>
-                    </div>
-                </div>
-                
-                {renderExerciseSeries(exercise, dayName, categoryName)}
-            </div>
-        );
-    };
-
-    const renderCategory = (categoryName, exercises, dayName) => {
-        if (!Array.isArray(exercises)) {
-            return null;
-        }
-
-        const activeExercises = exercises.filter(ex => ex && !ex.isDeleted);
-        // if (activeExercises.length === 0 && !searchTerm) return null; // Masquer si pas d'exercices actifs et pas de recherche - SUPPRIMÉ
-        if (activeExercises.length === 0) return null; // Masquer si pas d'exercices actifs
-        
-        const categoryKey = `${dayName}-${categoryName}`;
-        const isExpanded = expandedCategories.has(categoryKey);
-        
-        return (
-            <div key={categoryName} className="mb-6">
-                <button
-                    onClick={() => toggleCategoryExpanded(categoryKey)}
-                    className="w-full flex items-center justify-between p-3 bg-gray-600/30 hover:bg-gray-600/50 rounded-lg transition-colors mb-3"
-                >
-                    <div className="flex items-center gap-2">
-                        <span className="font-medium text-purple-300">{categoryName}</span>
-                        <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
-                            {activeExercises.length}
-                        </span>
-                    </div>
-                    {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-                </button>
-                
-                {isExpanded && (
-                    <div className="space-y-3">
-                        {activeExercises.map(exercise => renderExercise(exercise, dayName, categoryName))}
-                        
-                        {/* Bouton "Ajouter un exercice à [Catégorie]" supprimé */}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    const renderDay = (dayName, dayIndex) => {
-        const dayData = workouts?.days?.[dayName];
-        if (!dayData || !dayData.categories) return null;
-        
-        const isExpanded = expandedDays.has(dayName);
-        const availableCategories = getAvailableCategories(dayName);
-        
-        const totalExercises = availableCategories.reduce((total, categoryName) => {
-            const exercises = dayData.categories[categoryName];
-            return total + (Array.isArray(exercises) ? exercises.filter(ex => ex && !ex.isDeleted).length : 0);
-        }, 0);
-        
-        const dayColors = [
-            'bg-blue-600/20 text-blue-400 border-blue-600/50',
-            'bg-green-600/20 text-green-400 border-green-600/50',
-            'bg-purple-600/20 text-purple-400 border-purple-600/50',
-            'bg-yellow-600/20 text-yellow-400 border-yellow-600/50',
-            'bg-red-600/20 text-red-400 border-red-600/50',
-            'bg-indigo-600/20 text-indigo-400 border-indigo-600/50',
-            'bg-pink-600/20 text-pink-400 border-pink-600/50',
-        ];
-        const currentDayColorClass = dayColors[dayIndex % dayColors.length];
-
-        return (
-            <div key={dayName} className="mb-8">
-                <button
-                    onClick={() => toggleDayExpanded(dayName)}
-                    className={`w-full flex items-center justify-between p-4 rounded-xl transition-all border ${currentDayColorClass}`}
-                >
-                    <div className="flex items-center gap-3">
-                        <h2 className={`text-xl font-bold ${currentDayColorClass.includes('text-') ? currentDayColorClass.split(' ').find(cls => cls.startsWith('text-')) : 'text-white'}`}>{dayName}</h2>
-                        <span className="text-sm bg-gray-600/50 text-gray-300 px-3 py-1 rounded-full">
-                            {totalExercises} exercice{totalExercises !== 1 ? 's' : ''}
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {/* Bouton d'ajout d'exercice pour le jour */}
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleAddExerciseClick(dayName); // Passe le jour pour la présélection
-                            }}
-                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
-                            title="Ajouter un exercice à ce jour"
-                        >
-                            <Plus className="h-4 w-4" />
-                        </button>
-                        {/* Boutons de gestion du jour */}
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingDay(dayName);
-                                setNewDayName(dayName);
-                            }}
-                            className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10 rounded transition-colors"
-                            title="Modifier le jour"
-                        >
-                            <Pencil className="h-4 w-4" />
-                        </button>
-                        
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                // Utilisation de confirm pour l'instant, sera remplacé par un modal personnalisé si besoin
-                                if (confirm(`Êtes-vous sûr de vouloir supprimer le jour "${dayName}" et tous ses exercices ?`)) { 
-                                    handleDeleteDay(dayName);
-                                }
-                            }}
-                            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors"
-                            title="Supprimer le jour"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </button>
-                        
-                        {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
-                    </div>
-                </button>
-                
-                {isExpanded && (
-                    <div className="mt-4 pl-4">
-                        {availableCategories.map(categoryName => {
-                            const exercises = dayData.categories[categoryName];
-                            return renderCategory(categoryName, exercises, dayName);
-                        })}
-                        
-                        {totalExercises === 0 && (
-                            <div className="text-center py-8 text-gray-400">
-                                <p className="mb-4">Aucun exercice programmé pour {dayName}</p>
-                                <button
-                                    onClick={() => handleAddExerciseClick && handleAddExerciseClick(dayName)}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors flex items-center gap-2 mx-auto"
-                                    disabled={isAddingExercise}
-                                >
-                                    <Plus className="h-4 w-4" />
-                                    Ajouter le premier exercice
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    const filteredDays = getDaysToShow();
-
-    return (
-        <div className="space-y-6">
-            {/* Sélecteur de jour modifié */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-white">Jours d'entraînement</h3>
-                    {/* Search term display removed */}
-                    {/* {searchTerm && (
-                        <div className="text-sm text-gray-400">
-                            Recherche: "{searchTerm}"
-                        </div>
-                    )} */}
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-                    {Array.isArray(workouts?.dayOrder) && workouts.dayOrder.map((day, index) => (
-                        <button
-                            key={day}
-                            onClick={() => setSelectedDayFilter(selectedDayFilter === day ? '' : day)}
-                            className={`p-3 rounded-lg transition-all ${
-                                selectedDayFilter === day
-                                    ? getDayButtonColors ? getDayButtonColors(index, true) : 'bg-blue-600 text-white'
-                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                        >
-                            {day}
-                        </button>
-                    ))}
-                    
-                    {/* Bouton d'ajout de jour */}
-                    <button
-                        onClick={() => setShowAddDayModal(true)}
-                        className="p-3 rounded-lg bg-green-600/20 hover:bg-green-600/30 text-green-400 border-2 border-dashed border-green-600/50 transition-colors flex items-center justify-center gap-2"
-                    >
-                        <Plus className="h-4 w-4" />
-                        Ajouter un jour
-                    </button>
-                </div>
-
-                {/* Barre de recherche - SUPPRIMÉE */}
-                {/* <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Rechercher un exercice..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm && setSearchTerm(e.target.value)}
-                        className="w-full bg-gray-700 text-white rounded-lg pl-10 pr-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {searchTerm && (
-                        <button
-                            onClick={() => setSearchTerm && setSearchTerm('')}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
-                        >
-                            <XCircle className="h-4 w-4" />
-                        </button>
-                    )}
-                </div> */}
-            </div>
-            
-            {/* Liste des jours */}
-            <div className="space-y-6">
-                {filteredDays.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400">
-                        <div className="mb-4">
-                            <Dumbbell className="h-16 w-16 mx-auto text-gray-600" />
-                        </div>
-                        <h3 className="text-xl font-semibold mb-2">Aucun jour d'entraînement configuré</h3>
-                        <p className="mb-6">Commencez par ajouter votre premier jour d'entraînement</p>
-                        <button
-                            onClick={() => setShowAddDayModal(true)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors flex items-center gap-2 mx-auto"
-                        >
-                            <Plus className="h-4 w-4" />
-                            Créer mon premier jour
-                        </button>
-                    </div>
-                ) : (
-                    filteredDays.map((dayName, dayIndex) => renderDay(dayName, dayIndex))
-                )}
-            </div>
-
-            {/* Modal d'ajout de jour - optimisé mobile */}
-            {showAddDayModal && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4"> {/* Changed items-end to items-center */}
-                    <div className="bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-slide-up">
-                        <div className="p-6">
-                            {/* Poignée pour glisser */}
-                            <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
-                            
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">Nouveau jour</h3>
-                                <button
-                                    onClick={() => setShowAddDayModal(false)}
-                                    className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-                            <input
-                                type="text"
-                                value={newDayName}
-                                onChange={(e) => setNewDayName(e.target.value)}
-                                placeholder="Ex: Push (Lundi)"
-                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-base"
-                                autoFocus
-                            />
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => {
-                                        setShowAddDayModal(false);
-                                        setNewDayName('');
-                                    }}
-                                    className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleAddDaySubmit}
-                                    disabled={!newDayName.trim()}
-                                    className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-50 transition-all active:scale-95"
-                                >
-                                    Ajouter
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal d'édition de jour */}
-            {editingDay && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4"> {/* Changed items-end to items-center */}
-                    <div className="bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-slide-up">
-                        <div className="p-6">
-                             {/* Poignée pour glisser */}
-                             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
-
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">Modifier le jour</h3>
-                                <button
-                                    onClick={() => setEditingDay(null)}
-                                    className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-                            <input
-                                type="text"
-                                value={newDayName}
-                                onChange={(e) => setNewDayName(e.target.value)}
-                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-base"
-                                autoFocus
-                            />
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => {
-                                        setEditingDay(null);
-                                        setNewDayName('');
-                                    }}
-                                    className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleEditDaySubmit}
-                                    disabled={!newDayName.trim()}
-                                    className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
-                                >
-                                    Sauvegarder
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Composant Minuteur optimisé mobile
-const TimerView = ({
-    timerSeconds,
-    timerIsRunning,
-    timerIsFinished,
-    startTimer,
-    pauseTimer,
-    resetTimer,
-    setTimerSeconds,
-    formatTime
-}) => {
-    const [selectedPreset, setSelectedPreset] = useState(90);
-    const [customMinutes, setCustomMinutes] = useState(1); // Nouvel état pour les minutes personnalisées
-    const [customSeconds, setCustomSeconds] = useState(30); // Nouvel état pour les secondes personnalisées
-    
-    const timePresets = [
-        { label: '30s', value: 30 },
-        { label: '1min', value: 60 },
-        { label: '1m30', value: 90 },
-        { label: '2min', value: 120 },
-        { label: '3min', value: 180 },
-        { label: '5min', value: 300 }
-    ];
-
-    const getTimerDisplay = () => {
-        if (timerSeconds === 0 && !timerIsRunning) return '00:00';
-        return formatTime(timerSeconds);
-    };
-
-    const getTimerStatusColor = () => {
-        if (timerIsFinished) return 'text-red-400';
-        if (timerIsRunning) return 'text-blue-400';
-        if (timerSeconds > 0) return 'text-yellow-400';
-        return 'text-gray-400';
-    };
-
-    const getProgressPercentage = () => {
-        if (selectedPreset === 0) return 0;
-        return ((selectedPreset - timerSeconds) / selectedPreset) * 100;
-    };
-
-    const handlePresetSelection = (value) => { // Fonction modifiée pour seulement définir le préréglage, pas démarrer le minuteur
-        setSelectedPreset(value);
-        setTimerSeconds(value);
-        setTimerIsRunning(false); // S'assurer que le minuteur est en pause quand un nouveau préréglage est sélectionné
-        setTimerIsFinished(false);
-    };
-
-    const handleCustomTimerStart = () => {
-        const totalSeconds = (customMinutes * 60) + customSeconds;
-        if (totalSeconds > 0) {
-            setTimerSeconds(totalSeconds);
-            setSelectedPreset(totalSeconds);
-            startTimer();
-        }
-    };
-
-    return (
-        <div className="max-w-lg mx-auto space-y-6 pb-4">
-            {/* Affichage principal du minuteur */}
-            <div className="bg-gray-800 rounded-2xl p-8 text-center border border-gray-700">
-                <div className="mb-6">
-                    <Clock className="h-12 w-12 text-blue-400 mx-auto mb-4" />
-                    <h2 className="text-2xl font-bold text-white mb-2">Minuteur de repos</h2>
-                </div>
-
-                {/* Affichage du temps */}
-                <div className="relative mb-8">
-                    <div className={`text-6xl sm:text-7xl font-mono font-bold ${getTimerStatusColor()} mb-4`}>
-                        {getTimerDisplay()}
-                    </div>
-                    
-                    {/* Barre de progression */}
-                    {selectedPreset > 0 && timerSeconds > 0 && (
-                        <div className="w-full bg-gray-700 rounded-full h-3 mb-4">
-                            <div 
-                                className="bg-blue-500 h-3 rounded-full transition-all duration-1000 ease-linear"
-                                style={{ width: `${getProgressPercentage()}%` }}
-                            ></div>
-                        </div>
-                    )}
-                    
-                    {timerIsFinished && (
-                        <div className="text-green-400 font-semibold text-xl animate-pulse">
-                            ⏰ Repos terminé !
-                        </div>
-                    )}
-                </div>
-
-                {/* Contrôles du minuteur */}
-                <div className="flex justify-center gap-4 mb-6">
-                    {timerSeconds > 0 && !timerIsFinished ? (
-                        <>
-                            <button
-                                onClick={timerIsRunning ? pauseTimer : startTimer}
-                                className={`px-8 py-4 rounded-2xl font-medium transition-all flex items-center gap-2 text-lg active:scale-95 ${
-                                    timerIsRunning 
-                                        ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
-                                        : 'bg-green-600 hover:bg-green-700 text-white'
-                                }`}
-                            >
-                                {timerIsRunning ? (
-                                    <>
-                                        <Pause className="h-6 w-6" />
-                                        Pause
-                                    </>
-                                ) : (
-                                    <>
-                                        <Play className="h-6 w-6" />
-                                        Démarrer
-                                    </>
-                                )}
-                            </button>
-                            <button
-                                onClick={resetTimer}
-                                className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-4 rounded-2xl font-medium transition-all flex items-center gap-2 active:scale-95"
-                            >
-                                <RotateCcw className="h-5 w-5" />
-                                Réinitialiser
-                            </button>
-                        </>
-                    ) : (
-                        <div className="text-gray-400 text-lg">
-                            Choisissez un temps de repos ci-dessous
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Préréglages de temps */}
-            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    <Zap className="h-5 w-5 text-yellow-400" />
-                    Temps prédéfinis
-                </h3>
-                
-                <div className="grid grid-cols-3 gap-3">
-                    {timePresets.map(preset => (
-                        <button
-                            key={preset.value}
-                            onClick={() => handlePresetSelection(preset.value)} // Modifié pour handlePresetSelection
-                            disabled={timerIsRunning}
-                            className={`p-4 rounded-xl font-medium transition-all active:scale-95 ${
-                                selectedPreset === preset.value && timerSeconds > 0
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                            } disabled:opacity-50`}
-                        >
-                            {preset.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Minuteur personnalisé */}
-            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">Temps personnalisé</h3>
-                
-                <div className="flex items-center justify-center gap-4 mb-4">
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="number"
-                            min="0"
-                            max="59"
-                            value={customMinutes}
-                            onChange={(e) => setCustomMinutes(parseInt(e.target.value) || 0)}
-                            className="bg-gray-700 text-white text-center rounded-lg px-3 py-2 w-16"
-                            disabled={timerIsRunning}
-                        />
-                        <span className="text-gray-400">min</span>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="number"
-                            min="0"
-                            max="59"
-                            value={customSeconds}
-                            onChange={(e) => setCustomSeconds(parseInt(e.target.value) || 0)}
-                            className="bg-gray-700 text-white text-center rounded-lg px-3 py-2 w-16"
-                            disabled={timerIsRunning}
-                        />
-                        <span className="text-gray-400">sec</span>
-                    </div>
-                    
-                    <button
-                        onClick={handleCustomTimerStart}
-                        disabled={timerIsRunning || (customMinutes === 0 && customSeconds === 0)}
-                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-all flex items-center gap-2"
-                    >
-                        <Play className="h-4 w-4" />
-                        Démarrer
-                    </button>
-                </div>
-                
-                <div className="text-center text-gray-400 text-sm">
-                    Temps total: {formatTime((customMinutes * 60) + customSeconds)}
-                </div>
-            </div>
-
-            {/* Conseils de repos */}
-            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">💡 Conseils de repos</h3>
-                <div className="space-y-3 text-sm">
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <h4 className="font-medium text-green-400 mb-1">Force (1-5 reps)</h4>
-                        <p className="text-gray-300">3-5 minutes pour une récupération complète</p>
-                    </div>
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <h4 className="font-medium text-blue-400 mb-1">Hypertrophie (6-12 reps)</h4>
-                        <p className="text-gray-300">1-3 minutes pour maintenir l'intensité</p>
-                    </div>
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <h4 className="font-medium text-yellow-400 mb-1">Endurance (12+ reps)</h4>
-                        <p className="text-gray-300">30s-1min pour le rythme cardiaque</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// Composant Statistiques optimisé mobile
-const StatsView = ({ workouts = {}, historicalData = [], personalBests = {} }) => {
-    const COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'];
-
-    const mainStats = useMemo(() => {
-        let totalExercises = 0;
-        let totalSeries = 0;
-        let totalVolume = 0;
-
-        Object.values(workouts.days || {}).forEach(day => {
-            Object.values(day.categories || {}).forEach(exercises => {
-                if (Array.isArray(exercises)) {
-                    const activeExercises = exercises.filter(ex => !ex.isDeleted);
-                    totalExercises += activeExercises.length;
-                    
-                    activeExercises.forEach(exercise => {
-                        if (Array.isArray(exercise.series)) {
-                            totalSeries += exercise.series.length;
-                        }
-                    });
-                }
-            });
-        });
-
-        Object.values(personalBests).forEach(best => {
-            totalVolume += (best.totalVolume || 0);
-        });
-
-        const totalSessions = historicalData.length;
-        const thisWeekSessions = historicalData.filter(session => {
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            // Changed 'cutoff' to 'weekAgo' to fix the reference error
-            return session.timestamp && new Date(session.timestamp) >= weekAgo; 
-        }).length;
-
-        return {
-            totalExercises,
-            totalSeries,
-            totalSessions,
-            thisWeekSessions,
-            totalVolume: Math.round(totalVolume),
-            averageSessionsPerWeek: totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0
-        };
-    }, [workouts, historicalData, personalBests]);
-
-    const topExercises = useMemo(() => {
-        return Object.entries(personalBests)
-            .map(([name, best]) => ({
-                name: name.substring(0, 15) + (name.length > 15 ? '...' : ''),
-                volume: Math.round(best.totalVolume || 0),
-                maxWeight: best.maxWeight || 0
-            }))
-            .sort((a, b) => b.volume - a.volume)
-            .slice(0, 5);
-    }, [personalBests]);
-
-    return (
-        <div className="space-y-6 pb-4">
-            {/* Titre */}
-            <div className="text-center">
-                <h1 className="text-2xl font-bold text-white mb-2">Statistiques</h1>
-                <p className="text-gray-400">Votre progression en un coup d'œil</p>
-            </div>
-
-            {/* Statistiques principales */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <div className="flex items-center justify-between mb-3">
-                        <Activity className="h-8 w-8 text-blue-400 p-1.5 bg-blue-500/20 rounded-lg" />
-                    </div>
-                    <div className="text-2xl font-bold text-white">{mainStats.totalExercises}</div>
-                    <div className="text-sm text-gray-300">Exercices actifs</div>
-                </div>
-                
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <div className="flex items-center justify-between mb-3">
-                        <Calendar className="h-8 w-8 text-green-400 p-1.5 bg-green-500/20 rounded-lg" />
-                    </div>
-                    <div className="text-2xl font-bold text-white">{mainStats.totalSessions}</div>
-                    <div className="text-sm text-gray-300">Séances totales</div>
-                </div>
-                
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <div className="flex items-center justify-between mb-3">
-                        <Target className="h-8 w-8 text-purple-400 p-1.5 bg-purple-500/20 rounded-lg" />
-                    </div>
-                    <div className="text-2xl font-bold text-white">{mainStats.totalVolume}kg</div>
-                    <div className="text-sm text-gray-300">Volume total</div>
-                </div>
-                
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <div className="flex items-center justify-between mb-3">
-                        <Award className="h-8 w-8 text-yellow-400 p-1.5 bg-yellow-500/20 rounded-lg" />
-                    </div>
-                    <div className="text-2xl font-bold text-white">{mainStats.recordsCount}</div>
-                    <div className="text-sm text-gray-300">Records</div>
-                </div>
-            </div>
-
-            {/* Top exercices */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-green-400" />
-                    Top Exercices
-                </h3>
-                {topExercises.length > 0 ? (
-                    <div className="space-y-3">
-                        {topExercises.map((exercise, index) => (
-                            <div key={exercise.name} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 h-6 bg-green-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                                        {index + 1}
-                                    </div>
-                                    <span className="text-white font-medium">{exercise.name}</span>
-                                </div>
-                                <div className="text-right">
-                                    <div className="text-green-400 font-bold">{exercise.volume}kg</div>
-                                    <div className="text-xs text-gray-400">Max: {exercise.maxWeight}kg</div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center py-8 text-gray-400">
-                        <p>Commencez à vous entraîner pour voir vos statistiques</p>
-                    </div>
-                )}
-            </div>
-
-            {/* Conseils personnalisés */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">💡 Conseils</h3>
-                <div className="space-y-3">
-                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
-                        <h4 className="font-medium text-blue-400 mb-1">Fréquence</h4>
-                        <p className="text-gray-300 text-sm">
-                            {mainStats.totalSessions === 0 ? 
-                                "Commencez par 3 séances par semaine" :
-                                "Excellente régularité ! Continuez ainsi"
-                            }
-                        </p>
-                    </div>
-                    
-                    <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
-                        <h4 className="font-medium text-green-400 mb-1">Progression</h4>
-                        <p className="text-gray-300 text-sm">
-                            {Object.keys(personalBests).length < 5 ?
-                                "Diversifiez vos exercices pour progresser" :
-                                "Excellent suivi de vos performances !"
-                            }
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// Composant Historique optimisé mobile
-const HistoryView = ({ 
-    historicalData = [], 
-    personalBests = {}, 
-    formatDate, 
-    getSeriesDisplay,
-    searchTerm = '',
-    setSearchTerm 
-}) => {
-    const [selectedTimeRange, setSelectedTimeRange] = useState('all');
-    const [expandedSessions, setExpandedSessions] = useState(new Set());
-
-    const timeRangeOptions = [
-        { value: 'all', label: 'Tout' },
-        { value: 'week', label: '7 jours' },
-        { value: 'month', label: '30 jours' }
-    ];
-
-    const getFilteredData = useMemo(() => {
-        let filtered = historicalData;
-        
-        if (selectedTimeRange !== 'all') {
-            const now = new Date();
-            const cutoff = new Date();
-            
-            if (selectedTimeRange === 'week') {
-                cutoff.setDate(now.getDate() - 7);
-            } else if (selectedTimeRange === 'month') {
-                cutoff.setDate(now.getDate() - 30);
-            }
-            
-            filtered = historicalData.filter(session => 
-                session.timestamp && new Date(session.timestamp) >= cutoff
-            );
-        }
-        
-        return filtered;
-    }, [historicalData, selectedTimeRange]);
-
-    const toggleSessionExpanded = (sessionId) => {
-        const newExpanded = new Set(expandedSessions);
-        if (newExpanded.has(sessionId)) {
-            newExpanded.delete(sessionId);
-        } else {
-            newExpanded.add(sessionId);
-        }
-        setExpandedSessions(newExpanded);
-    };
-
-    const groupedSessions = useMemo(() => {
-        const sessions = new Map();
-        
-        getFilteredData.forEach(session => {
-            if (!sessions.has(session.id)) {
-                sessions.set(session.id, {
-                    id: session.id,
-                    timestamp: session.timestamp,
-                    exercises: []
-                });
-            }
-            
-            // Extraire les exercices de la session
-            const workoutData = session.workoutData;
-            if (workoutData?.days) {
-                Object.values(workoutData.days).forEach(day => {
-                    Object.values(day.categories || {}).forEach(exercises => {
-                        if (Array.isArray(exercises)) {
-                            exercises.forEach(exercise => {
-                                if (!exercise.isDeleted) {
-                                    sessions.get(session.id).exercises.push({
-                                        ...exercise,
-                                        sessionTimestamp: session.timestamp
-                                    });
-                                }
-                            });
-                        }
-                    });
-                });
-            }
-        });
-        
-        return Array.from(sessions.values())
-            .filter(session => session.exercises.length > 0)
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    }, [getFilteredData]);
-
-    return (
-        <div className="space-y-6 pb-4">
-            {/* Filtres */}
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                <h2 className="text-xl font-semibold text-white mb-4">Historique</h2>
-                
-                <div className="space-y-3">
-                    {/* Recherche */}
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Rechercher un exercice..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm && setSearchTerm(e.target.value)}
-                            className="w-full bg-gray-700 text-white rounded-xl pl-10 pr-4 py-3 text-base placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                    </div>
-                    
-                    {/* Période */}
-                    <select
-                        value={selectedTimeRange}
-                        onChange={(e) => setSelectedTimeRange(e.target.value)}
-                        className="w-full bg-gray-700 text-white rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        {timeRangeOptions.map(option => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            {/* Records */}
-            {Object.keys(personalBests).length > 0 && (
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                        <Award className="h-5 w-5 text-yellow-400" />
-                        Records personnels
-                    </h3>
-                    <div className="space-y-2">
-                        {Object.entries(personalBests).slice(0, 3).map(([name, best]) => (
-                            <div key={name} className="flex justify-between items-center p-3 bg-gray-700/50 rounded-lg">
-                                <span className="font-medium text-white text-sm truncate flex-1 mr-2">
-                                    {name.length > 20 ? name.substring(0, 20) + '...' : name}
-                                </span>
-                                <div className="text-right flex-shrink-0">
-                                    <div className="text-yellow-400 font-bold text-sm">
-                                        {best.maxWeight}kg × {best.maxReps}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Séances */}
-            <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white">Séances ({groupedSessions.length})</h3>
-                
-                {groupedSessions.length === 0 ? (
-                    <div className="bg-gray-800 rounded-xl p-8 text-center border border-gray-700">
-                        <History className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-400">Aucune séance trouvée</p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {groupedSessions.map(session => {
-                            const isExpanded = expandedSessions.has(session.id);
-                            const exerciseCount = session.exercises.length;
-                            
-                            return (
-                                <div key={session.id} className="bg-gray-800 rounded-xl border border-gray-700">
-                                    <button
-                                        onClick={() => toggleSessionExpanded(session.id)}
-                                        className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors active:scale-95"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <Calendar className="h-5 w-5 text-blue-400" />
-                                            <div className="text-left">
-                                                <h4 className="font-medium text-white">{formatDate(session.timestamp)}</h4>
-                                                <p className="text-sm text-gray-400">
-                                                    {exerciseCount} exercice{exerciseCount !== 1 ? 's' : ''}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
-                                    </button>
-                                    
-                                    {isExpanded && (
-                                        <div className="p-4 pt-0 space-y-3">
-                                            {session.exercises.map((exercise, index) => (
-                                                <div key={`${exercise.id}-${index}`} className="bg-gray-700/50 rounded-lg p-3">
-                                                    <h5 className="font-medium text-white mb-1">{exercise.name}</h5>
-                                                    <div className="text-sm text-gray-300">
-                                                        {getSeriesDisplay(exercise.series)}
-                                                    </div>
-                                                    {personalBests[exercise.name] && (
-                                                        <div className="text-xs text-yellow-400 mt-1">
-                                                            🏆 Record: {personalBests[exercise.name].maxWeight}kg × {personalBests[exercise.name].maxReps}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-// Composant principal de l'application
-const WorkoutApp = () => {
-    // États principaux
-    const [loading, setLoading] = useState(true);
+// Composant principal amélioré
+const ImprovedWorkoutApp = () => {
+    // États de base optimisés
+    const [isDarkMode, setIsDarkMode] = useLocalStorage('theme', true);
+    const [isAdvancedMode, setIsAdvancedMode] = useLocalStorage('advanced-mode', false);
     const [currentView, setCurrentView] = useLocalStorage('current-view', 'workout');
-    const [workouts, setWorkouts] = useState(baseInitialData);
+    const [isCompactView, setIsCompactView] = useLocalStorage('compact-view', false);
+    
+    // États des données
+    const [loading, setLoading] = useState(true);
+    const [userId, setUserId] = useState(null);
+    const [isAuthReady, setIsAuthReady] = useState(false);
+    const [workouts, setWorkouts] = useState(baseInitialData); // Initialisation avec données de base
     const [historicalData, setHistoricalData] = useState([]);
     const [personalBests, setPersonalBests] = useState({});
     
     // États de l'interface
     const [toast, setToast] = useState(null);
     const [selectedDayFilter, setSelectedDayFilter] = useState('');
-    // const [searchTerm, setSearchTerm] = useState(''); // Supprimé
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortBy, setSortBy] = useState('date');
     
     // États des modales
     const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showStatsModal, setShowStatsModal] = useState(false);
+    const [showExportModal, setShowExportModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [showProgressionGraph, setShowProgressionGraph] = useState(false); // État pour le graphique
     
     // États d'édition
     const [editingExercise, setEditingExercise] = useState(null);
     const [editingExerciseName, setEditingExerciseName] = useState('');
-    const [newWeight, setNewWeight] = useState(''); // Conserver car utilisé pour ajouter une nouvelle série
-    const [newSets, setNewSets] = useState('3'); // Conserver car utilisé pour ajouter une nouvelle série
-    const [newReps, setNewReps] = useState(''); // Conserver car utilisé pour ajouter une nouvelle série
+    const [newWeight, setNewWeight] = useState('');
+    const [newSets, setNewSets] = useState('3');
+    const [newReps, setNewReps] = useState('');
     const [selectedDayForAdd, setSelectedDayForAdd] = useState('');
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState('');
     const [newExerciseName, setNewExerciseName] = useState('');
+    const [newExerciseNotes, setNewExerciseNotes] = useState(''); // État pour les notes
     
-    // États de chargement/statut pour les opérations
-    const [isSavingExercise, setIsSavingExercise] = useState(false);
-    const [isDeletingExercise, setIsDeletingExercise] = useState(false);
-    const [isAddingExercise, setIsAddingExercise] = useState(false);
-
     // États du minuteur
     const [timerSeconds, setTimerSeconds] = useState(90);
     const [timerIsRunning, setTimerIsRunning] = useState(false);
     const [timerIsFinished, setTimerIsFinished] = useState(false);
+    const [restTimeInput, setRestTimeInput] = useState('90');
+    
+    // États pour l'analyse IA
+    const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
+    const [progressionAnalysisContent, setProgressionAnalysisContent] = useState('');
+    const [exerciseForAnalysis, setExerciseForAnalysis] = useState(null); // Pour stocker l'exercice à analyser ou grapher
+    
+    // États pour l'historique Undo/Redo
+    const [undoStack, setUndoStack] = useState([]);
+    const [redoStack, setRedoStack] = useState([]);
+    
+    // États de performance
+    const [isSavingExercise, setIsSavingExercise] = useState(false);
+    const [isAddingExercise, setIsAddingExercise] = useState(false);
+    const [isDeletingExercise, setIsDeletingExercise] = useState(false);
+    const [lastSaveTime, setLastSaveTime] = useState(null);
     
     // Refs
     const timerRef = useRef(null);
-
-    // Simulation du chargement initial
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setLoading(false);
-        }, 1500);
-        return () => clearTimeout(timer);
+    const saveTimeoutRef = useRef(null);
+    const dropdownRef = useRef(null);
+    
+    // Hooks personnalisés
+    const { showNotification, requestPermission } = useNotifications();
+    const debouncedSearchTerm = useDebounce(searchTerm, DEBOUNCE_DELAY);
+    
+    // Couleurs des jours améliorées
+    const getDayButtonColors = useCallback((index, isSelected) => {
+        const colors = [
+            { default: 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700', selected: 'bg-gradient-to-r from-blue-700 to-blue-800 ring-2 ring-blue-400' },
+            { default: 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700', selected: 'bg-gradient-to-r from-green-700 to-green-800 ring-2 ring-green-400' },
+            { default: 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700', selected: 'bg-gradient-to-r from-purple-700 to-purple-800 ring-2 ring-purple-400' },
+            { default: 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700', selected: 'bg-gradient-to-r from-red-700 to-red-800 ring-2 ring-red-400' },
+            { default: 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700', selected: 'bg-gradient-to-r from-yellow-700 to-yellow-800 ring-2 ring-yellow-400' },
+        ];
+        const colorSet = colors[index % colors.length];
+        return isSelected ? colorSet.selected : colorSet.default;
     }, []);
+    
+    // Effets d'initialisation optimisés
+    useEffect(() => {
+        const initAuth = async () => {
+            try {
+                // Check if __initial_auth_token is defined
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
 
-    // Effet pour le minuteur
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        setUserId(user.uid);
+                        setIsAuthReady(true);
+                    } else {
+                        setLoading(false);
+                        setToast({ 
+                            message: "Erreur d'authentification", 
+                            type: 'error',
+                            action: { label: 'Réessayer', onClick: () => window.location.reload() }
+                        });
+                    }
+                });
+            } catch (error) {
+                console.error("Erreur d'authentification:", error);
+                setLoading(false);
+                setToast({ message: "Erreur de connexion", type: 'error' });
+            }
+        };
+        initAuth();
+    }, []);
+    
+    // Effet pour charger les données avec cache
+    useEffect(() => {
+        if (!userId || !isAuthReady) return;
+
+        const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
+        const unsubscribe = onSnapshot(workoutDocRef, (doc) => {
+            try {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    const sanitizedWorkouts = sanitizeWorkoutData(data.workouts || baseInitialData);
+                    setWorkouts(sanitizedWorkouts);
+                } else {
+                    console.log("Aucune donnée trouvée, initialisation avec données de base");
+                    setWorkouts(baseInitialData);
+                }
+            } catch (error) {
+                console.error("Erreur traitement données:", error);
+                setToast({ message: "Erreur lors du chargement des données", type: 'error' });
+                // S'assurer qu'on a toujours des données valides même en cas d'erreur
+                setWorkouts(baseInitialData);
+            } finally {
+                setLoading(false);
+            }
+        }, (error) => {
+            console.error("Erreur Firestore:", error);
+            setToast({ message: `Erreur Firestore: ${error.message}`, type: 'error' });
+            setLoading(false);
+            // S'assurer qu'on a toujours des données valides même en cas d'erreur
+            setWorkouts(baseInitialData);
+        });
+
+        loadHistoricalData();
+        return () => unsubscribe();
+    }, [userId, isAuthReady, sanitizeWorkoutData, loadHistoricalData]); // Added dependencies
+
+    // Effet pour le minuteur avec optimisations
     useEffect(() => {
         if (timerIsRunning && timerSeconds > 0) {
             timerRef.current = setTimeout(() => {
@@ -1400,44 +344,229 @@ const WorkoutApp = () => {
             setTimerIsRunning(false);
             setTimerIsFinished(true);
             
-            // Vibration mobile
-            if ('vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200]);
-            }
+            // Notifications améliorées
+            showNotification('Temps de repos terminé !', {
+                body: 'Il est temps de reprendre votre entraînement',
+                tag: 'workout-timer'
+            });
             
-            setToast({ message: 'Temps de repos terminé !', type: 'success' });
+            // Vibration pour mobile
+            if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200]);
+            }
         }
         return () => clearTimeout(timerRef.current);
-    }, [timerSeconds, timerIsRunning]);
+    }, [timerSeconds, timerIsRunning, showNotification]);
 
-    // Fonctions utilitaires
-    const getDayButtonColors = useCallback((index, isSelected) => {
-        const colors = [
-            'bg-blue-600 hover:bg-blue-700',
-            'bg-green-600 hover:bg-green-700',
-            'bg-purple-600 hover:bg-purple-700',
-            'bg-red-600 hover:bg-red-700',
-            'bg-yellow-600 hover:bg-yellow-700',
-            'bg-indigo-600 hover:bg-indigo-700',
-            'bg-pink-600 hover:bg-pink-700',
-        ];
-        return isSelected ? colors[index % colors.length] : 'bg-gray-700 hover:bg-gray-600';
+    // Effet pour sélection automatique du jour
+    useEffect(() => {
+        if (currentView === 'workout' && workouts?.dayOrder?.length > 0) {
+            if (!selectedDayFilter || !workouts.dayOrder.includes(selectedDayFilter)) {
+                setSelectedDayFilter(workouts.dayOrder[0]);
+            }
+        }
+    }, [currentView, workouts?.dayOrder, selectedDayFilter]);
+
+    // Fonctions utilitaires optimisées
+    const sanitizeWorkoutData = useCallback((data) => {
+        if (!data || typeof data !== 'object') return baseInitialData;
+        
+        const sanitizedDays = {};
+        const dayOrder = Array.isArray(data.dayOrder) ? data.dayOrder : Object.keys(data.days || {});
+        
+        if (data.days && typeof data.days === 'object') {
+            Object.entries(data.days).forEach(([dayKey, dayData]) => {
+                if (!dayData || typeof dayData !== 'object') return;
+                
+                const sanitizedCategories = {};
+                const categoryOrder = Array.isArray(dayData.categoryOrder) 
+                    ? dayData.categoryOrder 
+                    : Object.keys(dayData.categories || {});
+                
+                if (dayData.categories && typeof dayData.categories === 'object') {
+                    Object.entries(dayData.categories).forEach(([categoryKey, exercises]) => {
+                        if (!Array.isArray(exercises)) return;
+                        
+                        sanitizedCategories[categoryKey] = exercises.map(exercise => ({
+                            id: exercise.id || generateUUID(),
+                            name: exercise.name || 'Exercice sans nom',
+                            series: Array.isArray(exercise.series) 
+                                ? exercise.series.map(s => ({
+                                    weight: String(s.weight || ''),
+                                    reps: String(s.reps || ''),
+                                    completed: Boolean(s.completed) // Ensure completed status is preserved
+                                }))
+                                : [{ weight: '', reps: '', completed: false }],
+                            isDeleted: Boolean(exercise.isDeleted),
+                            notes: String(exercise.notes || ''),
+                            createdAt: exercise.createdAt || new Date().toISOString()
+                        }));
+                    });
+                }
+                
+                sanitizedDays[dayKey] = {
+                    categories: sanitizedCategories,
+                    categoryOrder
+                };
+            });
+        }
+        
+        return { days: sanitizedDays, dayOrder };
     }, []);
 
-    // Fonctions d'exercices
-    const handleAddExercise = useCallback((dayName = '', categoryName = '') => {
-        // Définir le jour et la catégorie sélectionnés en fonction de l'endroit où le bouton d'ajout a été cliqué
-        setSelectedDayForAdd(dayName);
-        setSelectedCategoryForAdd(categoryName);
-        setEditingExercise(null); // S'assurer qu'aucun exercice n'est en cours d'édition
-        setNewExerciseName('');
-        setNewWeight('');
-        setNewSets('3');
-        setNewReps('');
-        setShowAddExerciseModal(true);
+    const loadHistoricalData = useCallback(async () => {
+        if (!userId) return;
+        
+        try {
+            const sessionsRef = collection(db, 'users', userId, 'sessions');
+            // Removed orderBy('timestamp', 'desc') to avoid index missing error
+            const q = query(sessionsRef, limit(100)); // Only limit the results
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const data = snapshot.docs.map(doc => {
+                    const docData = doc.data();
+                    let timestamp;
+                    
+                    if (docData.timestamp instanceof Timestamp) {
+                        timestamp = docData.timestamp.toDate();
+                    } else if (docData.timestamp) {
+                        timestamp = new Date(docData.timestamp.seconds * 1000); // Correctly convert Firestore Timestamp
+                    } else {
+                        timestamp = new Date();
+                    }
+                    
+                    return {
+                        id: doc.id,
+                        timestamp,
+                        workoutData: docData.workoutData
+                    };
+                }).filter(item => item.timestamp);
+                
+                // Sort data in memory after fetching
+                const sortedData = data.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+                setHistoricalData(sortedData);
+                calculatePersonalBests(sortedData);
+            });
+            
+            return unsubscribe;
+        } catch (error) {
+            console.error("Erreur chargement historique:", error);
+            setToast({ message: "Erreur lors du chargement de l'historique", type: 'error' });
+        }
+    }, [userId, calculatePersonalBests]);
+
+    const calculatePersonalBests = useCallback((data) => {
+        const bests = {};
+        
+        if (Array.isArray(data)) {
+            data.forEach(session => {
+                const workoutData = session.workoutData;
+                if (!workoutData?.days) return;
+                
+                Object.values(workoutData.days).forEach(day => {
+                    if (!day.categories) return;
+                    
+                    Object.values(day.categories).forEach(exercises => {
+                        if (!Array.isArray(exercises)) return;
+                        
+                        exercises.forEach(exercise => {
+                            if (!exercise.series || exercise.isDeleted) return;
+                            
+                            exercise.series.forEach(serie => {
+                                const weight = parseFloat(serie.weight) || 0;
+                                const reps = parseInt(serie.reps) || 0;
+                                const volume = weight * reps;
+                                
+                                if (weight === 0 && reps === 0) return;
+                                
+                                if (!bests[exercise.id]) { // Use exercise.id for unique tracking
+                                    bests[exercise.id] = {
+                                        name: exercise.name, // Store name here for easy access
+                                        maxWeight: weight,
+                                        maxReps: reps,
+                                        maxVolume: volume,
+                                        totalVolume: volume,
+                                        sessions: 1,
+                                        lastPerformed: session.timestamp
+                                    };
+                                } else {
+                                    const best = bests[exercise.id];
+                                    best.maxWeight = Math.max(best.maxWeight, weight);
+                                    best.maxReps = Math.max(best.maxReps, reps);
+                                    best.maxVolume = Math.max(best.maxVolume, volume);
+                                    best.totalVolume += volume;
+                                    best.sessions++;
+                                    if (session.timestamp > best.lastPerformed) {
+                                        best.lastPerformed = session.timestamp;
+                                    }
+                                }
+                            });
+                        });
+                    });
+                });
+            });
+        }
+        
+        setPersonalBests(bests);
     }, []);
 
-    const handleSaveNewExercise = useCallback(() => {
+    const saveWorkoutsOptimized = useCallback(async (workoutsData, successMessage = "Sauvegardé !") => {
+        if (!userId) {
+            setToast({ message: "Utilisateur non connecté", type: 'error' });
+            return;
+        }
+        
+        // Annuler la sauvegarde précédente si en cours
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+        
+        // Sauvegarder après un délai pour éviter les sauvegardes multiples
+        saveTimeoutRef.current = setTimeout(async () => {
+            try {
+                const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
+                await setDoc(workoutDocRef, { 
+                    workouts: workoutsData,
+                    lastModified: serverTimestamp()
+                }, { merge: true });
+                
+                const sessionsRef = collection(db, 'users', userId, 'sessions');
+                await addDoc(sessionsRef, {
+                    timestamp: serverTimestamp(),
+                    workoutData: workoutsData,
+                    version: '2.0'
+                });
+                
+                setLastSaveTime(new Date());
+                setToast({ message: successMessage, type: 'success' });
+            } catch (error) {
+                console.error("Erreur sauvegarde:", error);
+                setToast({ 
+                    message: "Erreur de sauvegarde", 
+                    type: 'error',
+                    action: { 
+                        label: 'Réessayer', 
+                        onClick: () => saveWorkoutsOptimized(workoutsData, successMessage) 
+                    }
+                });
+            }
+        }, AUTO_SAVE_DELAY);
+    }, [userId]);
+
+    const applyChanges = useCallback((newWorkoutsState, message = "Modification effectuée") => {
+        setUndoStack(prev => {
+            const newStack = [...prev, workouts];
+            return newStack.length > MAX_UNDO_STATES 
+                ? newStack.slice(-MAX_UNDO_STATES) 
+                : newStack;
+        });
+        setRedoStack([]);
+        setWorkouts(newWorkoutsState);
+        saveWorkoutsOptimized(newWorkoutsState, message);
+    }, [workouts, saveWorkoutsOptimized]);
+
+    // Fonctions d'exercices optimisées
+    const handleAddExercise = useCallback(() => {
         if (!newExerciseName.trim()) {
             setToast({ message: "Le nom de l'exercice est requis", type: 'error' });
             return;
@@ -1448,12 +577,14 @@ const WorkoutApp = () => {
             return;
         }
         
-        setIsAddingExercise(true); // Début de l'ajout
+        setIsAddingExercise(true);
+        
         const setsNum = parseInt(newSets) || 1;
         const updatedWorkouts = { ...workouts };
         
+        // S'assurer que la structure existe
         if (!updatedWorkouts.days[selectedDayForAdd]) {
-            updatedWorkouts.days[selectedDayForAdd] = { categories: {} };
+            updatedWorkouts.days[selectedDayForAdd] = { categories: {}, categoryOrder: [] };
         }
         if (!updatedWorkouts.days[selectedDayForAdd].categories[selectedCategoryForAdd]) {
             updatedWorkouts.days[selectedDayForAdd].categories[selectedCategoryForAdd] = [];
@@ -1465,79 +596,131 @@ const WorkoutApp = () => {
             series: Array(setsNum).fill(null).map(() => ({
                 weight: newWeight.toString(),
                 reps: newReps.toString(),
-                completed: false, // Initialiser comme non terminé
+                completed: false, // Ensure new series are not completed by default
             })),
             isDeleted: false,
-            notes: ''
+            notes: newExerciseNotes.trim(), // Save notes
+            createdAt: new Date().toISOString()
         };
         
         updatedWorkouts.days[selectedDayForAdd].categories[selectedCategoryForAdd].push(newExercise);
-        setWorkouts(updatedWorkouts);
+        
+        applyChanges(updatedWorkouts, `Exercice "${newExerciseName}" ajouté !`);
         
         // Réinitialiser le formulaire
         setNewExerciseName('');
         setNewWeight('');
         setNewSets('3');
         setNewReps('');
+        setNewExerciseNotes(''); // Reset notes
         setShowAddExerciseModal(false);
-        setIsAddingExercise(false); // Fin de l'ajout
-        setToast({ message: `Exercice "${newExerciseName}" ajouté !`, type: 'success' });
-    }, [newExerciseName, selectedDayForAdd, selectedCategoryForAdd, newSets, newWeight, newReps, workouts]);
-
+        setIsAddingExercise(false);
+    }, [newExerciseName, selectedDayForAdd, selectedCategoryForAdd, newSets, newWeight, newReps, newExerciseNotes, workouts, applyChanges]);
 
     const handleEditClick = useCallback((day, category, exerciseId, exercise) => {
         setEditingExercise({ day, category, exerciseId });
         setEditingExerciseName(exercise.name);
-        
-        // Supprimé le pré-remplissage du poids, des séries et des répétitions pour l'édition
-        // setNewWeight(exercise.series[0].weight);
-        // setNewSets(exercise.series.length.toString());
-        // setNewReps(exercise.series[0].reps);
-        setShowAddExerciseModal(true); // Ouvrir le modal pour l'édition
+        setNewExerciseNotes(exercise.notes || ''); // Load existing notes
+        // Removed weight, sets, reps from pre-filling for editing
+        setShowAddExerciseModal(true); // Open the modal for editing
     }, []);
 
     const handleSaveEdit = useCallback(() => {
         if (!editingExercise) return;
         
-        setIsSavingExercise(true); // Début de la sauvegarde
+        setIsSavingExercise(true);
+        
         const { day, category, exerciseId } = editingExercise;
         const updatedWorkouts = { ...workouts };
         const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
         
-        if (!exercises) return;
+        if (!exercises) {
+            setToast({ message: "Exercice non trouvé", type: 'error' });
+            setIsSavingExercise(false);
+            return;
+        }
         
         const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) return;
+        if (exerciseIndex === -1) {
+            setToast({ message: "Exercice non trouvé", type: 'error' });
+            setIsSavingExercise(false);
+            return;
+        }
         
-        // Ne modifie que le nom de l'exercice
+        // Validation
+        if (!editingExerciseName.trim()) {
+            setToast({ message: "Le nom de l'exercice ne peut pas être vide", type: 'error' });
+            setIsSavingExercise(false);
+            return;
+        }
+        
+        // Update only the name and notes
         exercises[exerciseIndex] = {
             ...exercises[exerciseIndex],
             name: editingExerciseName.trim(),
-            // Ne pas modifier les séries ici, elles sont gérées individuellement
+            notes: newExerciseNotes.trim(), // Save updated notes
+            lastModified: new Date().toISOString()
         };
         
-        setWorkouts(updatedWorkouts);
+        applyChanges(updatedWorkouts, "Exercice modifié !");
         setEditingExercise(null);
-        setShowAddExerciseModal(false); // Fermer le modal après la sauvegarde
-        setIsSavingExercise(false); // Fin de la sauvegarde
-        setToast({ message: "Exercice modifié !", type: 'success' });
-    }, [editingExercise, workouts, editingExerciseName]); // Retiré newWeight, newSets, newReps des dépendances
+        setEditingExerciseName('');
+        setNewExerciseNotes(''); // Reset notes after saving
+        setShowAddExerciseModal(false); // Close the modal after saving
+        setIsSavingExercise(false);
+    }, [editingExercise, workouts, editingExerciseName, newExerciseNotes, applyChanges]);
 
     const handleDeleteExercise = useCallback((day, category, exerciseId) => {
-        setIsDeletingExercise(true); // Début de la suppression
+        setIsDeletingExercise(true);
+        
         const updatedWorkouts = { ...workouts };
-        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-        
-        if (!exercises) return;
-        
-        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) return;
-        
-        exercises[exerciseIndex].isDeleted = true;
-        setWorkouts(updatedWorkouts);
-        setIsDeletingExercise(false); // Fin de la suppression
-        setToast({ message: "Exercice supprimé", type: 'success' });
-    }, [workouts]);
+       const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
+       
+       if (!exercises) {
+           setToast({ message: "Exercice non trouvé", type: 'error' });
+           setIsDeletingExercise(false);
+           return;
+       }
+       
+       const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+       if (exerciseIndex === -1) {
+           setToast({ message: "Exercice non trouvé", type: 'error' });
+           setIsDeletingExercise(false);
+           return;
+       }
+       
+       exercises[exerciseIndex].isDeleted = true;
+       exercises[exerciseIndex].deletedAt = new Date().toISOString();
+       
+       applyChanges(updatedWorkouts, "Exercice supprimé");
+       setShowDeleteConfirm(false);
+       setIsDeletingExercise(false);
+   }, [workouts, applyChanges]);
+
+   const handleReactivateExercise = useCallback((exerciseId) => {
+       const updatedWorkouts = { ...workouts };
+       let found = false;
+       
+       // Rechercher l'exercice dans toutes les catégories et jours
+       Object.values(updatedWorkouts.days).forEach(day => {
+           Object.values(day.categories).forEach(exercises => {
+               if (Array.isArray(exercises)) {
+                   const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+                   if (exerciseIndex !== -1) {
+                       exercises[exerciseIndex].isDeleted = false;
+                       delete exercises[exerciseIndex].deletedAt;
+                       found = true;
+                   }
+               }
+           });
+       });
+       
+       if (found) {
+           applyChanges(updatedWorkouts, "Exercice réactivé !");
+       } else {
+           setToast({ message: "Exercice non trouvé", type: 'error' });
+       }
+   }, [workouts, applyChanges]);
 
     const handleToggleSeriesCompleted = useCallback((dayName, categoryName, exerciseId, serieIndex) => {
         setWorkouts(prevWorkouts => {
@@ -1590,8 +773,8 @@ const WorkoutApp = () => {
             if (!exercise) return prevWorkouts;
 
             const newSerie = {
-                weight: newWeight || '0', // Poids par défaut de l'entrée du modal ou '0'
-                reps: newReps || '0',   // Répétitions par défaut de l'entrée du modal ou '0'
+                weight: newWeight || '0', // Default weight from modal input or '0'
+                reps: newReps || '0',   // Default reps from modal input or '0'
                 completed: false
             };
             exercise.series = [...(exercise.series || []), newSerie];
@@ -1627,9 +810,8 @@ const WorkoutApp = () => {
         const updatedWorkouts = { ...workouts };
         updatedWorkouts.days[dayName] = { categories: {} };
         updatedWorkouts.dayOrder = [...(updatedWorkouts.dayOrder || []), dayName];
-        setWorkouts(updatedWorkouts);
-        setToast({ message: `Jour "${dayName}" ajouté !`, type: 'success' });
-    }, [workouts]);
+        applyChanges(updatedWorkouts, `Jour "${dayName}" ajouté !`); // Use applyChanges
+    }, [workouts, applyChanges]);
 
     const handleEditDay = useCallback((oldDayName, newDayName) => {
         const updatedWorkouts = { ...workouts };
@@ -1641,22 +823,23 @@ const WorkoutApp = () => {
             updatedWorkouts.dayOrder[dayIndex] = newDayName;
         }
         
-        setWorkouts(updatedWorkouts);
-        setToast({ message: `Jour renommé !`, type: 'success' });
-    }, [workouts]);
+        applyChanges(updatedWorkouts, `Jour renommé !`); // Use applyChanges
+    }, [workouts, applyChanges]);
 
     const handleDeleteDay = useCallback((dayName) => {
         const updatedWorkouts = { ...workouts };
         delete updatedWorkouts.days[dayName];
         updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(day => day !== dayName);
-        setWorkouts(updatedWorkouts);
-        setToast({ message: `Jour "${dayName}" supprimé !`, type: 'success' });
-    }, [workouts]);
+        applyChanges(updatedWorkouts, `Jour "${dayName}" supprimé !`); // Use applyChanges
+    }, [workouts, applyChanges]);
 
     // Fonctions du minuteur
     const startTimer = useCallback(() => {
         setTimerIsRunning(true);
         setTimerIsFinished(false);
+        if (Tone.context.state !== 'running') {
+            Tone.start();
+        }
     }, []);
 
     const pauseTimer = useCallback(() => {
@@ -1664,466 +847,1107 @@ const WorkoutApp = () => {
     }, []);
 
     const resetTimer = useCallback(() => {
-        setTimerSeconds(90); // Réinitialiser au préréglage par défaut
+        const seconds = parseInt(restTimeInput) || 90;
+        setTimerSeconds(seconds);
+        setTimerIsRunning(false);
+        setTimerIsFinished(false);
+    }, [restTimeInput]);
+
+    const setTimerPreset = useCallback((seconds) => {
+        setRestTimeInput(seconds.toString());
+        setTimerSeconds(seconds);
         setTimerIsRunning(false);
         setTimerIsFinished(false);
     }, []);
 
-    // Placeholder pour l'analyse IA et le graphique
-    const analyzeProgressionWithAI = useCallback((exercise, isChart = false) => {
-        const message = isChart 
-            ? `Affichage du graphique de progression pour "${exercise.name}" (fonctionnalité à implémenter)`
-            : `Analyse IA de "${exercise.name}" (fonctionnalité à implémenter)`;
-        setToast({ message, type: 'info' });
-    }, []);
+    // Analyse IA améliorée
+    const analyzeProgressionWithAI = useCallback(async (exerciseData, showGraph = false) => {
+        if (!exerciseData) return;
+        
+        setAiAnalysisLoading(true);
+        setExerciseForAnalysis(exerciseData); // Set the exercise for graph/analysis
+        setProgressionAnalysisContent(''); // Clear previous analysis
+        setShowProgressionGraph(false); // Hide graph initially
 
+        if (showGraph) {
+            setShowProgressionGraph(true);
+            setAiAnalysisLoading(false);
+            setToast({ message: `Affichage du graphique pour "${exerciseData.name}"`, type: 'info' });
+            return;
+        }
 
-    // Styles CSS pour mobile
-    const mobileStyles = `
-        .safe-area-inset-bottom {
-            padding-bottom: env(safe-area-inset-bottom);
-        }
-        
-        .animate-slide-up {
-            animation: slideUp 0.3s ease-out forwards;
-        }
-        
-        @keyframes slideUp {
-            from {
-                transform: translateY(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        
-        /* Optimisations tactiles */
-        button, [role="button"] {
-            min-height: 44px;
-            min-width: 44px;
-        }
-        
-        input, select, textarea {
-            font-size: 16px; /* Empêche le zoom sur iOS */
-        }
-        
-        /* Barre de défilement mobile */
-        .scrollbar-hidden::-webkit-scrollbar {
-            display: none;
-        }
-        
-        /* Focus amélioré */
-        *:focus {
-            outline: 2px solid #3B82F6;
-            outline-offset: 2px;
-        }
-        
-        /* Améliore les performances */
-        .gpu-accelerated {
-            transform: translateZ(0);
-            will-change: transform;
-        }
-    `;
-
-    // Rendu de chargement
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
-                <div className="text-center">
-                    <div className="relative mb-6">
-                        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-                        <Dumbbell className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-6 w-6 text-blue-400" />
-                    </div>
-                    <h2 className="text-xl font-bold mb-2">Carnet Muscu</h2>
-                    <p className="text-gray-400">Chargement...</p>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
-            <style>{mobileStyles}</style>
+        try {
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
             
-            {/* Toast */}
-            {toast && (
-                <Toast
-                    message={toast.message}
-                    type={toast.type}
-                    onClose={() => setToast(null)}
-                    action={toast.action}
-                />
-            )}
+            // Collect historical data for this specific exercise
+            const relevantHistoricalData = historicalData.flatMap(session => 
+                Object.values(session.workoutData?.days || {}).flatMap(day => 
+                    Object.values(day.categories || {}).flatMap(exercises => 
+                        exercises.filter(ex => ex.id === exerciseData.id && !ex.isDeleted)
+                    )
+                )
+            ).sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt)); // Sort by creation date for progression
 
-            {/* En-tête optimisée mobile */}
-            <header className="sticky top-0 z-40 bg-gray-800/95 backdrop-blur-md border-b border-gray-700/50 px-4 py-3">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Dumbbell className="h-7 w-7 text-blue-400" />
-                        <div>
-                            <h1 className="text-lg font-bold text-white">Carnet Muscu</h1>
-                            <p className="text-xs text-gray-400">Mobile v2.0</p>
-                        </div>
-                    </div>
+            const recentSeries = relevantHistoricalData.flatMap(ex => ex.series || []).slice(-20); // Last 20 series
 
-                    <button
-                        onClick={() => setShowSettingsModal(true)}
-                        className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
-                    >
-                        <Settings className="h-5 w-5" />
-                    </button>
-                </div>
-            </header>
+            const prompt = `Analyse cette progression d'exercice de musculation et donne des conseils personnalisés en français:
+                
+                Nom de l'exercice: ${exerciseData.name}
+                Historique récent (20 dernières séries - format: {weight: 'X', reps: 'Y'}): ${JSON.stringify(recentSeries)}
+                Record personnel (poids): ${personalBests[exerciseData.id]?.maxWeight || 'N/A'}kg
+                Record personnel (reps): ${personalBests[exerciseData.id]?.maxReps || 'N/A'}
+                Volume total: ${personalBests[exerciseData.id]?.totalVolume || 'N/A'}kg
+                Nombre de sessions: ${personalBests[exerciseData.id]?.sessions || 'N/A'}
+                Notes de l'exercice: ${exerciseData.notes || 'Aucune note'}
+                
+                Fournis une analyse concise et pratique avec:
+                1. 📈 Tendance de progression (positive/stagnation/régression)
+                2. 💪 Points forts identifiés
+                3. 🎯 Axes d'amélioration spécifiques
+                4. 📋 Recommandations concrètes (charge, répétitions, fréquence)
+                5. 🏆 Objectifs à court terme (2-4 semaines)
+                
+                Limite la réponse à 300 mots maximum. Utilise des émojis pour structurer.`;
+            
+            const apiKey = ""; // API key is provided by Canvas runtime if empty
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+            };
 
-            {/* Contenu principal avec rembourrage pour la navigation */}
-            <main className="p-4 pb-20">
-                {currentView === 'workout' && (
-                    <WorkoutView
-                        workouts={workouts}
-                        selectedDayFilter={selectedDayFilter}
-                        setSelectedDayFilter={setSelectedDayFilter}
-                        handleEditClick={handleEditClick}
-                        handleAddExerciseClick={handleAddExercise} // Mis à jour vers la nouvelle fonction handleAddExercise
-                        handleDeleteExercise={handleDeleteExercise}
-                        handleToggleSeriesCompleted={handleToggleSeriesCompleted}
-                        handleUpdateSeries={handleUpdateSeries}
-                        handleDeleteSeries={handleDeleteSeries} // Passé à WorkoutView
-                        analyzeProgressionWithAI={analyzeProgressionWithAI} // Passé à WorkoutView
-                        personalBests={personalBests}
-                        getDayButtonColors={getDayButtonColors}
-                        getSeriesDisplay={getSeriesDisplay}
-                        // searchTerm={searchTerm} // Supprimé
-                        // setSearchTerm={setSearchTerm} // Supprimé
-                        handleAddDay={handleAddDay}
-                        handleEditDay={handleEditDay}
-                        handleDeleteDay={handleDeleteDay}
-                        handleAddSeries={handleAddSeries} // Passé à WorkoutView
-                        isSavingExercise={isSavingExercise} // Passé à WorkoutView
-                        isDeletingExercise={isDeletingExercise} // Passé à WorkoutView
-                        isAddingExercise={isAddingExercise} // Passé à WorkoutView
-                    />
-                )}
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-                {currentView === 'timer' && (
-                    <TimerView
-                        timerSeconds={timerSeconds}
-                        timerIsRunning={timerIsRunning}
-                        timerIsFinished={timerIsFinished}
-                        startTimer={startTimer}
-                        pauseTimer={pauseTimer}
-                        resetTimer={resetTimer}
-                        setTimerSeconds={setTimerSeconds}
-                        formatTime={formatTime}
-                    />
-                )}
+            const result = await response.json();
 
-                {currentView === 'stats' && (
-                    <StatsView
-                        workouts={workouts}
-                        historicalData={historicalData}
-                        personalBests={personalBests}
-                    />
-                )}
+            if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                const analysis = result.candidates[0].content.parts[0].text;
+                setProgressionAnalysisContent(analysis);
+                setToast({ message: "Analyse IA terminée !", type: 'success' });
+            } else {
+                setProgressionAnalysisContent("❌ Impossible de générer l'analyse. Réponse de l'IA inattendue.");
+                setToast({ message: "Erreur lors de l'analyse IA", type: 'error' });
+            }
+        } catch (error) {
+            console.error("Erreur analyse IA:", error);
+            setProgressionAnalysisContent("❌ Erreur lors de l'analyse. Veuillez vérifier votre clé API Gemini et réessayer.");
+            setToast({ message: "Erreur lors de l'analyse IA", type: 'error' });
+        } finally {
+            setAiAnalysisLoading(false);
+        }
+    }, [personalBests, historicalData]); // Added historicalData as dependency
 
-                {currentView === 'history' && (
-                    <HistoryView
-                        historicalData={historicalData}
-                        personalBests={personalBests}
-                        formatDate={formatDate}
-                        getSeriesDisplay={getSeriesDisplay}
-                        searchTerm={searchTerm}
-                        setSearchTerm={setSearchTerm}
-                    />
-                )}
-            </main>
+   // Fonctions d'export/import optimisées
+   const exportData = useCallback(() => {
+       try {
+           const dataToExport = {
+               workouts,
+               personalBests,
+               historicalSample: historicalData.slice(0, 10), // Échantillon pour réduire la taille
+               exportDate: new Date().toISOString(),
+               version: "2.0",
+               appName: "Carnet Muscu Pro"
+           };
+           
+           const blob = new Blob([JSON.stringify(dataToExport, null, 2)], {
+               type: 'application/json'
+           });
+           
+           const url = URL.createObjectURL(blob);
+           const a = document.createElement('a');
+           a.href = url;
+           a.download = `carnet-muscu-${new Date().toISOString().split('T')[0]}.json`;
+           document.body.appendChild(a);
+           a.click();
+           document.body.removeChild(a);
+           URL.revokeObjectURL(url);
+           
+           setToast({ message: "Données exportées avec succès !", type: 'success' });
+       } catch (error) {
+           console.error("Erreur export:", error);
+           setToast({ message: "Erreur lors de l'export", type: 'error' });
+       }
+   }, [workouts, personalBests, historicalData]);
 
-            {/* Navigation mobile */}
-            <BottomNavigationBar 
-                currentView={currentView} 
-                setCurrentView={setCurrentView} 
-            />
+   const importData = useCallback((event) => {
+       const file = event.target.files[0];
+       if (!file) return;
+       
+       const reader = new FileReader();
+       reader.onload = (e) => {
+           try {
+               const importedData = JSON.parse(e.target.result);
+               
+               if (importedData.workouts) {
+                   const sanitizedWorkouts = sanitizeWorkoutData(importedData.workouts);
+                   setWorkouts(sanitizedWorkouts);
+                   saveWorkoutsOptimized(sanitizedWorkouts, "Données importées avec succès !");
+                   
+                   setToast({ 
+                       message: "Import réussi !", 
+                       type: 'success'
+                   });
+               } else {
+                   setToast({ message: "Format de fichier invalide", type: 'error' });
+               }
+           } catch (error) {
+               console.error("Erreur import:", error);
+               setToast({ message: "Erreur lors de l'import", type: 'error' });
+           }
+       };
+       reader.readAsText(file);
+       
+       // Reset input
+       event.target.value = '';
+   }, [sanitizeWorkoutData, saveWorkoutsOptimized]);
 
-            {/* Modal d'ajout/édition d'exercice - Design mobile-first */}
-            {(showAddExerciseModal || editingExercise) && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"> {/* Changed items-end to items-center */}
-                    <div className="bg-gray-800 rounded-t-3xl shadow-2xl w-full max-w-md border-t border-gray-700 animate-slide-up max-h-[90vh] overflow-y-auto">
+   // Fonctions d'undo/redo corrigées
+   const handleUndo = useCallback(() => {
+       setUndoStack(prevUndoStack => {
+           if (prevUndoStack.length === 0) {
+               setToast({ message: "Rien à annuler", type: 'warning' });
+               return prevUndoStack;
+           }
+           
+           const previousState = prevUndoStack[prevUndoStack.length - 1];
+           
+           // Sauvegarder l'état actuel dans redo avant de changer
+           setRedoStack(prevRedoStack => [...prevRedoStack, workouts]);
+           setWorkouts(previousState);
+           setToast({ message: "Action annulée", type: 'success' });
+           
+           return prevUndoStack.slice(0, -1);
+       });
+   }, [workouts]);
+
+   const handleRedo = useCallback(() => {
+       setRedoStack(prevRedoStack => {
+           if (prevRedoStack.length === 0) {
+               setToast({ message: "Rien à rétablir", type: 'warning' });
+               return prevRedoStack;
+           }
+           
+           const nextState = prevRedoStack[prevRedoStack.length - 1];
+           
+           // Sauvegarder l'état actuel dans undo avant de changer
+           setUndoStack(prevUndoStack => [...prevUndoStack, workouts]);
+           setWorkouts(nextState);
+           setToast({ message: "Action rétablie", type: 'success' });
+           
+           return prevRedoStack.slice(0, -1);
+       });
+   }, [workouts]);
+
+   // Calculs mémorisés pour les statistiques
+   const getWorkoutStats = useCallback(() => {
+       if (!workouts?.days || !historicalData) {
+           return {
+               totalExercises: 0,
+               totalSessions: 0,
+               thisWeekSessions: 0,
+               totalVolume: 0,
+               averageSessionsPerWeek: 0
+           };
+       }
+
+       let totalExercises = 0;
+       try {
+           Object.values(workouts.days || {}).forEach(day => {
+               Object.values(day.categories || {}).forEach(exercises => {
+                   if (Array.isArray(exercises)) {
+                       totalExercises += exercises.filter(ex => !ex.isDeleted).length;
+                   }
+               });
+           });
+       } catch (error) {
+           console.warn("Erreur calcul exercices:", error);
+           totalExercises = 0;
+       }
+
+       const totalSessions = historicalData.length || 0;
+       
+       let thisWeekSessions = 0;
+       try {
+           const weekAgo = new Date();
+           weekAgo.setDate(weekAgo.getDate() - 7);
+           thisWeekSessions = historicalData.filter(session => {
+               return session.timestamp && session.timestamp > weekAgo;
+           }).length;
+       } catch (error) {
+           console.warn("Erreur calcul sessions semaine:", error);
+           thisWeekSessions = 0;
+       }
+
+       let totalVolume = 0;
+       try {
+           Object.values(personalBests || {}).forEach(best => {
+               totalVolume += (best.totalVolume || 0);
+           });
+       } catch (error) {
+           console.warn("Erreur calcul volume:", error);
+           totalVolume = 0;
+       }
+
+       const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
+
+       return {
+           totalExercises,
+           totalSessions,
+           thisWeekSessions,
+           totalVolume: Math.round(totalVolume),
+           averageSessionsPerWeek
+       };
+   }, [workouts, historicalData, personalBests]);
+
+   // Calculer les stats à chaque rendu
+   const workoutStats = getWorkoutStats();
+
+   // Gestion des raccourcis clavier
+   useEffect(() => {
+       const handleKeyPress = (e) => {
+           if (e.ctrlKey || e.metaKey) {
+               switch (e.key) {
+                   case 'z':
+                       e.preventDefault();
+                       if (e.shiftKey) {
+                           handleRedo();
+                       } else {
+                           handleUndo();
+                       }
+                       break;
+                   case 's':
+                       e.preventDefault();
+                       if (workouts && Object.keys(workouts.days || {}).length > 0) {
+                           saveWorkoutsOptimized(workouts, "Sauvegarde manuelle effectuée");
+                       }
+                       break;
+                   case 'e':
+                       e.preventDefault();
+                       exportData();
+                       break;
+               }
+           }
+           
+           // Raccourcis sans modificateur
+           switch (e.key) {
+               case 'Escape':
+                   setEditingExercise(null);
+                   setShowAddExerciseModal(false);
+                   setShowDeleteConfirm(false);
+                   setShowStatsModal(false);
+                   setShowExportModal(false);
+                   setShowSettingsModal(false);
+                   setProgressionAnalysisContent(''); // Close AI analysis modal
+                   setShowProgressionGraph(false); // Close graph modal
+                   break;
+               case ' ':
+                   if (currentView === 'timer' && !e.target.tagName.match(/INPUT|TEXTAREA|SELECT/)) {
+                       e.preventDefault();
+                       if (timerIsRunning) {
+                           pauseTimer();
+                       } else {
+                           startTimer();
+                       }
+                   }
+                   break;
+           }
+       };
+
+       document.addEventListener('keydown', handleKeyPress);
+       return () => document.removeEventListener('keydown', handleKeyPress);
+   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer]);
+
+   // Demande de permission pour les notifications au démarrage
+   useEffect(() => {
+       if ('Notification' in window && Notification.permission === 'default') {
+           requestPermission();
+       }
+   }, [requestPermission]);
+
+   // Styles CSS améliorés
+   const appStyles = `
+       .animate-fade-in-up {
+           animation: fadeInUp 0.5s ease-out forwards;
+       }
+
+       @keyframes fadeInUp {
+           from {
+               opacity: 0;
+               transform: translateY(20px) translateX(-50%);
+           }
+           to {
+               opacity: 1;
+               transform: translateY(0) translateX(-50%);
+           }
+       }
+
+       .saved-animation {
+           animation: saved-flash 0.7s ease-out;
+       }
+
+       @keyframes saved-flash {
+           0% { background-color: rgb(31 41 55); }
+           25% { background-color: rgb(59 130 246); }
+           100% { background-color: rgb(31 41 55); }
+       }
+
+       .button-saving, .button-deleting, .button-adding {
+           opacity: 0.7;
+           cursor: wait;
+           pointer-events: none;
+       }
+
+       .glass-effect {
+           backdrop-filter: blur(10px);
+           background: rgba(31, 41, 55, 0.8);
+       }
+
+       .scrollbar-thin {
+           scrollbar-width: thin;
+           scrollbar-color: rgb(75 85 99) rgb(31 41 55);
+       }
+
+       .scrollbar-thin::-webkit-scrollbar {
+           width: 6px;
+       }
+
+       .scrollbar-thin::-webkit-scrollbar-track {
+           background: rgb(31 41 55);
+       }
+
+       .scrollbar-thin::-webkit-scrollbar-thumb {
+           background: rgb(75 85 99);
+           border-radius: 3px;
+       }
+
+       .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+           background: rgb(107 114 128);
+       }
+
+       @media (max-width: 640px) {
+           .mobile-optimized {
+               font-size: 14px;
+           }
+       }
+   `;
+
+   // Rendu conditionnel de chargement amélioré
+   if (loading || !isAuthReady) {
+       return (
+           <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
+               <div className="text-center max-w-md mx-auto p-8">
+                   <div className="relative">
+                       <div className="animate-spin rounded-full h-20 w-20 border-t-2 border-b-2 border-blue-500 mx-auto mb-6"></div>
+                       <Dumbbell className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-8 w-8 text-blue-400" />
+                   </div>
+                   <h2 className="text-2xl font-bold mb-2">Carnet Muscu Pro</h2>
+                   <p className="text-lg font-medium mb-2">Chargement de vos données...</p>
+                   <p className="text-sm text-gray-400">Synchronisation en cours</p>
+                   <div className="mt-6 w-full bg-gray-700 rounded-full h-2">
+                       <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{width: '70%'}}></div>
+                   </div>
+               </div>
+           </div>
+       );
+   }
+
+   // Rendu principal amélioré
+   return (
+       <div className={`min-h-screen transition-all duration-300 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800 text-white' : 'bg-gradient-to-br from-gray-50 to-gray-100 text-gray-900'}`}>
+           <style>{appStyles}</style>
+           
+           {/* Toast notifications */}
+           {toast && (
+               <Toast
+                   message={toast.message}
+                   type={toast.type}
+                   onClose={() => setToast(null)}
+                   action={toast.action}
+               />
+           )}
+
+           {/* Header amélioré avec navigation fixe */}
+           <header className="sticky top-0 z-40 glass-effect border-b border-gray-700/50 px-4 py-3">
+               <div className="flex items-center justify-between max-w-7xl mx-auto">
+                   <div className="flex items-center gap-3">
+                       <div className="relative">
+                           <Dumbbell className="h-8 w-8 text-blue-400" />
+                           {isSavingExercise && (
+                               <div className="absolute -top-1 -right-1 h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
+                           )}
+                       </div>
+                       <div>
+                           <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                               Carnet Muscu Pro
+                           </h1>
+                           {lastSaveTime && (
+                               <p className="text-xs text-gray-400">
+                                   Dernière sync: {formatTime(Math.floor((Date.now() - lastSaveTime.getTime()) / 1000))}
+                               </p>
+                           )}
+                       </div>
+                       <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full font-medium">
+                           v2.0
+                       </span>
+                   </div>
+
+                   <div className="flex items-center gap-2">
+                       {/* Mode avancé */}
+                       <button
+                           onClick={() => setIsAdvancedMode(!isAdvancedMode)}
+                           className={`p-2 rounded-lg transition-all ${isAdvancedMode ? 'bg-blue-500 text-white shadow-lg' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                           title="Mode avancé (plus de fonctionnalités)"
+                       >
+                           <Settings className="h-5 w-5" />
+                       </button>
+
+                       {/* Vue compacte */}
+                       <button
+                           onClick={() => setIsCompactView(!isCompactView)}
+                           className={`p-2 rounded-lg transition-all ${isCompactView ? 'bg-green-500 text-white shadow-lg' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                           title="Vue compacte"
+                       >
+                           {isCompactView ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+                       </button>
+
+                       {/* Undo/Redo avec compteurs */}
+                       <div className="flex gap-1">
+                           <button
+                               onClick={handleUndo}
+                               disabled={undoStack.length === 0}
+                               className="relative p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                               title={`Annuler (${undoStack.length} actions disponibles)`}
+                           >
+                               <Undo2 className="h-5 w-5" />
+                               {undoStack.length > 0 && (
+                                   <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                                       {Math.min(undoStack.length, 9)}
+                                   </span>
+                               )}
+                           </button>
+                           <button
+                               onClick={handleRedo}
+                               disabled={redoStack.length === 0}
+                               className="relative p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                               title={`Rétablir (${redoStack.length} actions disponibles)`}
+                           >
+                               <Redo2 className="h-5 w-5" />
+                               {redoStack.length > 0 && (
+                                   <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                                       {Math.min(redoStack.length, 9)}
+                                   </span>
+                               )}
+                           </button>
+                       </div>
+
+                       {/* Menu actions */}
+                       <button
+                           onClick={() => setShowSettingsModal(true)}
+                           className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                           title="Paramètres et export/import"
+                       >
+                           <Download className="h-5 w-5" />
+                       </button>
+                   </div>
+               </div>
+           </header>
+
+           {/* Contenu principal */}
+           <main className="p-4 pb-20 max-w-7xl mx-auto">
+               {/* Statistiques rapides en mode avancé */}
+               {isAdvancedMode && (
+                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
+                           <div className="flex items-center justify-between mb-2">
+                               <div className="p-2 rounded-lg bg-blue-500/20">
+                                   <Activity className="h-5 w-5 text-blue-400" />
+                               </div>
+                           </div>
+                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalExercises}</div>
+                           <div className="text-xs text-gray-400">Exercices actifs</div>
+                       </div>
+
+                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
+                           <div className="flex items-center justify-between mb-2">
+                               <div className="p-2 rounded-lg bg-green-500/20">
+                                   <Calendar className="h-5 w-5 text-green-400" />
+                               </div>
+                           </div>
+                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalSessions}</div>
+                           <div className="text-xs text-gray-400">Sessions totales</div>
+                       </div>
+
+                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
+                           <div className="flex items-center justify-between mb-2">
+                               <div className="p-2 rounded-lg bg-purple-500/20">
+                                   <Zap className="h-5 w-5 text-purple-400" />
+                               </div>
+                           </div>
+                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.thisWeekSessions}</div>
+                           <div className="text-xs text-gray-400">Cette semaine</div>
+                       </div>
+
+                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
+                           <div className="flex items-center justify-between mb-2">
+                               <div className="p-2 rounded-lg bg-yellow-500/20">
+                                   <Target className="h-5 w-5 text-yellow-400" />
+                               </div>
+                           </div>
+                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalVolume}</div>
+                           <div className="text-xs text-gray-400">Volume total (kg)</div>
+                       </div>
+                   </div>
+               )}
+
+               {/* Contenu des vues */}
+               {currentView === 'workout' && (
+                   <MainWorkoutView
+                       workouts={workouts}
+                       selectedDayFilter={selectedDayFilter}
+                       setSelectedDayFilter={setSelectedDayFilter}
+                       isAdvancedMode={isAdvancedMode}
+                       isCompactView={isCompactView}
+                       handleEditClick={(day, category, exerciseId, exercise) => {
+                            setEditingExercise({ day, category, exerciseId });
+                            setEditingExerciseName(exercise.name);
+                            setNewExerciseNotes(exercise.notes || ''); // Load notes for editing
+                            setShowAddExerciseModal(true); // Open modal for editing
+                       }}
+                       handleAddExerciseClick={(day, category) => {
+                           setSelectedDayForAdd(day || (workouts?.dayOrder?.[0] || ''));
+                           setSelectedCategoryForAdd(category || 'PECS');
+                           setNewExerciseName(''); // Clear previous name
+                           setNewWeight(''); // Clear previous weight
+                           setNewReps(''); // Clear previous reps
+                           setNewSets('3'); // Reset sets to default
+                           setNewExerciseNotes(''); // Clear previous notes
+                           setEditingExercise(null); // Ensure not in editing mode
+                           setShowAddExerciseModal(true);
+                       }}
+                       handleDeleteExercise={handleDeleteExercise}
+                       handleToggleSeriesCompleted={(dayName, categoryName, exerciseId, serieIndex) => handleToggleSeriesCompleted(dayName, categoryName, exerciseId, serieIndex)} // Pass to MainWorkoutView
+                       handleUpdateSeries={(dayName, categoryName, exerciseId, serieIndex, field, value) => handleUpdateSeries(dayName, categoryName, exerciseId, serieIndex, field, value)} // Pass to MainWorkoutView
+                       handleDeleteSeries={(dayName, categoryName, exerciseId, serieIndex) => handleDeleteSeries(dayName, categoryName, exerciseId, serieIndex)} // Pass to MainWorkoutView
+                       handleAddSeries={(dayName, categoryName, exerciseId) => handleAddSeries(dayName, categoryName, exerciseId)} // Pass to MainWorkoutView
+                       analyzeProgressionWithAI={analyzeProgressionWithAI}
+                       personalBests={personalBests}
+                       getDayButtonColors={getDayButtonColors}
+                       formatDate={formatDate}
+                       getSeriesDisplay={getSeriesDisplay}
+                       isSavingExercise={isSavingExercise}
+                       isDeletingExercise={isDeletingExercise}
+                       isAddingExercise={isAddingExercise}
+                       searchTerm={debouncedSearchTerm}
+                       setSearchTerm={setSearchTerm}
+                       days={workouts?.dayOrder || []}
+                       categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
+                       // No longer need to pass these directly as they are managed within MainWorkoutView
+                       // handleAddDay={handleAddDay}
+                       // handleEditDay={handleEditDay}
+                       // handleDeleteDay={handleDeleteDay}
+                   />
+               )}
+
+               {currentView === 'timer' && (
+                   <TimerView
+                       timerSeconds={timerSeconds}
+                       timerIsRunning={timerIsRunning}
+                       timerIsFinished={timerIsFinished}
+                       startTimer={startTimer}
+                       pauseTimer={pauseTimer}
+                       resetTimer={resetTimer}
+                       setTimerSeconds={setTimerSeconds}
+                       restTimeInput={restTimeInput}
+                       setRestTimeInput={setRestTimeInput}
+                       formatTime={formatTime}
+                       setTimerPreset={setTimerPreset}
+                       isAdvancedMode={isAdvancedMode}
+                   />
+               )}
+
+               {currentView === 'stats' && (
+                   <StatsView
+                       workouts={workouts}
+                       historicalData={historicalData}
+                       personalBests={personalBests}
+                       formatDate={formatDate} // Pass formatDate
+                   />
+               )}
+
+               {currentView === 'history' && (
+                   <HistoryView
+                       historicalData={historicalData}
+                       personalBests={personalBests}
+                       handleReactivateExercise={handleReactivateExercise}
+                       analyzeProgressionWithAI={analyzeProgressionWithAI}
+                       formatDate={formatDate}
+                       getSeriesDisplay={getSeriesDisplay}
+                       isAdvancedMode={isAdvancedMode}
+                       searchTerm={debouncedSearchTerm}
+                       setSearchTerm={setSearchTerm}
+                       sortBy={sortBy}
+                       setSortBy={setSortBy}
+                   />
+               )}
+           </main>
+
+           {/* Navigation inférieure mobile */}
+           <BottomNavigationBar 
+               currentView={currentView} 
+               setCurrentView={setCurrentView} 
+           />
+
+           {/* Modales */}
+           {/* Modale d'ajout/édition d'exercice améliorée */}
+           {(showAddExerciseModal || editingExercise) && (
+               <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                       <div className="p-6">
+                           <div className="flex items-center justify-between mb-6">
+                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                   {editingExercise ? <Pencil className="h-5 w-5 text-yellow-400" /> : <Plus className="h-5 w-5 text-blue-400" />}
+                                   {editingExercise ? 'Modifier l\'exercice' : 'Nouvel Exercice'}
+                               </h3>
+                               <button
+                                   onClick={() => {
+                                       setShowAddExerciseModal(false);
+                                       setEditingExercise(null);
+                                   }}
+                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                               >
+                                   <XCircle className="h-5 w-5" />
+                               </button>
+                           </div>
+
+                           <div className="space-y-4">
+                               <div>
+                                   <label className="block text-sm font-medium text-gray-300 mb-2">
+                                       Nom de l'exercice *
+                                   </label>
+                                   <input
+                                       type="text"
+                                       value={editingExercise ? editingExerciseName : newExerciseName}
+                                       onChange={(e) => editingExercise ? setEditingExerciseName(e.target.value) : setNewExerciseName(e.target.value)}
+                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       placeholder="Ex: Développé couché"
+                                       autoFocus
+                                   />
+                               </div>
+
+                               {/* Notes field */}
+                               <div>
+                                   <label className="block text-sm font-medium text-gray-300 mb-2">
+                                       Notes
+                                   </label>
+                                   <textarea
+                                       value={newExerciseNotes}
+                                       onChange={(e) => setNewExerciseNotes(e.target.value)}
+                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       placeholder="Ajoutez des notes sur la technique, les sensations, etc."
+                                       rows="3"
+                                   ></textarea>
+                               </div>
+
+                               {/* Jour - Masqué en mode édition */}
+                               {!editingExercise && (
+                                   <div>
+                                       <label className="block text-sm font-medium text-gray-300 mb-2">
+                                           Jour d'entraînement *
+                                       </label>
+                                       <select
+                                           value={selectedDayForAdd}
+                                           onChange={(e) => setSelectedDayForAdd(e.target.value)}
+                                           className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       >
+                                           <option value="">Sélectionner un jour</option>
+                                           {(workouts?.dayOrder || []).map(day => (
+                                               <option key={day} value={day}>{day}</option>
+                                           ))}
+                                       </select>
+                                   </div>
+                               )}
+
+                               {/* Catégorie - Masqué en mode édition */}
+                               {!editingExercise && (
+                                   <div>
+                                       <label className="block text-sm font-medium text-gray-300 mb-2">
+                                           Catégorie *
+                                       </label>
+                                       <select
+                                           value={selectedCategoryForAdd}
+                                           onChange={(e) => setSelectedCategoryForAdd(e.target.value)}
+                                           className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       >
+                                           <option value="">Sélectionner une catégorie</option>
+                                           {['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS'].map(category => (
+                                               <option key={category} value={category}>{category}</option>
+                                           ))}
+                                       </select>
+                                   </div>
+                               )}
+
+                               {/* Poids, Répétitions, Séries - Masqués en mode édition pour l'ajout d'exercice complet*/}
+                               {!editingExercise && (
+                                   <>
+                                       <div className="grid grid-cols-2 gap-4">
+                                           <div>
+                                               <label className="block text-sm font-medium text-gray-300 mb-2">
+                                                   Poids (kg)
+                                               </label>
+                                               <input
+                                                   type="number"
+                                                   value={newWeight}
+                                                   onChange={(e) => setNewWeight(e.target.value)}
+                                                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                   placeholder="10"
+                                                   step="0.5"
+                                                   min="0"
+                                               />
+                                           </div>
+                                           <div>
+                                               <label className="block text-sm font-medium text-gray-300 mb-2">
+                                                   Répétitions
+                                               </label>
+                                               <input
+                                                   type="number"
+                                                   value={newReps}
+                                                   onChange={(e) => setNewReps(e.target.value)}
+                                                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                   placeholder="12"
+                                                   min="0"
+                                               />
+                                           </div>
+                                       </div>
+
+                                       <div>
+                                           <label className="block text-sm font-medium text-gray-300 mb-2">
+                                               Nombre de séries
+                                           </label>
+                                           <input
+                                               type="number"
+                                               value={newSets}
+                                               onChange={(e) => setNewSets(e.target.value)}
+                                               className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                               placeholder="3"
+                                               min="1"
+                                               max="10"
+                                           />
+                                       </div>
+
+                                       <div className="text-sm text-gray-400 bg-gray-700/50 p-3 rounded-lg">
+                                           <p className="font-medium mb-1">Aperçu:</p>
+                                           <p>{newSets || '3'} série(s) de {newWeight || '?'}kg × {newReps || '?'} reps</p>
+                                       </div>
+                                   </>
+                               )}
+
+                               {editingExercise && personalBests[editingExercise.exerciseId] && (
+                                   <div className="text-sm text-gray-400 bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg">
+                                       <p className="font-medium mb-1 text-blue-400">🏆 Record personnel:</p>
+                                       <p>Poids max: {personalBests[editingExercise.exerciseId].maxWeight}kg</p>
+                                       <p>Reps max: {personalBests[editingExercise.exerciseId].maxReps}</p>
+                                       <p>Volume total: {Math.round(personalBests[editingExercise.exerciseId].totalVolume)}kg</p>
+                                   </div>
+                               )}
+                           </div>
+
+                           <div className="flex gap-3 mt-6">
+                               <button
+                                   onClick={() => {
+                                       setShowAddExerciseModal(false);
+                                       setEditingExercise(null);
+                                       setNewExerciseNotes(''); // Clear notes on cancel
+                                   }}
+                                   className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                               >
+                                   Annuler
+                               </button>
+                               <button
+                                   onClick={editingExercise ? handleSaveEdit : handleAddExercise}
+                                   disabled={!(editingExercise ? editingExerciseName.trim() : (newExerciseName.trim() && selectedDayForAdd && selectedCategoryForAdd)) || isAddingExercise || isSavingExercise}
+                                   className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                       (isAddingExercise || isSavingExercise)
+                                           ? 'bg-blue-500/50 text-white cursor-wait'
+                                           : 'bg-blue-500 text-white hover:bg-blue-600'
+                                   } disabled:opacity-50 disabled:cursor-not-allowed`}
+                               >
+                                   {editingExercise ? (isSavingExercise ? 'Sauvegarde...' : 'Sauvegarder') : (isAddingExercise ? 'Ajout...' : 'Ajouter')}
+                               </button>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           )}
+
+           {/* Modale de paramètres et export/import */}
+           {showSettingsModal && (
+               <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                       <div className="p-6">
+                           <div className="flex items-center justify-between mb-6">
+                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                   <Settings className="h-5 w-5 text-blue-400" />
+                                   Paramètres
+                               </h3>
+                               <button
+                                   onClick={() => setShowSettingsModal(false)}
+                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                               >
+                                   <XCircle className="h-5 w-5" />
+                               </button>
+                           </div>
+
+                           <div className="space-y-6">
+                               {/* Thème */}
+                               <div>
+                                   <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                                       {isDarkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+                                       Apparence
+                                   </h4>
+                                   <button
+                                       onClick={() => setIsDarkMode(!isDarkMode)}
+                                       className={`w-full p-3 rounded-lg border transition-all ${
+                                           isDarkMode 
+                                               ? 'bg-gray-700 border-gray-600 hover:bg-gray-600' 
+                                               : 'bg-gray-100 border-gray-300 hover:bg-gray-200 text-gray-900'
+                                       }`}
+                                   >
+                                       Basculer vers le thème {isDarkMode ? 'clair' : 'sombre'}
+                                   </button>
+                               </div>
+
+                               {/* Export/Import */}
+                               <div>
+                                   <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                                       <Share className="h-5 w-5" />
+                                       Données
+                                   </h4>
+                                   <div className="space-y-3">
+                                       <button
+                                           onClick={exportData}
+                                           className="w-full p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all flex items-center justify-center gap-2"
+                                       >
+                                           <Download className="h-4 w-4" />
+                                           Exporter mes données
+                                       </button>
+                                       
+                                       <label className="w-full p-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all flex items-center justify-center gap-2 cursor-pointer">
+                                           <Upload className="h-4 w-4" />
+                                           Importer des données
+                                           <input
+                                               type="file"
+                                               accept=".json"
+                                               onChange={importData}
+                                               className="hidden"
+                                           />
+                                       </label>
+                                   </div>
+                               </div>
+
+                               {/* Raccourcis clavier */}
+                               <div>
+                                   <h4 className="text-lg font-semibold text-white mb-3">
+                                       ⌨️ Raccourcis clavier
+                                   </h4>
+                                   <div className="text-sm text-gray-400 space-y-2">
+                                       <div className="flex justify-between">
+                                           <span>Annuler:</span>
+                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Ctrl+Z</kbd>
+                                       </div>
+                                       <div className="flex justify-between">
+                                           <span>Rétablir:</span>
+                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Ctrl+Shift+Z</kbd>
+                                       </div>
+                                       <div className="flex justify-between">
+                                           <span>Sauvegarder:</span>
+                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Ctrl+S</kbd>
+                                       </div>
+                                       <div className="flex justify-between">
+                                           <span>Exporter:</span>
+                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Ctrl+E</kbd>
+                                       </div>
+                                       <div className="flex justify-between">
+                                           <span>Fermer modales:</span>
+                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Échap</kbd>
+                                       </div>
+                                       <div className="flex justify-between">
+                                           <span>Play/Pause minuteur:</span>
+                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Espace</kbd>
+                                       </div>
+                                   </div>
+                               </div>
+
+                               {/* Informations */}
+                               <div>
+                                   <h4 className="text-lg font-semibold text-white mb-3">
+                                       ℹ️ Informations
+                                   </h4>
+                                   <div className="text-sm text-gray-400 space-y-2">
+                                       <p>Version: 2.0 Pro</p>
+                                       <p>Dernière sync: {lastSaveTime ? formatDate(lastSaveTime) : 'Jamais'}</p>
+                                       <p>Utilisateur: {userId?.substring(0, 8)}...</p>
+                                       <p>Notifications: {Notification?.permission || 'Non supportées'}</p>
+                                   </div>
+                               </div>
+                           </div>
+
+                           <div className="mt-6">
+                               <button
+                                   onClick={() => setShowSettingsModal(false)}
+                                   className="w-full px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                               >
+                                   Fermer
+                               </button>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           )}
+
+           {/* Modale d'analyse IA */}
+           {progressionAnalysisContent && (
+               <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                       <div className="p-6">
+                           <div className="flex items-center justify-between mb-6">
+                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                   <Sparkles className="h-5 w-5 text-purple-400" />
+                                   Analyse IA de progression
+                               </h3>
+                               <button
+                                   onClick={() => setProgressionAnalysisContent('')}
+                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                               >
+                                   <XCircle className="h-5 w-5" />
+                               </button>
+                           </div>
+
+                           <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-lg p-4 mb-4">
+                               <div className="text-sm text-white whitespace-pre-wrap leading-relaxed">
+                                   {progressionAnalysisContent}
+                               </div>
+                           </div>
+
+                           <div className="text-xs text-gray-400 mb-4">
+                               💡 Cette analyse est générée par IA et doit être considérée comme un conseil général. 
+                               Consultez un professionnel pour un programme personnalisé.
+                           </div>
+
+                           <button
+                               onClick={() => setProgressionAnalysisContent('')}
+                               className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all"
+                           >
+                               Fermer l'analyse
+                           </button>
+                       </div>
+                   </div>
+               </div>
+           )}
+
+            {/* Modale de graphique de progression */}
+            {showProgressionGraph && exerciseForAnalysis && (
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
                         <div className="p-6">
-                            {/* Poignée pour glisser */}
-                            <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
-                            
                             <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">{editingExercise ? 'Modifier l\'exercice' : 'Nouvel exercice'}</h3>
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <LineChartIcon className="h-5 w-5 text-blue-400" />
+                                    Progression de {exerciseForAnalysis.name}
+                                </h3>
                                 <button
-                                    onClick={() => {
-                                        setShowAddExerciseModal(false);
-                                        setEditingExercise(null);
-                                    }}
-                                    className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
+                                    onClick={() => setShowProgressionGraph(false)}
+                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
                                 >
                                     <XCircle className="h-5 w-5" />
                                 </button>
                             </div>
 
-                            <div className="space-y-4">
-                                {/* Nom de l'exercice */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Nom de l'exercice *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editingExercise ? editingExerciseName : newExerciseName}
-                                        onChange={(e) => editingExercise ? setEditingExerciseName(e.target.value) : setNewExerciseName(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                        placeholder="Ex: Développé couché"
-                                        autoFocus
-                                    />
-                                </div>
+                            <div className="bg-gray-700/50 rounded-lg p-4 mb-4 h-80">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart
+                                        data={
+                                            historicalData
+                                                .filter(session =>
+                                                    Object.values(session.workoutData?.days || {}).flatMap(day =>
+                                                        Object.values(day.categories || {}).flatMap(exercises =>
+                                                            exercises.filter(ex => ex.id === exerciseForAnalysis.id && !ex.isDeleted)
+                                                        )
+                                                    ).length > 0
+                                                )
+                                                .map(session => {
+                                                    const relevantExercise = Object.values(session.workoutData?.days || {})
+                                                        .flatMap(day => Object.values(day.categories || {}).flatMap(exercises => exercises))
+                                                        .find(ex => ex?.id === exerciseForAnalysis.id && !ex.isDeleted);
+                                                    
+                                                    // Calculate max weight, reps, and volume for the session for this exercise
+                                                    let sessionMaxWeight = 0;
+                                                    let sessionMaxReps = 0;
+                                                    let sessionMaxVolume = 0;
 
-                                {/* Jour - Masqué en mode édition si le jour est déjà sélectionné */}
-                                {!editingExercise && (
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                                            Jour d'entraînement *
-                                        </label>
-                                        <select
-                                            value={selectedDayForAdd}
-                                            onChange={(e) => setSelectedDayForAdd(e.target.value)}
-                                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                        >
-                                            <option value="">Sélectionner un jour</option>
-                                            {(workouts?.dayOrder || []).map(day => (
-                                                <option key={day} value={day}>{day}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
+                                                    if (relevantExercise && Array.isArray(relevantExercise.series)) {
+                                                        relevantExercise.series.forEach(s => {
+                                                            const weight = parseFloat(s.weight) || 0;
+                                                            const reps = parseInt(s.reps) || 0;
+                                                            sessionMaxWeight = Math.max(sessionMaxWeight, weight);
+                                                            sessionMaxReps = Math.max(sessionMaxReps, reps);
+                                                            sessionMaxVolume = Math.max(sessionMaxVolume, weight * reps);
+                                                        });
+                                                    }
 
-                                {/* Catégorie - Masqué en mode édition si la catégorie est déjà sélectionnée */}
-                                {!editingExercise && (
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                                            Catégorie *
-                                        </label>
-                                        <select
-                                            value={selectedCategoryForAdd}
-                                            onChange={(e) => setSelectedCategoryForAdd(e.target.value)}
-                                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                        >
-                                            <option value="">Sélectionner une catégorie</option>
-                                            {['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS'].map(category => (
-                                                <option key={category} value={category}>{category}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
-
-                                {/* Poids et Répétitions - Masqués en mode édition */}
-                                {!editingExercise && (
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-300 mb-2">
-                                                Poids (kg)
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={newWeight}
-                                                onChange={(e) => setNewWeight(e.target.value)}
-                                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                                placeholder="60"
-                                                step="0.5"
-                                                min="0"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-300 mb-2">
-                                                Répétitions
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={newReps}
-                                                onChange={(e) => setNewReps(e.target.value)}
-                                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                                placeholder="10"
-                                                min="0"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Séries - Masqué en mode édition */}
-                                {!editingExercise && (
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                                            Nombre de séries
-                                        </label>
-                                        <input
-                                            type="number"
-                                            value={newSets}
-                                            onChange={(e) => setNewSets(e.target.value)}
-                                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                            placeholder="3"
-                                            min="1"
-                                            max="10"
+                                                    return {
+                                                        date: formatDate(session.timestamp),
+                                                        maxWeight: sessionMaxWeight,
+                                                        maxReps: sessionMaxReps,
+                                                        maxVolume: sessionMaxVolume,
+                                                        // Include all series data for detailed analysis if needed
+                                                        series: relevantExercise?.series || []
+                                                    };
+                                                })
+                                                .sort((a, b) => new Date(a.date) - new Date(b.date)) // Sort by date for chronological graph
+                                        }
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#4a5568" />
+                                        <XAxis dataKey="date" stroke="#cbd5e0" tickFormatter={(tick) => new Date(tick).toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })} />
+                                        <YAxis yAxisId="left" stroke="#cbd5e0" />
+                                        <YAxis yAxisId="right" orientation="right" stroke="#cbd5e0" />
+                                        <Tooltip 
+                                            contentStyle={{ backgroundColor: '#1f2937', borderColor: '#4a5568', borderRadius: '8px' }} 
+                                            labelStyle={{ color: '#cbd5e0' }}
+                                            formatter={(value, name, props) => {
+                                                if (name === 'maxWeight') return [`${value} kg`, 'Poids Max'];
+                                                if (name === 'maxReps') return [`${value} reps`, 'Reps Max'];
+                                                if (name === 'maxVolume') return [`${value} kg`, 'Volume Max'];
+                                                return [value, name];
+                                            }}
                                         />
-                                    </div>
-                                )}
-
-                                {/* Aperçu - Ajusté pour l'édition */}
-                                {!editingExercise ? (
-                                    <div className="text-sm text-gray-400 bg-gray-700/50 p-4 rounded-xl">
-                                        <p className="font-medium mb-1">Aperçu:</p>
-                                        <p>{newSets || '3'} série(s) de {newWeight || '?'}kg × {newReps || '?'} reps</p>
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-gray-400 bg-gray-700/50 p-4 rounded-xl">
-                                        <p className="font-medium mb-1">Aperçu du nom modifié:</p>
-                                        <p>{editingExerciseName || 'Nom actuel'}</p>
-                                    </div>
-                                )}
+                                        <Legend wrapperStyle={{ color: '#cbd5e0', paddingTop: '10px' }} />
+                                        <Line yAxisId="left" type="monotone" dataKey="maxWeight" stroke="#8884d8" name="Poids Max (kg)" />
+                                        <Line yAxisId="right" type="monotone" dataKey="maxReps" stroke="#82ca9d" name="Reps Max" />
+                                        <Line yAxisId="right" type="monotone" dataKey="maxVolume" stroke="#ffc658" name="Volume Max (kg)" />
+                                    </LineChart>
+                                </ResponsiveContainer>
                             </div>
 
-                            {/* Boutons */}
-                            <div className="flex gap-3 mt-6">
-                                <button
-                                    onClick={() => {
-                                        setShowAddExerciseModal(false);
-                                        setEditingExercise(null);
-                                    }}
-                                    className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95 font-medium"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={editingExercise ? handleSaveEdit : handleSaveNewExercise}
-                                    disabled={!(editingExercise ? editingExerciseName.trim() : (newExerciseName.trim() && selectedDayForAdd && selectedCategoryForAdd))}
-                                    className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 font-medium"
-                                >
-                                    {editingExercise ? 'Sauvegarder' : 'Ajouter'}
-                                </button>
+                            <div className="text-xs text-gray-400 mb-4">
+                                💡 Ce graphique représente votre progression en poids, répétitions et volume maximum pour cet exercice au fil du temps.
                             </div>
+
+                            <button
+                                onClick={() => setShowProgressionGraph(false)}
+                                className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all"
+                            >
+                                Fermer le graphique
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
-
-            {/* Modal des paramètres */}
-            {showSettingsModal && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"> {/* Changed items-end to items-center */}
-                    <div className="bg-gray-800 rounded-t-3xl shadow-2xl w-full max-w-md border-t border-gray-700 animate-slide-up max-h-[90vh] overflow-y-auto">
-                        <div className="p-6">
-                            <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
-                            
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white">Paramètres</h3>
-                                <button
-                                    onClick={() => setShowSettingsModal(false)}
-                                    className="p-2 rounded-xl bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors active:scale-95"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            <div className="space-y-6">
-                                {/* Info App */}
-                                <div>
-                                    <h4 className="text-lg font-semibold text-white mb-3">ℹ️ Application</h4>
-                                    <div className="text-sm text-gray-400 space-y-2 bg-gray-700/50 rounded-xl p-4">
-                                        <p><strong>Version:</strong> 2.0 Mobile</p>
-                                        <p><strong>Statut:</strong> Démo locale</p>
-                                        <p><strong>Exercices:</strong> {Object.values(workouts.days || {}).reduce((total, day) => {
-                                            return total + Object.values(day.categories || {}).reduce((dayTotal, exercises) => {
-                                                return dayTotal + (Array.isArray(exercises) ? exercises.filter(ex => !ex.isDeleted).length : 0);
-                                            }, 0);
-                                        }, 0)}</p>
-                                    </div>
-                                </div>
-
-                                {/* Fonctionnalités */}
-                                <div>
-                                    <h4 className="text-lg font-semibold text-white mb-3">🚀 Fonctionnalités</h4>
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-xl">
-                                            <span className="text-gray-300">Interface tactile</span>
-                                            <span className="text-green-400">✓</span>
-                                        </div>
-                                        <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-xl">
-                                            <span className="text-gray-300">Minuteur de repos</span>
-                                            <span className="text-green-400">✓</span>
-                                        </div>
-                                        <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-xl">
-                                            <span className="text-gray-300">Statistiques</span>
-                                            <span className="text-green-400">✓</span>
-                                        </div>
-                                        <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-xl">
-                                            <span className="text-gray-300">Optimisé mobile</span>
-                                            <span className="text-green-400">✓</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Actions */}
-                                <div>
-                                    <h4 className="text-lg font-semibold text-white mb-3">⚡ Actions</h4>
-                                    <div className="space-y-3">
-                                        <button
-                                            onClick={() => {
-                                                setWorkouts(baseInitialData);
-                                                setToast({ message: "Données réinitialisées", type: 'success' });
-                                                setShowSettingsModal(false);
-                                            }}
-                                            className="w-full p-3 bg-yellow-600 text-white rounded-xl hover:bg-yellow-700 transition-colors active:scale-95 font-medium"
-                                        >
-                                            Réinitialiser les données
-                                        </button>
-                                        
-                                        <button
-                                            onClick={() => {
-                                                const data = JSON.stringify(workouts, null, 2);
-                                                const blob = new Blob([data], { type: 'application/json' });
-                                                const url = URL.createObjectURL(blob);
-                                                const a = document.createElement('a');
-                                                a.href = url;
-                                                a.download = 'carnet-muscu-mobile.json';
-                                                a.click();
-                                                URL.revokeObjectURL(url);
-                                                setToast({ message: "Données exportées", type: 'success' });
-                                            }}
-                                            className="w-full p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors active:scale-95 font-medium"
-                                        >
-                                            Exporter les données
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Conseils mobile */}
-                                <div>
-                                    <h4 className="text-lg font-semibold text-white mb-3">📱 Conseils mobile</h4>
-                                    <div className="text-sm text-gray-400 space-y-2 bg-gray-700/50 rounded-xl p-4">
-                                        <p>• Ajoutez l'app à votre écran d'accueil</p>
-                                        <p>• Utilisez les gestes tactiles intuitifs</p>
-                                        <p>• Le minuteur vibre à la fin du repos</p>
-                                        <p>• Données sauvées localement</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-6">
-                                <button
-                                    onClick={() => setShowSettingsModal(false)}
-                                    className="w-full px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95 font-medium"
-                                >
-                                    Fermer
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+       </div>
+   );
 };
 
-export default WorkoutApp;
+export default ImprovedWorkoutApp;
