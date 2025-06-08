@@ -9,7 +9,7 @@ import {
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
     Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
 } from 'lucide-react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import * as GenerativeAIModule from '@google/generative-ai';
 
 // Import des composants
 import Toast from './Toast.jsx';
@@ -28,11 +28,6 @@ const firebaseConfig = {
     messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "demo-sender",
     appId: import.meta.env?.VITE_FIREBASE_APP_ID || "demo-app",
 };
-
-// Initialisation
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
 
 // Configuration Gemini AI
 const genAI = new GoogleGenerativeAI(import.meta.env?.VITE_GEMINI_API_KEY || "demo-key");
