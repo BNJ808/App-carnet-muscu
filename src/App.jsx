@@ -8,7 +8,8 @@ import {
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
     Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
 } from 'lucide-react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai'; // Import de l'API Google Generative AI
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'; // Import de recharts ici pour le graphique
 
 // Import des composants séparés. Veuillez vous assurer que ces fichiers (.jsx) sont tous dans le même répertoire que App.jsx
 import Toast from './Toast.jsx';
@@ -21,2052 +22,874 @@ import StatsView from './StatsView.jsx';
 // Configuration Firebase sécurisée
 // Utilisation de __firebase_config et __initial_auth_token fournis par l'environnement Canvas
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-    apiKey: "demo-key", // Fallback pour le développement local si non défini
-    authDomain: "demo-domain",
+    apiKey: "demo-key",
+    authDomain: "demo-project.firebaseapp.com",
     projectId: "demo-project",
-    storageBucket: "demo-bucket",
-    messagingSenderId: "demo-sender",
-    appId: "demo-app",
+    storageBucket: "demo-project.appspot.com",
+    messagingSenderId: "demo-sender-id",
+    appId: "demo-app-id",
 };
 
 // Initialisation Firebase
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
 const auth = getAuth(app);
+const db = getFirestore(app);
 
-// Configuration Gemini AI
-// L'API key est fournie par Canvas runtime si la chaîne est vide
-const genAI = new GoogleGenerativeAI(""); 
+// Initialisation de Google Generative AI
+const GEMINI_API_KEY = import.meta.env?.VITE_GEMINI_API_KEY;
+let us; // Déclaration de 'us' à un niveau de portée supérieur
+let geminiModel; // Déclaration du modèle Gemini
 
-// Constantes
-const MAX_UNDO_STATES = 20;
-const AUTO_SAVE_DELAY = 2000;
-const DEBOUNCE_DELAY = 300;
-
-// Utilitaires
-const generateUUID = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-};
-
-const formatDate = (timestamp) => {
-    if (!timestamp) return 'Date invalide';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return new Intl.DateTimeFormat('fr-FR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    }).format(date);
-};
-
-const getSeriesDisplay = (series) => {
-    if (!Array.isArray(series) || series.length === 0) return 'Aucune série';
-    return series.map(s => `${s.weight || '?'}kg × ${s.reps || '?'}`).join(' | ');
-};
-
-// Hook personnalisé pour le debouncing
-const useDebounce = (value, delay) => {
-    const [debouncedValue, setDebouncedValue] = useState(value);
-    
-    useEffect(() => {
-        const handler = setTimeout(() => setDebouncedValue(value), delay);
-        return () => clearTimeout(handler);
-    }, [value, delay]);
-    
-    return debouncedValue;
-};
-
-// Hook pour le localStorage avec fallback
-const useLocalStorage = (key, initialValue) => {
-    const [storedValue, setStoredValue] = useState(() => {
-        try {
-            const item = localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.warn(`Erreur localStorage ${key}:`, error);
-            return initialValue;
-        }
-    });
-
-    const setValue = useCallback((value) => {
-        try {
-            setStoredValue(value);
-            localStorage.setItem(key, JSON.stringify(value));
-        } catch (error) {
-            console.warn(`Erreur écriture localStorage ${key}:`, error);
-        }
-    }, [key]);
-
-    return [storedValue, setValue];
-};
-
-// Hook pour les notifications natives
-const useNotifications = () => {
-    const [permission, setPermission] = useState(Notification?.permission || 'default');
-
-    const requestPermission = useCallback(async () => {
-        if ('Notification' in window) {
-            const result = await Notification.requestPermission();
-            setPermission(result);
-            return result === 'granted';
-        }
-        return false;
-    }, []);
-
-    const showNotification = useCallback((title, options = {}) => {
-        if (permission === 'granted') {
-            return new Notification(title, {
-                icon: '/favicon.ico',
-                badge: '/favicon.ico',
-                ...options
-            });
-        }
-        return null;
-    }, [permission]);
-
-    return { permission, requestPermission, showNotification };
-};
-
-// Stub pour Tone.js si non disponible
-if (typeof window.Tone === 'undefined') {
-    console.warn("Tone.js non trouvé. Fonctionnalités audio désactivées.");
-    window.Tone = {
-        Synth: () => ({
-            toDestination: () => ({}),
-            triggerAttackRelease: () => {},
-            dispose: () => {}
-        }),
-        context: {
-            state: 'suspended',
-            resume: () => Promise.resolve()
-        },
-        start: () => Promise.resolve(),
-        now: () => 0
-    };
+if (GEMINI_API_KEY) {
+    try {
+        us = new GoogleGenerativeAI(GEMINI_API_KEY);
+        geminiModel = us.getGenerativeModel({ model: "gemini-pro" });
+    } catch (error) {
+        console.error("Erreur lors de l'initialisation de Google Generative AI :", error);
+        // Gérer l'erreur, par exemple en désactivant les fonctionnalités IA
+        us = null;
+        geminiModel = null;
+    }
+} else {
+    console.warn("Clé API Gemini non définie. Les fonctionnalités IA seront désactivées.");
+    us = null;
+    geminiModel = null;
 }
 
-// Données de base optimisées
-const baseInitialData = {
-    days: {
-        'Lundi + Jeudi': {
-            categories: {
-                PECS: [
-                    { id: generateUUID(), name: 'D.Couché léger', series: [{ weight: '10', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() },
-                    { id: generateUUID(), name: 'D.Couché lourd', series: [{ weight: '14', reps: '8' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
-                ],
-                EPAULES: [
-                    { id: generateUUID(), name: 'D.Epaules léger', series: [{ weight: '8', reps: '15' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
-                ],
-                TRICEPS: [
-                    { id: generateUUID(), name: 'Haltere Front léger', series: [{ weight: '4', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
-                ]
-            },
-            categoryOrder: ['PECS', 'EPAULES', 'TRICEPS']
-        },
-        'Mardi + Vendredi': {
-            categories: {
-                DOS: [
-                    { id: generateUUID(), name: 'R. Haltères Léger', series: [{ weight: '10', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
-                ],
-                BICEPS: [
-                    { id: generateUUID(), name: 'Curl Léger', series: [{ weight: '8', reps: '15' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
-                ]
-            },
-            categoryOrder: ['DOS', 'BICEPS']
-        }
-    },
-    dayOrder: ['Lundi + Jeudi', 'Mardi + Vendredi']
-};
-
-// Composant principal amélioré
 const ImprovedWorkoutApp = () => {
-    // États de base optimisés
-    const [isDarkMode, setIsDarkMode] = useLocalStorage('theme', true);
-    const [isAdvancedMode, setIsAdvancedMode] = useLocalStorage('advanced-mode', false);
-    const [currentView, setCurrentView] = useLocalStorage('current-view', 'workout');
-    const [isCompactView, setIsCompactView] = useLocalStorage('compact-view', false);
-    
-    // États des données
-    const [loading, setLoading] = useState(true);
-    const [userId, setUserId] = useState(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
-    const [workouts, setWorkouts] = useState(baseInitialData); // Initialisation avec données de base
+    const [user, setUser] = useState(null);
+    const [workouts, setWorkouts] = useState({ days: {}, dayOrder: [] });
     const [historicalData, setHistoricalData] = useState([]);
     const [personalBests, setPersonalBests] = useState({});
-    const [globalNotes, setGlobalNotes] = useState(''); // État pour les notes globales
-    
-    // États de l'interface
+    const [currentView, setCurrentView] = useState('workout'); // 'workout', 'timer', 'history', 'stats'
     const [toast, setToast] = useState(null);
-    const [selectedDayFilter, setSelectedDayFilter] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sortBy, setSortBy] = useState('date');
-    
-    // États des modales
-    const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); 
-    const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [showProgressionGraph, setShowProgressionGraph] = useState(false); // État pour le graphique
-    
-    // États d'édition
-    const [editingExercise, setEditingExercise] = useState(null);
-    const [editingExerciseName, setEditingExerciseName] = useState('');
-    const [newWeight, setNewWeight] = useState('');
-    const [newSets, setNewSets] = useState('3');
-    const [newReps, setNewReps] = useState('');
-    const [selectedDayForAdd, setSelectedDayForAdd] = useState('');
-    const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState('');
-    const [newExerciseName, setNewExerciseName] = useState('');
-    const [newExerciseNotes, setNewExerciseNotes] = useState(''); // État pour les notes d'exercice
-    
-    // États du minuteur
-    const [timerSeconds, setTimerSeconds] = useState(90);
+    const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+    const [isCompactView, setIsCompactView] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [globalNotes, setGlobalNotes] = useState('');
+    const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false); // État pour le chargement de l'analyse IA
+    const [showProgressionGraph, setShowProgressionGraph] = useState(false);
+    const [progressionGraphData, setProgressionGraphData] = useState([]);
+    const [progressionGraphExerciseName, setProgressionGraphExerciseName] = useState('');
+
+    // Timer States
+    const [timerSeconds, setTimerSeconds] = useState(0);
     const [timerIsRunning, setTimerIsRunning] = useState(false);
     const [timerIsFinished, setTimerIsFinished] = useState(false);
-    const [restTimeInput, setRestTimeInput] = useState('90');
-    
-    // États pour l'analyse IA
-    const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
-    const [progressionAnalysisContent, setProgressionAnalysisContent] = useState('');
-    const [exerciseForAnalysis, setExerciseForAnalysis] = useState(null); // Pour stocker l'exercice à analyser ou grapher
-    const [globalAIAnalysisContent, setGlobalAIAnalysisContent] = useState(''); // Pour l'analyse IA globale
-    const [showGlobalAIAnalysisModal, setShowGlobalAIAnalysisModal] = useState(false); // Modale pour l'analyse IA globale
-    
-    // États pour l'historique Undo/Redo
-    const [undoStack, setUndoStack] = useState([]);
-    const [redoStack, setRedoStack] = useState([]);
-    
-    // États de performance
-    const [isSavingExercise, setIsSavingExercise] = useState(false);
-    const [isAddingExercise, setIsAddingExercise] = useState(false);
-    const [isDeletingExercise, setIsDeletingExercise] = useState(false);
-    const [lastSaveTime, setLastSaveTime] = useState(null);
-    
-    // Refs
-    const timerRef = useRef(null);
-    const saveTimeoutRef = useRef(null);
-    
-    // Hooks personnalisés
-    const { showNotification, requestPermission } = useNotifications();
-    const debouncedSearchTerm = useDebounce(searchTerm, DEBOUNCE_DELAY);
-    
-    // Couleurs des jours améliorées
-    const getDayButtonColors = useCallback((index, isSelected) => {
-        const colors = [
-            { default: 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700', selected: 'bg-gradient-to-r from-blue-700 to-blue-800 ring-2 ring-blue-400' },
-            { default: 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700', selected: 'bg-gradient-to-r from-green-700 to-green-800 ring-2 ring-green-400' },
-            { default: 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700', selected: 'bg-gradient-to-r from-purple-700 to-purple-800 ring-2 ring-purple-400' },
-            { default: 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700', selected: 'bg-gradient-to-r from-red-700 to-red-800 ring-2 ring-red-400' },
-            { default: 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700', selected: 'bg-gradient-to-r from-yellow-700 to-yellow-800 ring-2 ring-yellow-400' },
-        ];
-        const colorSet = colors[index % colors.length];
-        return isSelected ? colorSet.selected : colorSet.default;
-    }, []);
-    
-    // Effets d'initialisation optimisés
-    useEffect(() => {
-        const initAuth = async () => {
-            try {
-                if (typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+    const timerIntervalRef = useRef(null);
 
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        setUserId(user.uid);
-                        setIsAuthReady(true);
+    const showToast = useCallback((message, type = 'info', duration = 3000, action = null) => {
+        setToast({ message, type, duration, action });
+    }, []);
+
+    const hideToast = useCallback(() => {
+        setToast(null);
+    }, []);
+
+    const toggleAdvancedMode = () => {
+        setIsAdvancedMode(prev => {
+            const newState = !prev;
+            localStorage.setItem('isAdvancedMode', JSON.stringify(newState));
+            showToast(`Mode avancé ${newState ? 'activé' : 'désactivé'}`, 'info');
+            return newState;
+        });
+    };
+
+    const toggleCompactView = () => {
+        setIsCompactView(prev => {
+            const newState = !prev;
+            localStorage.setItem('isCompactView', JSON.stringify(newState));
+            showToast(`Vue compacte ${newState ? 'activée' : 'désactivée'}`, 'info');
+            return newState;
+        });
+    };
+
+    useEffect(() => {
+        const storedAdvancedMode = localStorage.getItem('isAdvancedMode');
+        if (storedAdvancedMode !== null) {
+            setIsAdvancedMode(JSON.parse(storedAdvancedMode));
+        }
+        const storedCompactView = localStorage.getItem('isCompactView');
+        if (storedCompactView !== null) {
+            setIsCompactView(JSON.parse(storedCompactView));
+        }
+    }, []);
+
+    // Firebase Auth et Firestore listeners
+    useEffect(() => {
+        const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+            if (currentUser) {
+                setUser(currentUser);
+                setIsLoading(true); // Commencer le chargement des données
+                const userDocRef = doc(db, 'users', currentUser.uid);
+
+                // Listener pour les données d'entraînement
+                const unsubscribeWorkouts = onSnapshot(userDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        setWorkouts(data.workouts || { days: {}, dayOrder: [] });
+                        setPersonalBests(data.personalBests || {});
+                        setGlobalNotes(data.globalNotes || '');
+                        setHistoricalData(data.historicalData || []); // Assurez-vous que historicalData est toujours un tableau
                     } else {
-                        setLoading(false);
-                        setToast({ 
-                            message: "Erreur d'authentification", 
-                            type: 'error',
-                            action: { label: 'Réessayer', onClick: () => window.location.reload() }
-                        });
+                        // Document n'existe pas, initialiser avec des données vides
+                        setWorkouts({ days: {}, dayOrder: [] });
+                        setPersonalBests({});
+                        setGlobalNotes('');
+                        setHistoricalData([]);
+                        // Créer le document utilisateur si inexistant
+                        setDoc(userDocRef, {
+                            workouts: { days: {}, dayOrder: [] },
+                            personalBests: {},
+                            globalNotes: '',
+                            historicalData: [],
+                            createdAt: serverTimestamp()
+                        }, { merge: true }).catch(e => console.error("Error creating user doc:", e));
                     }
+                    setIsLoading(false);
+                }, (error) => {
+                    console.error("Error fetching user data:", error);
+                    showToast("Erreur de chargement des données.", "error");
+                    setIsLoading(false);
                 });
-            } catch (error) {
-                console.error("Erreur d'authentification:", error);
-                setLoading(false);
-                setToast({ message: "Erreur de connexion", type: 'error' });
-            }
-        };
-        initAuth();
-    }, []);
-    
-    // Effet pour charger les données avec cache
-    useEffect(() => {
-        if (!userId || !isAuthReady) return;
 
-        const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
-        const unsubscribe = onSnapshot(workoutDocRef, (doc) => {
-            try {
-                if (doc.exists()) {
-                    const data = doc.data();
-                    const sanitizedWorkouts = sanitizeWorkoutData(data.workouts || baseInitialData);
-                    setWorkouts(sanitizedWorkouts);
-                    setGlobalNotes(data.globalNotes || ''); 
-                } else {
-                    console.log("Aucune donnée trouvée, initialisation avec données de base");
-                    setWorkouts(baseInitialData);
-                    setGlobalNotes('');
+                return () => unsubscribeWorkouts();
+            } else {
+                // Tenter de se connecter anonymement si non connecté
+                try {
+                    // Utiliser signInWithCustomToken si disponible, sinon signInAnonymously
+                    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("Erreur de connexion anonyme ou par token:", error);
+                    showToast("Erreur de connexion. Réessayez.", "error");
+                    setIsLoading(false);
                 }
-            } catch (error) {
-                console.error("Erreur traitement données:", error);
-                setToast({ message: "Erreur lors du chargement des données", type: 'error' });
-                setWorkouts(baseInitialData);
-            } finally {
-                setLoading(false);
             }
-        }, (error) => {
-            console.error("Erreur Firestore:", error);
-            setToast({ message: `Erreur Firestore: ${error.message}`, type: 'error' });
-            setLoading(false);
-            setWorkouts(baseInitialData);
         });
 
-        loadHistoricalData();
-        return () => unsubscribe();
-    }, [userId, isAuthReady, sanitizeWorkoutData, loadHistoricalData]); 
-
-    // Effet pour le minuteur avec optimisations
-    useEffect(() => {
-        if (timerIsRunning && timerSeconds > 0) {
-            timerRef.current = setTimeout(() => {
-                setTimerSeconds(prev => prev - 1);
-            }, 1000);
-        } else if (timerSeconds === 0 && timerIsRunning) {
-            setTimerIsRunning(false);
-            setTimerIsFinished(true);
-            
-            showNotification('Temps de repos terminé !', {
-                body: 'Il est temps de reprendre votre entraînement',
-                tag: 'workout-timer'
-            });
-            
-            if ('vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200, 100, 200]);
-            }
-        }
-        return () => clearTimeout(timerRef.current);
-    }, [timerSeconds, timerIsRunning, showNotification]);
-
-    // Effet pour sélection automatique du jour
-    useEffect(() => {
-        if (currentView === 'workout' && workouts?.dayOrder?.length > 0) {
-            if (!selectedDayFilter || !workouts.dayOrder.includes(selectedDayFilter)) {
-                setSelectedDayFilter(workouts.dayOrder[0]);
-            }
-        }
-    }, [currentView, workouts?.dayOrder, selectedDayFilter]);
-
-    // Fonctions utilitaires optimisées
-    const sanitizeWorkoutData = useCallback((data) => {
-        if (!data || typeof data !== 'object') return baseInitialData;
-        
-        const sanitizedDays = {};
-        const dayOrder = Array.isArray(data.dayOrder) ? data.dayOrder : Object.keys(data.days || {});
-        
-        if (data.days && typeof data.days === 'object') {
-            Object.entries(data.days).forEach(([dayKey, dayData]) => {
-                if (!dayData || typeof dayData !== 'object') return;
-                
-                const sanitizedCategories = {};
-                const categoryOrder = Array.isArray(dayData.categoryOrder) 
-                    ? dayData.categoryOrder 
-                    : Object.keys(dayData.categories || {});
-                
-                if (dayData.categories && typeof dayData.categories === 'object') { // Corrected: ensure dayData.categories is used here
-                    Object.entries(dayData.categories).forEach(([categoryKey, exercises]) => {
-                        if (!Array.isArray(exercises)) return;
-                        
-                        sanitizedCategories[categoryKey] = exercises.map(exercise => ({
-                            id: exercise.id || generateUUID(),
-                            name: exercise.name || 'Exercice sans nom',
-                            series: Array.isArray(exercise.series) 
-                                ? exercise.series.map(s => ({
-                                    weight: String(s.weight || ''),
-                                    reps: String(s.reps || ''),
-                                    completed: Boolean(s.completed) 
-                                }))
-                                : [{ weight: '', reps: '', completed: false }],
-                            isDeleted: Boolean(exercise.isDeleted),
-                            notes: String(exercise.notes || ''),
-                            createdAt: exercise.createdAt || new Date().toISOString()
-                        }));
-                    });
-                }
-                
-                sanitizedDays[dayKey] = {
-                    categories: sanitizedCategories,
-                    categoryOrder
-                };
-            });
-        }
-        
-        return { days: sanitizedDays, dayOrder };
+        return () => unsubscribeAuth();
     }, []);
 
-    const loadHistoricalData = useCallback(async () => {
-        if (!userId) return;
-        
+    // Fonction pour sauvegarder les données dans Firestore
+    const saveUserData = useCallback(async (dataToSave, successMessage = null, errorMessage = "Erreur de sauvegarde.") => {
+        if (!user) return;
+        const userDocRef = doc(db, 'users', user.uid);
         try {
-            const sessionsRef = collection(db, 'users', userId, 'sessions');
-            const q = query(sessionsRef, limit(100)); 
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const data = snapshot.docs.map(doc => {
-                    const docData = doc.data();
-                    let timestamp;
-                    
-                    if (docData.timestamp instanceof Timestamp) {
-                        timestamp = docData.timestamp.toDate();
-                    } else if (docData.timestamp && typeof docData.timestamp.seconds === 'number' && typeof docData.timestamp.nanoseconds === 'number') {
-                        timestamp = new Date(docData.timestamp.seconds * 1000 + docData.timestamp.nanoseconds / 1000000); // Corrected: ensure docData.timestamp.nanoseconds is used
-                    } else {
-                        timestamp = new Date(); 
-                    }
-                    
-                    return {
-                        id: doc.id,
-                        timestamp,
-                        workoutData: docData.workoutData
-                    };
-                }).filter(item => item.timestamp);
-                
-                const sortedData = data.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
-                setHistoricalData(sortedData);
-                calculatePersonalBests(sortedData);
-            });
-            
-            return unsubscribe;
+            await setDoc(userDocRef, dataToSave, { merge: true });
+            if (successMessage) {
+                showToast(successMessage, 'success');
+            }
         } catch (error) {
-            console.error("Erreur chargement historique:", error);
-            setToast({ message: "Erreur lors du chargement de l'historique", type: 'error' });
+            console.error("Erreur de sauvegarde:", error);
+            showToast(errorMessage, 'error');
         }
-    }, [userId, calculatePersonalBests]);
+    }, [user, showToast]);
 
-    const calculatePersonalBests = useCallback((data) => {
-        const bests = {};
-        
-        if (Array.isArray(data)) {
-            data.forEach(session => {
-                const workoutData = session.workoutData;
-                if (!workoutData?.days) return;
-                
-                Object.values(workoutData.days).forEach(day => {
-                    if (!day.categories) return;
-                    
-                    Object.values(day.categories).forEach(exercises => {
-                        if (!Array.isArray(exercises)) return;
-                        
-                        exercises.forEach(exercise => {
-                            if (!exercise.series || exercise.isDeleted) return;
-                            
-                            exercise.series.forEach(serie => {
-                                const weight = parseFloat(serie.weight) || 0;
-                                const reps = parseInt(serie.reps) || 0;
-                                const volume = weight * reps;
-                                
-                                if (weight === 0 && reps === 0) return;
-                                
-                                if (!bests[exercise.id]) { 
-                                    bests[exercise.id] = {
-                                        id: exercise.id, 
-                                        name: exercise.name, 
-                                        maxWeight: weight,
-                                        maxReps: reps,
-                                        maxVolume: volume,
-                                        totalVolume: volume,
-                                        sessions: 1,
-                                        lastPerformed: session.timestamp
-                                    };
-                                } else {
-                                    const best = bests[exercise.id];
-                                    best.maxWeight = Math.max(best.maxWeight, weight);
-                                    best.maxReps = Math.max(best.maxReps, reps);
-                                    best.maxVolume = Math.max(best.maxVolume, volume);
-                                    best.totalVolume += volume;
-                                    best.sessions++;
-                                    if (session.timestamp > best.lastPerformed) {
-                                        best.lastPerformed = session.timestamp;
-                                    }
-                                }
-                            });
+    // Fonctions de gestion des entraînements (jour, catégorie, exercice, série)
+    // --- Gestion des Jours ---
+    const handleAddDay = useCallback(async (dayName) => {
+        if (!dayName.trim() || Object.values(workouts.days).some(day => day.name.toLowerCase() === dayName.toLowerCase())) {
+            showToast("Nom de jour invalide ou déjà existant.", "warning");
+            return;
+        }
+
+        const newDayId = `day-${Date.now()}`;
+        const updatedWorkouts = {
+            ...workouts,
+            days: {
+                ...workouts.days,
+                [newDayId]: { id: newDayId, name: dayName, categories: {} }
+            },
+            dayOrder: [...workouts.dayOrder, newDayId]
+        };
+        setWorkouts(updatedWorkouts);
+        await saveUserData({ workouts: updatedWorkouts }, "Jour ajouté !");
+    }, [workouts, saveUserData, showToast]);
+
+    const handleEditDay = useCallback(async (dayId, newDayName) => {
+        if (!newDayName.trim()) {
+            showToast("Le nom du jour ne peut pas être vide.", "warning");
+            return;
+        }
+        const updatedWorkouts = { ...workouts };
+        if (updatedWorkouts.days[dayId]) {
+            updatedWorkouts.days[dayId].name = newDayName;
+            setWorkouts(updatedWorkouts);
+            await saveUserData({ workouts: updatedWorkouts }, "Jour modifié !");
+        }
+    }, [workouts, saveUserData, showToast]);
+
+    const handleDeleteDay = useCallback(async (dayId) => {
+        const updatedWorkouts = { ...workouts };
+        const dayToDelete = updatedWorkouts.days[dayId];
+        if (!dayToDelete) return;
+
+        // Collect all exercises from the day to mark them as deleted
+        const exercisesToDelete = [];
+        Object.values(dayToDelete.categories || {}).forEach(exercises => {
+            exercises.forEach(exercise => {
+                exercisesToDelete.push({ ...exercise, isDeleted: true, deletedAt: serverTimestamp() });
+            });
+        });
+
+        delete updatedWorkouts.days[dayId];
+        updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(id => id !== dayId);
+
+        // Update historicalData to mark exercises as deleted
+        const updatedHistoricalData = historicalData.map(session => ({
+            ...session,
+            exercises: session.exercises.map(ex => {
+                const foundDeleted = exercisesToDelete.find(delEx => delEx.id === ex.id);
+                return foundDeleted ? { ...ex, isDeleted: true, deletedAt: foundDeleted.deletedAt } : ex;
+            })
+        }));
+
+        setWorkouts(updatedWorkouts);
+        setHistoricalData(updatedHistoricalData);
+        await saveUserData({ workouts: updatedWorkouts, historicalData: updatedHistoricalData }, "Jour et exercices supprimés !");
+    }, [workouts, historicalData, saveUserData, showToast]);
+
+    // --- Gestion des Exercices ---
+    const handleAddExerciseClick = useCallback(async (dayId, categoryName, newExerciseName) => {
+        if (!newExerciseName.trim()) {
+            showToast("Le nom de l'exercice ne peut pas être vide.", "warning");
+            return;
+        }
+
+        const newExercise = {
+            id: `exercise-${Date.now()}`,
+            name: newExerciseName,
+            isCompleted: false, // L'exercice lui-même n'a pas de concept de complété
+            series: [],
+            notes: '',
+            isDeleted: false,
+            createdAt: serverTimestamp()
+        };
+
+        const updatedWorkouts = { ...workouts };
+        if (!updatedWorkouts.days[dayId].categories[categoryName]) {
+            updatedWorkouts.days[dayId].categories[categoryName] = [];
+        }
+        updatedWorkouts.days[dayId].categories[categoryName].push(newExercise);
+
+        setWorkouts(updatedWorkouts);
+        await saveUserData({ workouts: updatedWorkouts }, "Exercice ajouté !");
+    }, [workouts, saveUserData, showToast]);
+
+
+    const handleEditClick = useCallback(async (dayId, categoryName, exerciseId, updatedExercise) => {
+        const updatedWorkouts = { ...workouts };
+        const exercises = updatedWorkouts.days[dayId]?.categories[categoryName];
+        if (exercises) {
+            const index = exercises.findIndex(ex => ex.id === exerciseId);
+            if (index !== -1) {
+                // Ensure series are only updated if provided, otherwise keep existing
+                if (updatedExercise.series) {
+                    updatedExercise.series = updatedExercise.series.map(series => ({
+                        ...series,
+                        completed: series.completed ?? false // Ensure 'completed' is always a boolean
+                    }));
+                }
+
+                updatedWorkouts.days[dayId].categories[categoryName][index] = {
+                    ...exercises[index],
+                    ...updatedExercise
+                };
+                setWorkouts(updatedWorkouts);
+                await saveUserData({ workouts: updatedWorkouts }, "Exercice mis à jour !");
+            }
+        }
+    }, [workouts, saveUserData, showToast]);
+
+    const handleDeleteExercise = useCallback(async (dayId, categoryName, exerciseId) => {
+        const updatedWorkouts = { ...workouts };
+        const exercises = updatedWorkouts.days[dayId]?.categories[categoryName];
+        if (exercises) {
+            const index = exercises.findIndex(ex => ex.id === exerciseId);
+            if (index !== -1) {
+                const exerciseToDelete = exercises[index];
+                exerciseToDelete.isDeleted = true;
+                exerciseToDelete.deletedAt = serverTimestamp();
+
+                // Remove from active view, but keep in data with isDeleted flag
+                updatedWorkouts.days[dayId].categories[categoryName] = exercises.filter(ex => ex.id !== exerciseId);
+
+                // Update historicalData to mark the corresponding exercises as deleted
+                const updatedHistoricalData = historicalData.map(session => ({
+                    ...session,
+                    exercises: session.exercises.map(ex =>
+                        (ex.name === exerciseToDelete.name && !ex.isDeleted) ? { ...ex, isDeleted: true, deletedAt: exerciseToDelete.deletedAt } : ex
+                    )
+                }));
+
+                setWorkouts(updatedWorkouts);
+                setHistoricalData(updatedHistoricalData);
+                await saveUserData({ workouts: updatedWorkouts, historicalData: updatedHistoricalData }, "Exercice supprimé !");
+            }
+        }
+    }, [workouts, historicalData, saveUserData, showToast]);
+
+    const handleReactivateExercise = useCallback(async (exerciseName) => {
+        const updatedWorkouts = { ...workouts };
+        let reactivated = false;
+
+        // Chercher l'exercice supprimé dans les jours et le réactiver
+        for (const dayId in updatedWorkouts.days) {
+            const day = updatedWorkouts.days[dayId];
+            for (const categoryName in day.categories) {
+                const exercises = day.categories[categoryName];
+                const index = exercises.findIndex(ex => ex.name === exerciseName && ex.isDeleted);
+                if (index !== -1) {
+                    exercises[index].isDeleted = false;
+                    delete exercises[index].deletedAt; // Remove deletedAt timestamp
+                    // Move reactivated exercise to the end of its category if it was the only one
+                    // or re-add it to the main list if it was completely removed from the category
+                    const reactivatedExercise = exercises.splice(index, 1)[0];
+                    exercises.push(reactivatedExercise);
+                    reactivated = true;
+                    break; // Exercise found and reactivated, break from inner loop
+                }
+            }
+            if (reactivated) break; // Break from outer loop if reactivated
+        }
+
+        if (reactivated) {
+            // Also update historical data if necessary, by marking related entries as not deleted
+            const updatedHistoricalData = historicalData.map(session => ({
+                ...session,
+                exercises: session.exercises.map(ex =>
+                    (ex.name === exerciseName && ex.isDeleted) ? { ...ex, isDeleted: false, deletedAt: null } : ex
+                )
+            }));
+
+            setWorkouts(updatedWorkouts);
+            setHistoricalData(updatedHistoricalData);
+            await saveUserData({ workouts: updatedWorkouts, historicalData: updatedHistoricalData }, "Exercice réactivé !");
+        } else {
+            showToast("L'exercice n'a pas pu être réactivé.", "warning");
+        }
+    }, [workouts, historicalData, saveUserData, showToast]);
+
+
+    // --- Gestion des Séries ---
+    const handleAddSeries = useCallback(async (dayId, categoryName, exerciseId) => {
+        const updatedWorkouts = { ...workouts };
+        const exercise = updatedWorkouts.days[dayId]?.categories[categoryName]?.find(ex => ex.id === exerciseId);
+
+        if (exercise) {
+            const newSeries = {
+                id: `series-${Date.now()}`,
+                reps: 0,
+                weight: 0,
+                completed: false, // Nouvelle série est par défaut non complétée
+            };
+            exercise.series.push(newSeries);
+            setWorkouts(updatedWorkouts);
+            await saveUserData({ workouts: updatedWorkouts }); // Pas de toast ici pour éviter le spam
+        }
+    }, [workouts, saveUserData]);
+
+
+    const handleUpdateSeries = useCallback(async (dayId, categoryName, exerciseId, seriesId, updatedValues) => {
+        const updatedWorkouts = { ...workouts };
+        const exercise = updatedWorkouts.days[dayId]?.categories[categoryName]?.find(ex => ex.id === exerciseId);
+
+        if (exercise) {
+            const seriesIndex = exercise.series.findIndex(s => s.id === seriesId);
+            if (seriesIndex !== -1) {
+                exercise.series[seriesIndex] = { ...exercise.series[seriesIndex], ...updatedValues };
+                setWorkouts(updatedWorkouts);
+                await saveUserData({ workouts: updatedWorkouts }); // Pas de toast ici
+            }
+        }
+    }, [workouts, saveUserData]);
+
+    const handleDeleteSeries = useCallback(async (dayId, categoryName, exerciseId, seriesId) => {
+        const updatedWorkouts = { ...workouts };
+        const exercise = updatedWorkouts.days[dayId]?.categories[categoryName]?.find(ex => ex.id === exerciseId);
+
+        if (exercise) {
+            exercise.series = exercise.series.filter(s => s.id !== seriesId);
+            setWorkouts(updatedWorkouts);
+            await saveUserData({ workouts: updatedWorkouts }); // Pas de toast ici
+        }
+    }, [workouts, saveUserData]);
+
+    const handleToggleSeriesCompleted = useCallback(async (dayId, categoryName, exerciseId, seriesId, isCompleted) => {
+        const updatedWorkouts = { ...workouts };
+        const exercise = updatedWorkouts.days[dayId]?.categories[categoryName]?.find(ex => ex.id === exerciseId);
+
+        if (exercise) {
+            const series = exercise.series.find(s => s.id === seriesId);
+            if (series) {
+                series.completed = isCompleted;
+                setWorkouts(updatedWorkouts);
+                await saveUserData({ workouts: updatedWorkouts });
+            }
+        }
+    }, [workouts, saveUserData]);
+
+
+    // Fonction pour ajouter un workout terminé à l'historique et mettre à jour les records
+    const addWorkoutToHistoryAndSave = useCallback(async () => {
+        const completedSession = {
+            id: `session-${Date.now()}`,
+            timestamp: serverTimestamp(),
+            exercises: []
+        };
+
+        let updatedPersonalBests = { ...personalBests };
+
+        Object.values(workouts.days).forEach(day => {
+            Object.values(day.categories).forEach(exercises => {
+                exercises.forEach(exercise => {
+                    const completedSeries = exercise.series.filter(s => s.completed);
+                    if (completedSeries.length > 0) {
+                        completedSession.exercises.push({
+                            id: exercise.id,
+                            name: exercise.name,
+                            category: Object.keys(day.categories).find(cat => day.categories[cat].includes(exercise)), // Trouver la catégorie
+                            notes: exercise.notes,
+                            series: completedSeries.map(s => ({ reps: s.reps, weight: s.weight })),
+                            isDeleted: exercise.isDeleted || false, // Conserver l'état de suppression
+                            deletedAt: exercise.deletedAt || null
                         });
+
+                        // Mettre à jour les records personnels
+                        const exerciseName = exercise.name.toLowerCase();
+                        if (!updatedPersonalBests[exerciseName]) {
+                            updatedPersonalBests[exerciseName] = { maxWeight: 0, maxReps: 0, maxVolume: 0, lastAchieved: null, bestWeightSeries: null, bestRepsSeries: null, bestVolumeSeries: null };
+                        }
+
+                        completedSeries.forEach(s => {
+                            const volume = s.reps * s.weight;
+
+                            // Max Weight
+                            if (s.weight > updatedPersonalBests[exerciseName].maxWeight) {
+                                updatedPersonalBests[exerciseName].maxWeight = s.weight;
+                                updatedPersonalBests[exerciseName].bestWeightSeries = { reps: s.reps, weight: s.weight, date: Timestamp.now() };
+                            } else if (s.weight === updatedPersonalBests[exerciseName].maxWeight && s.reps > (updatedPersonalBests[exerciseName].bestWeightSeries?.reps || 0)) {
+                                // If same weight, update if reps are higher
+                                updatedPersonalBests[exerciseName].bestWeightSeries = { reps: s.reps, weight: s.weight, date: Timestamp.now() };
+                            }
+
+
+                            // Max Reps
+                            if (s.reps > updatedPersonalBests[exerciseName].maxReps) {
+                                updatedPersonalBests[exerciseName].maxReps = s.reps;
+                                updatedPersonalBests[exerciseName].bestRepsSeries = { reps: s.reps, weight: s.weight, date: Timestamp.now() };
+                            } else if (s.reps === updatedPersonalBests[exerciseName].maxReps && s.weight > (updatedPersonalBests[exerciseName].bestRepsSeries?.weight || 0)) {
+                                // If same reps, update if weight is higher
+                                updatedPersonalBests[exerciseName].bestRepsSeries = { reps: s.reps, weight: s.weight, date: Timestamp.now() };
+                            }
+
+                            // Max Volume
+                            if (volume > updatedPersonalBests[exerciseName].maxVolume) {
+                                updatedPersonalBests[exerciseName].maxVolume = volume;
+                                updatedPersonalBests[exerciseName].bestVolumeSeries = { reps: s.reps, weight: s.weight, date: Timestamp.now() };
+                            }
+                        });
+                        updatedPersonalBests[exerciseName].lastAchieved = Timestamp.now();
+                    }
+                });
+            });
+        });
+
+        // Add to historicalData only if there are completed exercises
+        if (completedSession.exercises.length > 0) {
+            const updatedHistoricalData = [...historicalData, completedSession];
+            setHistoricalData(updatedHistoricalData);
+            setPersonalBests(updatedPersonalBests);
+            await saveUserData({ historicalData: updatedHistoricalData, personalBests: updatedPersonalBests }, "Séance sauvegardée et records mis à jour !");
+        } else {
+            showToast("Aucune série complétée pour sauvegarder la séance.", "warning");
+        }
+
+        // Reset completed state for all series
+        const workoutsAfterSave = JSON.parse(JSON.stringify(workouts)); // Deep copy
+        Object.values(workoutsAfterSave.days).forEach(day => {
+            Object.values(day.categories).forEach(exercises => {
+                exercises.forEach(exercise => {
+                    exercise.series.forEach(s => {
+                        s.completed = false;
                     });
                 });
             });
-        }
-        
-        setPersonalBests(bests);
-    }, []);
-
-    const saveWorkoutsOptimized = useCallback(async (workoutsData, successMessage = "Sauvegardé !") => {
-        if (!userId) {
-            setToast({ message: "Utilisateur non connecté", type: 'error' });
-            return;
-        }
-        
-        if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-        }
-        
-        saveTimeoutRef.current = setTimeout(async () => {
-            try {
-                const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
-                await setDoc(workoutDocRef, { 
-                    workouts: workoutsData,
-                    globalNotes: globalNotes, 
-                    lastModified: serverTimestamp()
-                }, { merge: true });
-                
-                const hasSignificantChanges = JSON.stringify(workouts) !== JSON.stringify(workoutsData);
-                if (hasSignificantChanges) {
-                    const sessionsRef = collection(db, 'users', userId, 'sessions');
-                    await addDoc(sessionsRef, {
-                        timestamp: serverTimestamp(),
-                        workoutData: workoutsData,
-                        version: '2.0'
-                    });
-                }
-                
-                setLastSaveTime(new Date());
-                setToast({ message: successMessage, type: 'success' });
-            } catch (error) {
-                console.error("Erreur sauvegarde:", error);
-                setToast({ 
-                    message: "Erreur de sauvegarde", 
-                    type: 'error',
-                    action: { 
-                        label: 'Réessayer', 
-                        onClick: () => saveWorkoutsOptimized(workoutsData, successMessage) 
-                    }
-                });
-            }
-        }, AUTO_SAVE_DELAY);
-    }, [userId, workouts, globalNotes]);
-
-    const applyChanges = useCallback((newWorkoutsState, message = "Modification effectuée") => {
-        setUndoStack(prev => {
-            const newStack = [...prev, workouts];
-            return newStack.length > MAX_UNDO_STATES 
-                ? newStack.slice(-MAX_UNDO_STATES) 
-                : newStack;
         });
-        setRedoStack([]);
-        setWorkouts(newWorkoutsState);
-        saveWorkoutsOptimized(newWorkoutsState, message);
-    }, [workouts, saveWorkoutsOptimized]);
-
-    // Fonctions d'exercices
-    const handleAddExercise = useCallback(() => {
-        if (!newExerciseName.trim()) {
-            setToast({ message: "Le nom de l'exercice est requis", type: 'error' });
-            return;
-        }
-        
-        if (!selectedDayForAdd || !selectedCategoryForAdd) {
-            setToast({ message: "Sélectionnez un jour et une catégorie", type: 'error' });
-            return;
-        }
-        
-        setIsAddingExercise(true);
-        
-        const setsNum = parseInt(newSets) || 1;
-        const updatedWorkouts = JSON.parse(JSON.stringify(workouts)); 
-        
-        if (!updatedWorkouts.days[selectedDayForAdd]) {
-            updatedWorkouts.days[selectedDayForAdd] = { categories: {}, categoryOrder: [] };
-        }
-        if (!updatedWorkouts.days[selectedDayForAdd].categories[selectedCategoryForAdd]) {
-            updatedWorkouts.days[selectedDayForAdd].categories[selectedCategoryForAdd] = [];
-            if (!updatedWorkouts.days[selectedDayForAdd].categoryOrder.includes(selectedCategoryForAdd)) {
-                updatedWorkouts.days[selectedDayForAdd].categoryOrder.push(selectedCategoryForAdd);
-            }
-        }
-        
-        const newExercise = {
-            id: generateUUID(),
-            name: newExerciseName.trim(),
-            series: Array(setsNum).fill(null).map(() => ({
-                weight: newWeight.toString(),
-                reps: newReps.toString(),
-                completed: false, 
-            })),
-            isDeleted: false,
-            notes: newExerciseNotes.trim(), 
-            createdAt: new Date().toISOString()
-        };
-        
-        updatedWorkouts.days[selectedDayForAdd].categories[selectedCategoryForAdd].push(newExercise);
-        
-        applyChanges(updatedWorkouts, `Exercice "${newExerciseName}" ajouté !`);
-        
-        setNewExerciseName('');
-        setNewWeight('');
-        setNewSets('3');
-        setNewReps('');
-        setNewExerciseNotes(''); 
-        setShowAddExerciseModal(false);
-        setIsAddingExercise(false);
-    }, [newExerciseName, selectedDayForAdd, selectedCategoryForAdd, newSets, newWeight, newReps, newExerciseNotes, workouts, applyChanges]);
-
-    const handleEditClick = useCallback((day, category, exerciseId, exercise) => {
-        setEditingExercise({ day, category, exerciseId });
-        setEditingExerciseName(exercise.name);
-        setNewExerciseNotes(exercise.notes || ''); 
-        setShowAddExerciseModal(true); 
-    }, []);
-
-    const handleSaveEdit = useCallback(() => {
-        if (!editingExercise) return;
-        
-        setIsSavingExercise(true);
-        
-        const { day, category, exerciseId } = editingExercise;
-        const updatedWorkouts = JSON.parse(JSON.stringify(workouts)); 
-        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-        
-        if (!exercises) {
-            setToast({ message: "Exercice non trouvé", type: 'error' });
-            setIsSavingExercise(false);
-            return;
-        }
-        
-        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) {
-            setToast({ message: "Exercice non trouvé", type: 'error' });
-            setIsSavingExercise(false);
-            return;
-        }
-        
-        if (!editingExerciseName.trim()) {
-            setToast({ message: "Le nom de l'exercice ne peut pas être vide", type: 'error' });
-            setIsSavingExercise(false);
-            return;
-        }
-        
-        exercises[exerciseIndex] = {
-            ...exercises[exerciseIndex],
-            name: editingExerciseName.trim(),
-            notes: newExerciseNotes.trim(), 
-            lastModified: new Date().toISOString()
-        };
-        
-        applyChanges(updatedWorkouts, "Exercice modifié !");
-        setEditingExercise(null);
-        setEditingExerciseName('');
-        setNewExerciseNotes(''); 
-        setShowAddExerciseModal(false); 
-        setIsSavingExercise(false);
-    }, [editingExercise, workouts, editingExerciseName, newExerciseNotes, applyChanges]);
-
-    const handleDeleteExercise = useCallback((day, category, exerciseId) => {
-        setIsDeletingExercise(true);
-        
-        const updatedWorkouts = JSON.parse(JSON.stringify(workouts)); 
-       const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-       
-       if (!exercises) {
-           setToast({ message: "Exercice non trouvé", type: 'error' });
-           setIsDeletingExercise(false);
-           return;
-       }
-       
-       const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-       if (exerciseIndex === -1) {
-           setToast({ message: "Exercice non trouvé", type: 'error' });
-           setIsDeletingExercise(false);
-           return;
-       }
-       
-       exercises[exerciseIndex].isDeleted = true;
-       exercises[exerciseIndex].deletedAt = new Date().toISOString();
-       
-       applyChanges(updatedWorkouts, "Exercice supprimé");
-       setShowDeleteConfirm(false);
-       setIsDeletingExercise(false);
-   }, [workouts, applyChanges]);
-
-   const handleReactivateExercise = useCallback((exerciseId) => {
-       const updatedWorkouts = JSON.parse(JSON.stringify(workouts)); 
-       let found = false;
-       
-       Object.values(updatedWorkouts.days).forEach(day => {
-           Object.values(day.categories).forEach(exercises => {
-               if (Array.isArray(exercises)) {
-                   const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-                   if (exerciseIndex !== -1) {
-                       exercises[exerciseIndex].isDeleted = false;
-                       delete exercises[exerciseIndex].deletedAt;
-                       found = true;
-                   }
-               }
-           });
-       });
-       
-       if (found) {
-           applyChanges(updatedWorkouts, "Exercice réactivé !");
-       } else {
-           setToast({ message: "Exercice non trouvé", type: 'error' });
-       }
-   }, [workouts, applyChanges]);
-
-    const handleToggleSeriesCompleted = useCallback((dayName, categoryName, exerciseId, serieIndex) => {
-        setWorkouts(prevWorkouts => {
-            const newWorkouts = JSON.parse(JSON.stringify(prevWorkouts)); 
-            const day = newWorkouts.days[dayName];
-            if (!day) return prevWorkouts;
-
-            const category = day.categories[categoryName];
-            if (!category) return prevWorkouts;
-
-            const exercise = category.find(ex => ex.id === exerciseId);
-            if (!exercise || !exercise.series) return prevWorkouts;
-
-            if (exercise.series[serieIndex]) {
-                exercise.series[serieIndex].completed = !exercise.series[serieIndex].completed;
-            }
-            return newWorkouts;
-        });
-    }, []);
-
-    const handleUpdateSeries = useCallback((dayName, categoryName, exerciseId, serieIndex, field, value) => {
-        setWorkouts(prevWorkouts => {
-            const newWorkouts = JSON.parse(JSON.stringify(prevWorkouts)); 
-            const day = newWorkouts.days[dayName];
-            if (!day) return prevWorkouts;
-
-            const category = day.categories[categoryName];
-            if (!category) return prevWorkouts;
-
-            const exercise = category.find(ex => ex.id === exerciseId);
-            if (!exercise || !exercise.series) return prevWorkouts;
-
-            if (exercise.series[serieIndex]) {
-                exercise.series[serieIndex][field] = value;
-            }
-            return newWorkouts;
-        });
-    }, []);
-
-    const handleAddSeries = useCallback((dayName, categoryName, exerciseId) => {
-        setWorkouts(prevWorkouts => {
-            const newWorkouts = JSON.parse(JSON.stringify(prevWorkouts)); 
-            const day = newWorkouts.days[dayName];
-            if (!day) return prevWorkouts;
-
-            const category = day.categories[categoryName];
-            if (!category) return prevWorkouts;
-
-            const exercise = category.find(ex => ex.id === exerciseId);
-            if (!exercise) return prevWorkouts;
-
-            const newSerie = {
-                weight: '0', 
-                reps: '0',   
-                completed: false
-            };
-            exercise.series = [...(exercise.series || []), newSerie];
-            
-            setToast({ message: "Série ajoutée !", type: 'success' });
-            return newWorkouts;
-        });
-    }, []);
-
-    const handleDeleteSeries = useCallback((dayName, categoryName, exerciseId, serieIndex) => {
-        setWorkouts(prevWorkouts => {
-            const newWorkouts = JSON.parse(JSON.stringify(prevWorkouts)); 
-            const day = newWorkouts.days[dayName];
-            if (!day) return prevWorkouts;
-
-            const category = day.categories[categoryName];
-            if (!category) return prevWorkouts;
-
-            const exercise = category.find(ex => ex.id === exerciseId);
-            if (!exercise || !exercise.series) return prevWorkouts;
-
-            const updatedSeries = exercise.series.filter((_, index) => index !== serieIndex);
-            exercise.series = updatedSeries;
-            
-            setToast({ message: "Série supprimée !", type: 'success' });
-            return newWorkouts;
-        });
-    }, []);
+        setWorkouts(workoutsAfterSave);
+        await saveUserData({ workouts: workoutsAfterSave }); // Sauvegarder l'état reset des séries
+    }, [workouts, historicalData, personalBests, saveUserData, showToast]);
 
 
-    const handleAddDay = useCallback((dayName) => {
-        const updatedWorkouts = JSON.parse(JSON.stringify(workouts)); 
-        updatedWorkouts.days[dayName] = { categories: {}, categoryOrder: [] };
-        updatedWorkouts.dayOrder = [...(updatedWorkouts.dayOrder || []), dayName];
-        applyChanges(updatedWorkouts, `Jour "${dayName}" ajouté !`); 
-    }, [workouts, applyChanges]);
-
-    const handleEditDay = useCallback((oldDayName, newDayName) => {
-        const updatedWorkouts = JSON.parse(JSON.stringify(workouts)); 
-        updatedWorkouts.days[newDayName] = updatedWorkouts.days[oldDayName];
-        delete updatedWorkouts.days[oldDayName];
-        
-        const dayIndex = updatedWorkouts.dayOrder.indexOf(oldDayName);
-        if (dayIndex !== -1) {
-            updatedWorkouts.dayOrder[dayIndex] = newDayName;
-        }
-        
-        applyChanges(updatedWorkouts, `Jour renommé !`); 
-    }, [workouts, applyChanges]);
-
-    const handleDeleteDay = useCallback((dayName) => {
-        const updatedWorkouts = JSON.parse(JSON.stringify(workouts)); 
-        delete updatedWorkouts.days[dayName];
-        updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(day => day !== dayName);
-        applyChanges(updatedWorkouts, `Jour "${dayName}" supprimé !`); 
-    }, [workouts, applyChanges]);
-
-    // Fonctions du minuteur
+    // Timer functions
     const startTimer = useCallback(() => {
-        setTimerIsRunning(true);
-        setTimerIsFinished(false);
-        if (Tone.context.state !== 'running') {
-            Tone.start();
+        if (!timerIsRunning) {
+            setTimerIsRunning(true);
+            setTimerIsFinished(false);
+            timerIntervalRef.current = setInterval(() => {
+                setTimerSeconds(prevSeconds => {
+                    if (prevSeconds <= 1) {
+                        clearInterval(timerIntervalRef.current);
+                        setTimerIsRunning(false);
+                        setTimerIsFinished(true);
+                        showToast("Temps de repos terminé !", "success");
+                        return 0;
+                    }
+                    return prevSeconds - 1;
+                });
+            }, 1000);
         }
-    }, []);
+    }, [timerIsRunning, showToast]);
 
     const pauseTimer = useCallback(() => {
+        clearInterval(timerIntervalRef.current);
         setTimerIsRunning(false);
     }, []);
 
     const resetTimer = useCallback(() => {
-        const seconds = parseInt(restTimeInput) || 90;
-        setTimerSeconds(seconds);
+        clearInterval(timerIntervalRef.current);
         setTimerIsRunning(false);
-        setTimerIsFinished(false);
-    }, [restTimeInput]);
-
-    const setTimerPreset = useCallback((seconds) => {
-        setRestTimeInput(seconds.toString());
-        setTimerSeconds(seconds);
-        setTimerIsRunning(false);
+        setTimerSeconds(0);
         setTimerIsFinished(false);
     }, []);
 
-    // Analyse IA améliorée pour un exercice spécifique
-    const analyzeProgressionWithAI = useCallback(async (exerciseData, showGraph = false) => {
-        if (!exerciseData) return;
-        
-        setAiAnalysisLoading(true);
-        setExerciseForAnalysis(exerciseData); 
-        setProgressionAnalysisContent(''); 
-        setShowProgressionGraph(false); 
+    const formatTime = (totalSeconds) => {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    };
 
-        if (showGraph) {
-            setShowProgressionGraph(true);
-            setAiAnalysisLoading(false);
-            setToast({ message: `Affichage du graphique pour "${exerciseData.name}"`, type: 'info' });
+    const setTimerPreset = useCallback((seconds) => {
+        resetTimer();
+        setTimerSeconds(seconds);
+    }, [resetTimer]);
+
+
+    // AI Integration (Gemini)
+    const analyzeProgressionWithAI = useCallback(async (exerciseName, history) => {
+        if (!geminiModel) {
+            showToast("Service d'IA non disponible. Clé API Gemini manquante ou erreur d'initialisation.", "error");
             return;
         }
 
-        try {
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            
-            const fourWeeksAgo = new Date();
-            fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28); 
-
-            const relevantHistoricalData = historicalData.flatMap(session => 
-                Object.values(session.workoutData?.days || {}).flatMap(day => 
-                    Object.values(day.categories || {}).flatMap(exercises => 
-                        exercises.filter(ex => 
-                            ex.id === exerciseData.id && 
-                            !ex.isDeleted && 
-                            (session.timestamp instanceof Date ? session.timestamp >= fourWeeksAgo : new Date(session.timestamp.seconds * 1000) >= fourWeeksAgo) 
-                        )
-                    )
-                )
-            ).sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt)); 
-
-            const recentSeries = relevantHistoricalData.flatMap(ex => ex.series || []);
-
-            const prompt = `Analyse cette progression d'exercice de musculation et donne des conseils personnalisés en français:
-                
-                Nom de l'exercice: ${exerciseData.name}
-                Historique des 4 dernières semaines (format: {weight: 'X', reps: 'Y'}): ${JSON.stringify(recentSeries)}
-                Record personnel (poids): ${personalBests[exerciseData.id]?.maxWeight || 'N/A'}kg
-                Record personnel (reps): ${personalBests[exerciseData.id]?.maxReps || 'N/A'}
-                Volume total: ${personalBests[exerciseData.id]?.totalVolume || 'N/A'}kg
-                Nombre de sessions: ${personalBests[exerciseData.id]?.sessions || 'N/A'}
-                Notes de l'exercice: ${exerciseData.notes || 'Aucune note'}
-                
-                Fournis une analyse concise et pratique avec:
-                1. 📈 Tendance de progression (positive/stagnation/régression) sur les 4 dernières semaines.
-                2. 💪 Points forts identifiés.
-                3. 🎯 Axes d'amélioration spécifiques.
-                4. 📋 Recommandations concrètes (charge, répétitions, fréquence, volume).
-                5. 🏆 Objectifs à court terme (2-4 semaines).
-                6. Adapte les conseils en fonction des résultats observés.
-                
-                Limite la réponse à 300 mots maximum. Utilise des émojis pour structurer.`;
-            
-            const apiKey = ""; 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-            
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-            };
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            const result = await response.json();
-
-            if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
-                const analysis = result.candidates[0].content.parts[0].text;
-                setProgressionAnalysisContent(analysis);
-                setToast({ message: "Analyse IA terminée !", type: 'success' });
-            } else {
-                setProgressionAnalysisContent("❌ Impossible de générer l'analyse. Réponse de l'IA inattendue.");
-                setToast({ message: "Erreur lors de l'analyse IA", type: 'error' });
-            }
-        } catch (error) {
-            console.error("Erreur analyse IA:", error);
-            setProgressionAnalysisContent("❌ Erreur lors de l'analyse. Veuillez vérifier votre clé API Gemini et réessayer.");
-            setToast({ message: "Erreur lors de l'analyse IA", type: 'error' });
-        } finally {
-            setAiAnalysisLoading(false);
-        }
-    }, [personalBests, historicalData]); 
-
-    // Analyse IA globale
-    const analyzeGlobalStatsWithAI = useCallback(async () => {
         setAiAnalysisLoading(true);
-        setGlobalAIAnalysisContent('');
-        setShowGlobalAIAnalysisModal(true);
+        showToast("Analyse de progression IA en cours...", "info", 0); // Durée 0 pour un toast persistant
 
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            let prompt = `Analyse ma progression pour l'exercice "${exerciseName}" basée sur l'historique suivant. Pour chaque entrée, il y a le poids (kg) et les répétitions: \n\n`;
 
-            const stats = getWorkoutStats(); 
-            
-            const prompt = `Analyse ces statistiques globales d'entraînement de musculation et fournis des conseils personnalisés en français:
-                
-                Statistiques globales:
-                - Total Exercices Actifs: ${stats.totalExercises}
-                - Total Séries: ${stats.totalSeries}
-                - Total Sessions: ${stats.totalSessions}
-                - Sessions cette semaine: ${stats.thisWeekSessions}
-                - Volume Total (kg): ${stats.totalVolume}
-                - Moyenne Sessions/Semaine: ${stats.averageSessionsPerWeek}
-                - Nombre de records personnels suivis: ${Object.keys(personalBests).length}
-                - Notes globales de l'utilisateur: ${globalNotes || 'Aucune note globale'}
-                
-                Fournis une analyse globale et des recommandations avec:
-                1. 📊 Vue d'ensemble de la progression générale.
-                2. ✅ Points forts de l'entraînement global.
-                3. 🚀 Axes d'amélioration prioritaires (fréquence, volume, équilibre musculaire).
-                4. 📈 Objectifs de progression à moyen terme (1-3 mois).
-                5. 💪 Conseils d'adaptation en fonction de la régularité et du volume.
-                
-                Limite la réponse à 400 mots maximum. Utilise des émojis pour structurer et rendre la lecture agréable.`;
-
-            const apiKey = ""; 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-            
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-            };
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+            history.forEach(session => {
+                prompt += `Date: ${formatDate(session.timestamp?.toDate ? session.timestamp.toDate() : session.timestamp)}, Séries: `;
+                session.series.forEach((s, idx) => {
+                    prompt += `${s.weight}kg x ${s.reps}${idx < session.series.length - 1 ? ', ' : ''}`;
+                });
+                prompt += '\n';
             });
 
-            const result = await response.json();
+            prompt += `\nFournis une analyse concise de la progression (ex: augmentation du poids, des répétitions, stagnation, etc.), identifie les tendances, et offre un ou deux conseils spécifiques pour améliorer la progression. Rédige en français et garde la réponse à environ 3-5 phrases, sans inclure de salutation ou de clôture.`;
 
-            if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
-                const analysis = result.candidates[0].content.parts[0].text;
-                setGlobalAIAnalysisContent(analysis);
-                setToast({ message: "Analyse IA globale terminée !", type: 'success' });
-            } else {
-                setGlobalAIAnalysisContent("❌ Impossible de générer l'analyse globale. Réponse de l'IA inattendue.");
-                setToast({ message: "Erreur lors de l'analyse IA globale", type: 'error' });
-            }
+            const result = await geminiModel.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+
+            showToast(text, 'success', 10000); // Afficher le résultat pour 10 secondes
         } catch (error) {
-            console.error("Erreur analyse IA globale:", error);
-            setGlobalAIAnalysisContent("❌ Erreur lors de l'analyse globale. Veuillez réessayer.");
-            setToast({ message: "Erreur lors de l'analyse IA globale", type: 'error' });
+            console.error("Erreur lors de l'analyse IA de progression:", error);
+            showToast("Échec de l'analyse IA de progression. Réessayez.", "error");
         } finally {
             setAiAnalysisLoading(false);
+            hideToast(); // Masquer le toast de chargement
         }
-    }, [getWorkoutStats, personalBests, globalNotes]);
-
-   // Fonctions d'export/import
-   const exportData = useCallback(() => {
-       try {
-           const dataToExport = {
-               workouts,
-               personalBests,
-               historicalSample: historicalData.slice(0, 10), 
-               globalNotes, 
-               exportDate: new Date().toISOString(),
-               version: "2.0",
-               appName: "Carnet Muscu Pro"
-           };
-           
-           const blob = new Blob([JSON.stringify(dataToExport, null, 2)], {
-               type: 'application/json'
-           });
-           
-           const url = URL.createObjectURL(blob);
-           const a = document.createElement('a');
-           a.href = url;
-           a.download = `carnet-muscu-${new Date().toISOString().split('T')[0]}.json`;
-           document.body.appendChild(a);
-           a.click();
-           document.body.removeChild(a);
-           URL.revokeObjectURL(url);
-           
-           setToast({ message: "Données exportées avec succès !", type: 'success' });
-       } catch (error) {
-           console.error("Erreur export:", error);
-           setToast({ message: "Erreur lors de l'export", type: 'error' });
-       }
-   }, [workouts, personalBests, historicalData, globalNotes]);
-
-   const importData = useCallback((event) => {
-       const file = event.target.files[0];
-       if (!file) return;
-       
-       const reader = new FileReader();
-       reader.onload = (e) => {
-           try {
-               const importedData = JSON.parse(e.target.result);
-               
-               if (importedData.workouts) {
-                   const sanitizedWorkouts = sanitizeWorkoutData(importedData.workouts);
-                   setWorkouts(sanitizedWorkouts);
-                   setGlobalNotes(importedData.globalNotes || ''); 
-                   saveWorkoutsOptimized(sanitizedWorkouts, "Données importées avec succès !");
-                   
-                   setToast({ 
-                       message: "Import réussi !", 
-                       type: 'success'
-                   });
-               } else {
-                   setToast({ message: "Format de fichier invalide", type: 'error' });
-               }
-           } catch (error) {
-               console.error("Erreur import:", error);
-               setToast({ message: "Erreur lors de l'import", type: 'error' });
-           }
-       };
-       reader.readAsText(file);
-       
-       event.target.value = '';
-   }, [sanitizeWorkoutData, saveWorkoutsOptimized]);
-
-   // Fonctions d'undo/redo
-   const handleUndo = useCallback(() => {
-       setUndoStack(prevUndoStack => {
-           if (prevUndoStack.length === 0) {
-               setToast({ message: "Rien à annuler", type: 'warning' });
-               return prevUndoStack;
-           }
-           
-           const previousState = prevUndoStack[prevUndoStack.length - 1];
-           
-           setRedoStack(prevRedoStack => [...prevRedoStack, workouts]);
-           setWorkouts(previousState);
-           setToast({ message: "Action annulée", type: 'success' });
-           
-           return prevUndoStack.slice(0, -1);
-       });
-   }, [workouts]);
-
-   const handleRedo = useCallback(() => {
-       setRedoStack(prevRedoStack => {
-           if (prevRedoStack.length === 0) {
-               setToast({ message: "Rien à rétablir", type: 'warning' });
-               return prevRedoStack;
-           }
-           
-           const nextState = prevRedoStack[prevRedoStack.length - 1];
-           
-           setUndoStack(prevUndoStack => [...prevUndoStack, workouts]);
-           setWorkouts(nextState);
-           setToast({ message: "Action rétablie", type: 'success' });
-           
-           return prevRedoStack.slice(0, -1);
-       });
-   }, [workouts]);
-
-   // Calculs mémorisés pour les statistiques
-   const getWorkoutStats = useCallback(() => {
-       if (!workouts?.days || !historicalData) {
-           return {
-               totalExercises: 0,
-               totalSeries: 0, 
-               totalSessions: 0,
-               thisWeekSessions: 0,
-               totalVolume: 0,
-               averageSessionsPerWeek: 0
-           };
-       }
-
-       let totalExercises = 0;
-       let totalSeries = 0;
-       try {
-           Object.values(workouts.days || {}).forEach(day => {
-               Object.values(day.categories || {}).forEach(exercises => {
-                   if (Array.isArray(exercises)) {
-                       totalExercises += exercises.filter(ex => !ex.isDeleted).length;
-                       exercises.filter(ex => !ex.isDeleted).forEach(exercise => {
-                            if (Array.isArray(exercise.series)) {
-                                totalSeries += exercise.series.length;
-                            }
-                        });
-                   }
-               });
-           });
-       } catch (error) {
-           console.warn("Erreur calcul exercices:", error);
-           totalExercises = 0;
-       }
-
-       const totalSessions = historicalData.length || 0;
-       
-       let thisWeekSessions = 0;
-       try {
-           const weekAgo = new Date();
-           weekAgo.setDate(weekAgo.getDate() - 7);
-           thisWeekSessions = historicalData.filter(session => {
-               return session.timestamp && session.timestamp > weekAgo;
-           }).length;
-       } catch (error) {
-           console.warn("Erreur calcul sessions semaine:", error);
-           thisWeekSessions = 0;
-       }
-
-       let totalVolume = 0;
-       try {
-           Object.values(personalBests || {}).forEach(best => {
-               totalVolume += (best.totalVolume || 0);
-           });
-       } catch (error) {
-           console.warn("Erreur calcul volume:", error);
-           totalVolume = 0;
-       }
-
-       const averageSessionsPerWeek = totalSessions > 0 ? Math.round((totalSessions / 12) * 10) / 10 : 0;
-
-       return {
-           totalExercises,
-           totalSeries, 
-           totalSessions,
-           thisWeekSessions,
-           totalVolume: Math.round(totalVolume),
-           averageSessionsPerWeek
-       };
-   }, [workouts, historicalData, personalBests]);
-
-   const workoutStats = useMemo(() => getWorkoutStats(), [getWorkoutStats]);
-
-   // Gestion des raccourcis clavier
-   useEffect(() => {
-       const handleKeyPress = (e) => {
-           if (e.ctrlKey || e.metaKey) {
-               switch (e.key) {
-                   case 'z':
-                       e.preventDefault();
-                       if (e.shiftKey) {
-                           handleRedo();
-                       } else {
-                           handleUndo();
-                       }
-                       break;
-                   case 's':
-                       e.preventDefault();
-                       if (workouts && Object.keys(workouts.days || {}).length > 0) {
-                           saveWorkoutsOptimized(workouts, "Sauvegarde manuelle effectuée");
-                       }
-                       break;
-                   case 'e':
-                       e.preventDefault();
-                       exportData();
-                       break;
-               }
-           }
-           
-           switch (e.key) {
-               case 'Escape':
-                   setEditingExercise(null);
-                   setShowAddExerciseModal(false);
-                   setShowDeleteConfirm(false);
-                   setShowSettingsModal(false);
-                   setProgressionAnalysisContent(''); 
-                   setShowProgressionGraph(false); 
-                   setGlobalAIAnalysisContent(''); 
-                   setShowGlobalAIAnalysisModal(false); 
-                   break;
-               case ' ':
-                   if (currentView === 'timer' && !e.target.tagName.match(/INPUT|TEXTAREA|SELECT/)) {
-                       e.preventDefault();
-                       if (timerIsRunning) {
-                           pauseTimer();
-                       } else {
-                           startTimer();
-                       }
-                   }
-                   break;
-           }
-       };
-
-       document.addEventListener('keydown', handleKeyPress);
-       return () => document.removeEventListener('keydown', handleKeyPress);
-   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer]);
-
-   // Demande de permission pour les notifications au démarrage
-   useEffect(() => {
-       if ('Notification' in window && Notification.permission === 'default') {
-           requestPermission();
-       }
-   }, [requestPermission]);
-
-   // Styles CSS améliorés
-   const appStyles = `
-       .animate-fade-in-up {
-           animation: fadeInUp 0.5s ease-out forwards;
-       }
-
-       @keyframes fadeInUp {
-           from {
-               opacity: 0;
-               transform: translateY(20px) translateX(-50%);
-           }
-           to {
-               opacity: 1;
-               transform: translateY(0) translateX(-50%);
-           }
-       }
-
-       .saved-animation {
-           animation: saved-flash 0.7s ease-out;
-       }
-
-       @keyframes saved-flash {
-           0% { background-color: rgb(31 41 55); }
-           25% { background-color: rgb(59 130 246); }
-           100% { background-color: rgb(31 41 55); }
-       }
-
-       .button-saving, .button-deleting, .button-adding {
-           opacity: 0.7;
-           cursor: wait;
-           pointer-events: none;
-       }
-
-       .glass-effect {
-           backdrop-filter: blur(10px);
-           background: rgba(31, 41, 55, 0.8);
-       }
-
-       .scrollbar-thin {
-           scrollbar-width: thin;
-           scrollbar-color: rgb(75 85 99) rgb(31 41 55);
-       }
-
-       .scrollbar-thin::-webkit-scrollbar {
-           width: 6px;
-       }
-
-       .scrollbar-thin::-webkit-scrollbar-track {
-           background: rgb(31 41 55);
-       }
-
-       .scrollbar-thin::-webkit-scrollbar-thumb {
-           background: rgb(75 85 99);
-           border-radius: 3px;
-       }
-
-       .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-           background: rgb(107 114 128);
-       }
-
-       @media (max-width: 640px) {
-           .mobile-optimized {
-               font-size: 14px;
-           }
-       }
-
-       .animate-slide-up {
-           animation: slideUp 0.3s ease-out forwards;
-       }
-
-       @keyframes slideUp {
-           from {
-               transform: translateY(100%);
-           }
-           to {
-               transform: translateY(0);
-           }
-       }
-   `;
-
-   // Rendu conditionnel de chargement amélioré
-   if (loading || !isAuthReady) {
-       return (
-           <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
-               <div className="text-center max-w-md mx-auto p-8">
-                   <div className="relative">
-                       <div className="animate-spin rounded-full h-20 w-20 border-t-2 border-b-2 border-blue-500 mx-auto mb-6"></div>
-                       <Dumbbell className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-8 w-8 text-blue-400" />
-                   </div>
-                   <h2 className="text-2xl font-bold mb-2">Carnet Muscu Pro</h2>
-                   <p className="text-lg font-medium mb-2">Chargement de vos données...</p>
-                   <p className="text-sm text-gray-400">Synchronisation en cours</p>
-                   <div className="mt-6 w-full bg-gray-700 rounded-full h-2">
-                       <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{width: '70%'}}></div>
-                   </div>
-               </div>
-           </div>
-       );
-   }
-
-   // Rendu principal amélioré
-   return (
-       <div className={`min-h-screen transition-all duration-300 ${isDarkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800 text-white' : 'bg-gradient-to-br from-gray-50 to-gray-100 text-gray-900'}`}>
-           <style>{appStyles}</style>
-           
-           {/* Toast notifications */}
-           {toast && (
-               <Toast
-                   message={toast.message}
-                   type={toast.type}
-                   onClose={() => setToast(null)}
-                   action={toast.action}
-               />
-           )}
-
-           {/* Header amélioré avec navigation fixe */}
-           <header className="sticky top-0 z-40 glass-effect border-b border-gray-700/50 px-4 py-3">
-               <div className="flex items-center justify-between max-w-7xl mx-auto">
-                   <div className="flex items-center gap-3">
-                       <div className="relative">
-                           <Dumbbell className="h-8 w-8 text-blue-400" />
-                           {isSavingExercise && (
-                               <div className="absolute -top-1 -right-1 h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
-                           )}
-                       </div>
-                       <div>
-                           <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                               Carnet Muscu Pro
-                           </h1>
-                           {lastSaveTime && (
-                               <p className="text-xs text-gray-400">
-                                   Dernière sync: {formatTime(Math.floor((Date.now() - lastSaveTime.getTime()) / 1000))}
-                               </p>
-                           )}
-                       </div>
-                       <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full font-medium">
-                           v2.0
-                       </span>
-                   </div>
-
-                   <div className="flex items-center gap-2">
-                       {/* Mode avancé */}
-                       <button
-                           onClick={() => setIsAdvancedMode(!isAdvancedMode)}
-                           className={`p-2 rounded-lg transition-all ${isAdvancedMode ? 'bg-blue-500 text-white shadow-lg' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                           title="Mode avancé (plus de fonctionnalités)"
-                       >
-                           <Settings className="h-5 w-5" />
-                       </button>
-
-                       {/* Vue compacte */}
-                       <button
-                           onClick={() => setIsCompactView(!isCompactView)}
-                           className={`p-2 rounded-lg transition-all ${isCompactView ? 'bg-green-500 text-white shadow-lg' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                           title="Vue compacte"
-                       >
-                           {isCompactView ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-                       </button>
-
-                       {/* Undo/Redo avec compteurs */}
-                       <div className="flex gap-1">
-                           <button
-                               onClick={handleUndo}
-                               disabled={undoStack.length === 0}
-                               className="relative p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                               title={`Annuler (${undoStack.length} actions disponibles)`}
-                           >
-                               <Undo2 className="h-5 w-5" />
-                               {undoStack.length > 0 && (
-                                   <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                                       {Math.min(undoStack.length, 9)}
-                                   </span>
-                               )}
-                           </button>
-                           <button
-                               onClick={handleRedo}
-                               disabled={redoStack.length === 0}
-                               className="relative p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                               title={`Rétablir (${redoStack.length} actions disponibles)`}
-                           >
-                               <Redo2 className="h-5 w-5" />
-                               {redoStack.length > 0 && (
-                                   <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                                       {Math.min(redoStack.length, 9)}
-                                   </span>
-                               )}
-                           </button>
-                       </div>
-
-                       {/* Menu actions */}
-                       <button
-                           onClick={() => setShowSettingsModal(true)}
-                           className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                           title="Paramètres et export/import"
-                       >
-                           <Download className="h-5 w-5" />
-                       </button>
-                   </div>
-               </div>
-           </header>
-
-           {/* Contenu principal */}
-           <main className="p-4 pb-20 max-w-7xl mx-auto">
-               {/* Statistiques rapides en mode avancé */}
-               {isAdvancedMode && (
-                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
-                           <div className="flex items-center justify-between mb-2">
-                               <div className="p-2 rounded-lg bg-blue-500/20">
-                                   <Activity className="h-5 w-5 text-blue-400" />
-                               </div>
-                           </div>
-                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalExercises}</div>
-                           <div className="text-xs text-gray-400">Exercices actifs</div>
-                       </div>
-
-                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
-                           <div className="flex items-center justify-between mb-2">
-                               <div className="p-2 rounded-lg bg-green-500/20">
-                                   <Calendar className="h-5 w-5 text-green-400" />
-                               </div>
-                           </div>
-                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalSessions}</div>
-                           <div className="text-xs text-gray-400">Sessions totales</div>
-                       </div>
-
-                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 hover:bg-gray-800/70 transition-all">
-                           <div className="flex items-center justify-between mb-2">
-                               <div className="p-2 rounded-lg bg-purple-500/20">
-                                   <Zap className="h-5 w-5 text-purple-400" />
-                               </div>
-                           </div>
-                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.thisWeekSessions}</div>
-                           <div className="text-xs text-gray-400">Cette semaine</div>
-                       </div>
-
-                       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4">
-                           <div className="flex items-center justify-between mb-2">
-                               <div className="p-2 rounded-lg bg-yellow-500/20">
-                                   <Target className="h-5 w-5 text-yellow-400" />
-                               </div>
-                           </div>
-                           <div className="text-2xl font-bold text-white mb-1">{workoutStats.totalVolume}</div>
-                           <div className="text-xs text-gray-400">Volume total (kg)</div>
-                       </div>
-                   </div>
-               )}
-
-               {/* Contenu des vues */}
-               {currentView === 'workout' && (
-                   <MainWorkoutView
-                       workouts={workouts}
-                       selectedDayFilter={selectedDayFilter}
-                       setSelectedDayFilter={setSelectedDayFilter}
-                       isAdvancedMode={isAdvancedMode}
-                       isCompactView={isCompactView}
-                       handleEditClick={(day, category, exerciseId, exercise) => {
-                            setEditingExercise({ day, category, exerciseId });
-                            setEditingExerciseName(exercise.name);
-                            setNewExerciseNotes(exercise.notes || ''); 
-                            setShowAddExerciseModal(true); 
-                       }}
-                       handleAddExerciseClick={(day, category) => {
-                           setSelectedDayForAdd(day || (workouts?.dayOrder?.[0] || ''));
-                           setSelectedCategoryForAdd(category || 'PECS');
-                           setNewExerciseName(''); 
-                           setNewWeight(''); 
-                           setNewReps(''); 
-                           setNewSets('3'); 
-                           setNewExerciseNotes(''); 
-                           setEditingExercise(null); 
-                           setShowAddExerciseModal(true);
-                       }}
-                       handleDeleteExercise={handleDeleteExercise}
-                       handleToggleSeriesCompleted={(dayName, categoryName, exerciseId, serieIndex) => handleToggleSeriesCompleted(dayName, categoryName, exerciseId, serieIndex)} 
-                       handleUpdateSeries={(dayName, categoryName, exerciseId, serieIndex, field, value) => handleUpdateSeries(dayName, categoryName, exerciseId, serieIndex, field, value)} 
-                       handleDeleteSeries={(dayName, categoryName, exerciseId, serieIndex) => handleDeleteSeries(dayName, categoryName, exerciseId, serieIndex)} 
-                       handleAddSeries={(dayName, categoryName, exerciseId) => handleAddSeries(dayName, categoryName, exerciseId)} 
-                       analyzeProgressionWithAI={(exercise) => analyzeProgressionWithAI(exercise, false)} 
-                       showProgressionGraphForExercise={(exercise) => analyzeProgressionWithAI(exercise, true)} 
-                       personalBests={personalBests}
-                       getDayButtonColors={getDayButtonColors}
-                       formatDate={formatDate}
-                       getSeriesDisplay={getSeriesDisplay}
-                       isSavingExercise={isSavingExercise}
-                       isDeletingExercise={isDeletingExercise}
-                       isAddingExercise={isAddingExercise}
-                       searchTerm={debouncedSearchTerm}
-                       setSearchTerm={setSearchTerm}
-                       days={workouts?.dayOrder || []}
-                       categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
-                       handleAddDay={handleAddDay}
-                       handleEditDay={handleEditDay}
-                       handleDeleteDay={handleDeleteDay}
-                   />
-               )}
-
-               {currentView === 'timer' && (
-                   <TimerView
-                       timerSeconds={timerSeconds}
-                       timerIsRunning={timerIsRunning}
-                       timerIsFinished={timerIsFinished}
-                       startTimer={startTimer}
-                       pauseTimer={pauseTimer}
-                       resetTimer={resetTimer}
-                       setTimerSeconds={setTimerSeconds}
-                       restTimeInput={restTimeInput}
-                       setRestTimeInput={setRestTimeInput}
-                       formatTime={formatTime}
-                       setTimerPreset={setTimerPreset}
-                       isAdvancedMode={isAdvancedMode}
-                   />
-               )}
-
-               {currentView === 'stats' && (
-                   <StatsView
-                       workouts={workouts}
-                       historicalData={historicalData}
-                       personalBests={personalBests}
-                       formatDate={formatDate}
-                       globalNotes={globalNotes} 
-                       setGlobalNotes={setGlobalNotes} 
-                       analyzeGlobalStatsWithAI={analyzeGlobalStatsWithAI} 
-                       aiAnalysisLoading={aiAnalysisLoading} 
-                   />
-               )}
-
-               {currentView === 'history' && (
-                   <HistoryView
-                       historicalData={historicalData}
-                       personalBests={personalBests}
-                       handleReactivateExercise={handleReactivateExercise}
-                       analyzeProgressionWithAI={(exercise) => analyzeProgressionWithAI(exercise, false)} 
-                       showProgressionGraphForExercise={(exercise) => analyzeProgressionWithAI(exercise, true)} 
-                       formatDate={formatDate}
-                       getSeriesDisplay={getSeriesDisplay}
-                       isAdvancedMode={isAdvancedMode}
-                       searchTerm={debouncedSearchTerm}
-                       setSearchTerm={setSearchTerm}
-                       sortBy={sortBy}
-                       setSortBy={setSortBy}
-                   />
-               )}
-           </main>
-
-           {/* Navigation inférieure mobile */}
-           <BottomNavigationBar 
-               currentView={currentView} 
-               setCurrentView={setCurrentView} 
-           />
-
-           {/* Modales */}
-           {/* Modale d'ajout/édition d'exercice améliorée */}
-           {(showAddExerciseModal || editingExercise) && (
-               <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin animate-slide-up">
-                       <div className="p-6">
-                           <div className="flex items-center justify-between mb-6">
-                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                   {editingExercise ? <Pencil className="h-5 w-5 text-yellow-400" /> : <Plus className="h-5 w-5 text-blue-400" />}
-                                   {editingExercise ? 'Modifier l\'exercice' : 'Nouvel Exercice'}
-                               </h3>
-                               <button
-                                   onClick={() => {
-                                       setShowAddExerciseModal(false);
-                                       setEditingExercise(null);
-                                       setNewExerciseNotes(''); 
-                                   }}
-                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                               >
-                                   <XCircle className="h-5 w-5" />
-                               </button>
-                           </div>
-
-                           <div className="space-y-4">
-                               <div>
-                                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                                       Nom de l'exercice *
-                                   </label>
-                                   <input
-                                       type="text"
-                                       value={editingExercise ? editingExerciseName : newExerciseName}
-                                       onChange={(e) => editingExercise ? setEditingExerciseName(e.target.value) : setNewExerciseName(e.target.value)}
-                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                       placeholder="Ex: Développé couché"
-                                       autoFocus
-                                   />
-                               </div>
-
-                               {/* Notes field */}
-                               <div>
-                                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                                       Notes
-                                   </label>
-                                   <textarea
-                                       value={newExerciseNotes}
-                                       onChange={(e) => setNewExerciseNotes(e.target.value)}
-                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                       placeholder="Ajoutez des notes sur la technique, les sensations, etc."
-                                       rows="3"
-                                   ></textarea>
-                               </div>
-
-                               {/* Jour - Masqué en mode édition */}
-                               {!editingExercise && (
-                                   <div>
-                                       <label className="block text-sm font-medium text-gray-300 mb-2">
-                                           Jour d'entraînement *
-                                       </label>
-                                       <select
-                                           value={selectedDayForAdd}
-                                           onChange={(e) => setSelectedDayForAdd(e.target.value)}
-                                           className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                       >
-                                           <option value="">Sélectionner un jour</option>
-                                           {(workouts?.dayOrder || []).map(day => (
-                                               <option key={day} value={day}>{day}</option>
-                                           ))}
-                                       </select>
-                                   </div>
-                               )}
-
-                               {/* Catégorie - Masqué en mode édition */}
-                               {!editingExercise && (
-                                   <div>
-                                       <label className="block text-sm font-medium text-gray-300 mb-2">
-                                           Catégorie *
-                                       </label>
-                                       <select
-                                           value={selectedCategoryForAdd}
-                                           onChange={(e) => setSelectedCategoryForAdd(e.target.value)}
-                                           className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                       >
-                                           <option value="">Sélectionner une catégorie</option>
-                                           {['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS'].map(category => (
-                                               <option key={category} value={category}>{category}</option>
-                                           ))}
-                                       </select>
-                                   </div>
-                               )}
-
-                               {/* Poids, Répétitions, Séries - Masqués en mode édition pour l'ajout d'exercice complet*/}
-                               {!editingExercise && (
-                                   <>
-                                       <div className="grid grid-cols-2 gap-4">
-                                           <div>
-                                               <label className="block text-sm font-medium text-gray-300 mb-2">
-                                                   Poids (kg)
-                                               </label>
-                                               <input
-                                                   type="number"
-                                                   value={newWeight}
-                                                   onChange={(e) => setNewWeight(e.target.value)}
-                                                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                   placeholder="10"
-                                                   step="0.5"
-                                                   min="0"
-                                               />
-                                           </div>
-                                           <div>
-                                               <label className="block text-sm font-medium text-gray-300 mb-2">
-                                                   Répétitions
-                                               </label>
-                                               <input
-                                                   type="number"
-                                                   value={newReps}
-                                                   onChange={(e) => setNewReps(e.target.value)}
-                                                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                   placeholder="12"
-                                                   min="0"
-                                               />
-                                           </div>
-                                       </div>
-
-                                       <div>
-                                           <label className="block text-sm font-medium text-gray-300 mb-2">
-                                               Nombre de séries
-                                           </label>
-                                           <input
-                                               type="number"
-                                               value={newSets}
-                                               onChange={(e) => setNewSets(e.target.value)}
-                                               className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                               placeholder="3"
-                                               min="1"
-                                               max="10"
-                                           />
-                                       </div>
-
-                                       <div className="text-sm text-gray-400 bg-gray-700/50 p-3 rounded-lg">
-                                           <p className="font-medium mb-1">Aperçu:</p>
-                                           <p>{newSets || '3'} série(s) de {newWeight || '?'}kg × {newReps || '?'} reps</p>
-                                       </div>
-                                   </>
-                               )}
-
-                               {editingExercise && personalBests[editingExercise.exerciseId] && (
-                                   <div className="text-sm text-gray-400 bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg">
-                                       <p className="font-medium mb-1 text-blue-400">🏆 Record personnel:</p>
-                                       <p>Poids max: {personalBests[editingExercise.exerciseId].maxWeight}kg</p>
-                                       <p>Reps max: {personalBests[editingExercise.exerciseId].maxReps}</p>
-                                       <p>Volume total: {Math.round(personalBests[editingExercise.exerciseId].totalVolume)}kg</p>
-                                   </div>
-                               )}
-                           </div>
-
-                           <div className="flex gap-3 mt-6">
-                               <button
-                                   onClick={() => {
-                                       setShowAddExerciseModal(false);
-                                       setEditingExercise(null);
-                                       setNewExerciseNotes(''); 
-                                   }}
-                                   className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                               >
-                                   Annuler
-                               </button>
-                               <button
-                                   onClick={editingExercise ? handleSaveEdit : handleAddExercise}
-                                   disabled={!(editingExercise ? editingExerciseName.trim() : (newExerciseName.trim() && selectedDayForAdd && selectedCategoryForAdd)) || isAddingExercise || isSavingExercise}
-                                   className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                       (isAddingExercise || isSavingExercise)
-                                           ? 'bg-blue-500/50 text-white cursor-wait'
-                                           : 'bg-blue-500 text-white hover:bg-blue-600'
-                                   } disabled:opacity-50 disabled:cursor-not-allowed`}
-                               >
-                                   {editingExercise ? (isSavingExercise ? 'Sauvegarde...' : 'Sauvegarder') : (isAddingExercise ? 'Ajout...' : 'Ajouter')}
-                               </button>
-                           </div>
-                       </div>
-                   </div>
-               </div>
-           )}
-
-           {/* Modale de paramètres et export/import */}
-           {showSettingsModal && (
-               <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin animate-slide-up">
-                       <div className="p-6">
-                           <div className="flex items-center justify-between mb-6">
-                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                   <Settings className="h-5 w-5 text-blue-400" />
-                                   Paramètres
-                               </h3>
-                               <button
-                                   onClick={() => setShowSettingsModal(false)}
-                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                               >
-                                   <XCircle className="h-5 w-5" />
-                               </button>
-                           </div>
-
-                           <div className="space-y-6">
-                               {/* Thème */}
-                               <div>
-                                   <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                                       {isDarkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-                                       Apparence
-                                   </h4>
-                                   <button
-                                       onClick={() => setIsDarkMode(!isDarkMode)}
-                                       className={`w-full p-3 rounded-lg border transition-all ${
-                                           isDarkMode 
-                                               ? 'bg-gray-700 border-gray-600 hover:bg-gray-600' 
-                                               : 'bg-gray-100 border-gray-300 hover:bg-gray-200 text-gray-900'
-                                       }`}
-                                   >
-                                       Basculer vers le thème {isDarkMode ? 'clair' : 'sombre'}
-                                   </button>
-                               </div>
-
-                               {/* Export/Import */}
-                               <div>
-                                   <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                                       <Share className="h-5 w-5" />
-                                       Données
-                                   </h4>
-                                   <div className="space-y-3">
-                                       <button
-                                           onClick={exportData}
-                                           className="w-full p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all flex items-center justify-center gap-2"
-                                       >
-                                           <Download className="h-4 w-4" />
-                                           Exporter mes données
-                                       </button>
-                                       
-                                       <label className="w-full p-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all flex items-center justify-center gap-2 cursor-pointer">
-                                           <Upload className="h-4 w-4" />
-                                           Importer des données
-                                           <input
-                                               type="file"
-                                               accept=".json"
-                                               onChange={importData}
-                                               className="hidden"
-                                           />
-                                       </label>
-                                   </div>
-                               </div>
-
-                               {/* Raccourcis clavier */}
-                               <div>
-                                   <h4 className="text-lg font-semibold text-white mb-3">
-                                       ⌨️ Raccourcis clavier
-                                   </h4>
-                                   <div className="text-sm text-gray-400 space-y-2">
-                                       <div className="flex justify-between">
-                                           <span>Annuler:</span>
-                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Ctrl+Z</kbd>
-                                       </div>
-                                       <div className="flex justify-between">
-                                           <span>Rétablir:</span>
-                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Ctrl+Shift+Z</kbd>
-                                       </div>
-                                       <div className="flex justify-between">
-                                           <span>Sauvegarder:</span>
-                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Ctrl+S</kbd>
-                                       </div>
-                                       <div className="flex justify-between">
-                                           <span>Exporter:</span>
-                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Ctrl+E</kbd>
-                                       </div>
-                                       <div className="flex justify-between">
-                                           <span>Fermer modales:</span>
-                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Échap</kbd>
-                                       </div>
-                                       <div className="flex justify-between">
-                                           <span>Play/Pause minuteur:</span>
-                                           <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Espace</kbd>
-                                       </div>
-                                   </div>
-                               </div>
-
-                               {/* Informations */}
-                               <div>
-                                   <h4 className="text-lg font-semibold text-white mb-3">
-                                       ℹ️ Informations
-                                   </h4>
-                                   <div className="text-sm text-gray-400 space-y-2">
-                                       <p>Version: 2.0 Pro</p>
-                                       <p>Dernière sync: {lastSaveTime ? formatDate(lastSaveTime) : 'Jamais'}</p>
-                                       <p>Utilisateur: {userId?.substring(0, 8)}...</p>
-                                       <p>Notifications: {Notification?.permission || 'Non supportées'}</p>
-                                   </div>
-                               </div>
-                           </div>
-
-                           <div className="mt-6">
-                               <button
-                                   onClick={() => setShowSettingsModal(false)}
-                                   className="w-full px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                               >
-                                   Fermer
-                               </button>
-                           </div>
-                       </div>
-                   </div>
-               </div>
-           )}
-
-           {/* Modale d'analyse IA pour un exercice */}
-           {progressionAnalysisContent && (
-               <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin animate-slide-up">
-                       <div className="p-6">
-                           <div className="flex items-center justify-between mb-6">
-                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                   <Sparkles className="h-5 w-5 text-purple-400" />
-                                   Analyse IA de progression
-                               </h3>
-                               <button
-                                   onClick={() => setProgressionAnalysisContent('')}
-                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                               >
-                                   <XCircle className="h-5 w-5" />
-                               </button>
-                           </div>
-
-                           <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-lg p-4 mb-4">
-                               <div className="text-sm text-white whitespace-pre-wrap leading-relaxed">
-                                   {progressionAnalysisContent}
-                               </div>
-                           </div>
-
-                           <div className="text-xs text-gray-400 mb-4">
-                               💡 Cette analyse est générée par IA et doit être considérée comme un conseil général. 
-                               Consultez un professionnel pour un programme personnalisé.
-                           </div>
-
-                           <button
-                               onClick={() => setProgressionAnalysisContent('')}
-                               className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all"
-                           >
-                               Fermer l'analyse
-                           </button>
-                       </div>
-                   </div>
-               </div>
-           )}
-
-            {/* Modale d'analyse IA globale */}
-            {showGlobalAIAnalysisModal && globalAIAnalysisContent && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin animate-slide-up">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Sparkles className="h-5 w-5 text-purple-400" />
-                                    Analyse IA de vos statistiques globales
-                                </h3>
-                                <button
-                                    onClick={() => {
-                                        setShowGlobalAIAnalysisModal(false);
-                                        setGlobalAIAnalysisContent('');
-                                    }}
-                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-lg p-4 mb-4">
-                                <div className="text-sm text-white whitespace-pre-wrap leading-relaxed">
-                                    {globalAIAnalysisContent}
-                                </div>
-                            </div>
-
-                            <div className="text-xs text-gray-400 mb-4">
-                                💡 Cette analyse est générée par IA et doit être considérée comme un conseil général. 
-                                Consultez un professionnel pour un programme personnalisé.
-                            </div>
-
-                            <button
-                                onClick={() => {
-                                    setShowGlobalAIAnalysisModal(false);
-                                    setGlobalAIAnalysisContent('');
-                                }}
-                                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all"
-                            >
-                                Fermer l'analyse
-                            </button>
-                        </div>
+    }, [showToast, geminiModel]);
+
+    const analyzeGlobalStatsWithAI = useCallback(async () => {
+        if (!geminiModel) {
+            showToast("Service d'IA non disponible. Clé API Gemini manquante ou erreur d'initialisation.", "error");
+            return;
+        }
+
+        setAiAnalysisLoading(true);
+        showToast("Analyse globale IA en cours...", "info", 0);
+
+        try {
+            let prompt = `Analyse les statistiques globales d'entraînement suivantes et fournis des insights et des conseils. Concentre-toi sur l'équilibre, la cohérence et les opportunités d'amélioration. Rédige en français et garde la réponse à environ 5-7 phrases, sans inclure de salutation ou de clôture.
+
+            Statistiques actuelles:
+            - Nombre total de séances enregistrées : ${historicalData.length}
+            - Nombre d'exercices actifs : ${Object.values(workouts.days).flatMap(day => Object.values(day.categories)).flat().filter(ex => !ex.isDeleted).length}
+            - Exercices avec records personnels: ${Object.keys(personalBests).length}
+
+            Dernières 5 séances (dates et nombre d'exercices):
+            ${historicalData.slice(-5).map(session => `- ${formatDate(session.timestamp?.toDate ? session.timestamp.toDate() : session.timestamp)}: ${session.exercises.length} exercices`).join('\n')}
+
+            Principaux groupes musculaires entraînés (basé sur les catégories d'exercices) et leur volume approximatif (très approximatif, concentrez-vous sur la présence/absence et l'équilibre):
+            ${Object.values(workouts.days).flatMap(day => Object.entries(day.categories)).reduce((acc, [catName, exercises]) => {
+                const totalVolumeCat = exercises.reduce((sum, ex) => sum + ex.series.reduce((sSum, s) => sSum + (s.reps * s.weight), 0), 0);
+                if (totalVolumeCat > 0) acc.push(`${catName}: ${totalVolumeCat} kg`);
+                return acc;
+            }, []).join('\n')}
+
+            Conseils:
+            `;
+
+            const result = await geminiModel.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+
+            setGlobalNotes(text); // Mettre à jour les notes globales avec l'analyse IA
+            showToast("Analyse IA globale terminée !", "success", 5000);
+            await saveUserData({ globalNotes: text }, null); // Sauvegarder les notes
+        } catch (error) {
+            console.error("Erreur lors de l'analyse IA globale:", error);
+            showToast("Échec de l'analyse IA globale. Réessayez.", "error");
+        } finally {
+            setAiAnalysisLoading(false);
+            hideToast();
+        }
+    }, [historicalData, workouts, personalBests, showToast, saveUserData, setGlobalNotes, geminiModel]);
+
+
+    const showProgressionGraphForExercise = useCallback((exerciseName, data) => {
+        setProgressionGraphExerciseName(exerciseName);
+        setProgressionGraphData(data);
+        setShowProgressionGraph(true);
+    }, []);
+
+    // Formatteur pour les tooltips des graphiques
+    const formatGraphTooltip = useCallback((value, name, props) => {
+        if (name === "Poids Max (kg)") {
+            return [`${value} kg`, name];
+        } else if (name === "Reps Max") {
+            return [`${value} reps`, name];
+        } else if (name === "Volume Max (kg)") {
+            return [`${value} kg`, name];
+        }
+        return [value, name];
+    }, []);
+
+    // Helper pour formater les dates
+    const formatDate = useCallback((date) => {
+        if (!date) return 'N/A';
+        // Assurez-vous que c'est bien un objet Date
+        const d = date instanceof Date ? date : (date.toDate ? date.toDate() : new Date(date));
+        return d.toLocaleDateString('fr-FR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
+    }, []);
+
+    const getSeriesDisplay = useCallback((series) => {
+        return series.map(s => `${s.weight || 0}kg x ${s.reps || 0}`).join(' / ');
+    }, []);
+
+    // Affichage des vues
+    const renderView = () => {
+        switch (currentView) {
+            case 'workout':
+                return (
+                    <MainWorkoutView
+                        workouts={workouts}
+                        selectedDayFilter={null} // Pas de filtre de jour ici
+                        setSelectedDayFilter={() => { }}
+                        isAdvancedMode={isAdvancedMode}
+                        isCompactView={isCompactView}
+                        handleEditClick={handleEditClick}
+                        handleAddExerciseClick={handleAddExerciseClick}
+                        handleDeleteExercise={handleDeleteExercise}
+                        handleToggleSeriesCompleted={handleToggleSeriesCompleted}
+                        handleUpdateSeries={handleUpdateSeries}
+                        handleDeleteSeries={handleDeleteSeries}
+                        analyzeProgressionWithAI={analyzeProgressionWithAI}
+                        showProgressionGraphForExercise={showProgressionGraphForExercise}
+                        personalBests={personalBests}
+                        getDayButtonColors={getDayButtonColors}
+                        formatDate={formatDate}
+                        getSeriesDisplay={getSeriesDisplay}
+                        isSavingExercise={false} // Pas directement géré ici, à affiner si besoin
+                        isDeletingExercise={false} // Pas directement géré ici
+                        isAddingExercise={false} // Pas directement géré ici
+                        searchTerm={''} // Pas de recherche ici, gérée dans HistoryView
+                        setSearchTerm={() => { }}
+                        days={workouts.dayOrder}
+                        categories={Object.values(workouts.days).flatMap(day => Object.keys(day.categories))}
+                        handleAddDay={handleAddDay}
+                        handleEditDay={handleEditDay}
+                        handleDeleteDay={handleDeleteDay}
+                        handleAddSeries={handleAddSeries}
+                    />
+                );
+            case 'timer':
+                return (
+                    <TimerView
+                        timerSeconds={timerSeconds}
+                        timerIsRunning={timerIsRunning}
+                        timerIsFinished={timerIsFinished}
+                        startTimer={startTimer}
+                        pauseTimer={pauseTimer}
+                        resetTimer={resetTimer}
+                        setTimerSeconds={setTimerSeconds}
+                        restTimeInput={timerSeconds.toString()} // Assurez-vous que c'est une chaîne
+                        setRestTimeInput={setTimerSeconds} // Met à jour directement le nombre de secondes
+                        formatTime={formatTime}
+                        setTimerPreset={setTimerPreset}
+                    />
+                );
+            case 'stats':
+                return (
+                    <StatsView
+                        workouts={workouts}
+                        historicalData={historicalData}
+                        personalBests={personalBests}
+                        formatDate={formatDate}
+                        globalNotes={globalNotes}
+                        setGlobalNotes={setGlobalNotes}
+                        analyzeGlobalStatsWithAI={analyzeGlobalStatsWithAI}
+                        aiAnalysisLoading={aiAnalysisLoading}
+                    />
+                );
+            case 'history':
+                return (
+                    <HistoryView
+                        historicalData={historicalData}
+                        personalBests={personalBests}
+                        handleReactivateExercise={handleReactivateExercise}
+                        analyzeProgressionWithAI={analyzeProgressionWithAI}
+                        showProgressionGraphForExercise={showProgressionGraphForExercise}
+                        formatDate={formatDate}
+                        getSeriesDisplay={getSeriesDisplay}
+                        isAdvancedMode={isAdvancedMode}
+                    />
+                );
+            default:
+                return null;
+        }
+    };
+
+
+    const getDayButtonColors = useCallback((dayId) => {
+        const day = workouts.days[dayId];
+        if (!day) return 'bg-gray-700 text-gray-300'; // Default if day not found
+
+        const allExercises = Object.values(day.categories).flat();
+        const hasCompletedSeries = allExercises.some(exercise =>
+            exercise.series.some(series => series.completed)
+        );
+
+        return hasCompletedSeries
+            ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
+            : 'bg-gray-700 text-gray-300 hover:bg-gray-600';
+    }, [workouts]);
+
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white text-lg">
+                Chargement des données...
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-white font-sans flex flex-col">
+            <div className="flex-grow pb-20 p-4 sm:p-6 md:p-8 max-w-2xl mx-auto w-full">
+                {/* En-tête de l'application */}
+                <header className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold text-blue-400">GymTracker</h1>
+                    <div className="flex items-center space-x-3">
+                        <button
+                            onClick={addWorkoutToHistoryAndSave}
+                            className="bg-green-600 text-white p-2 rounded-full shadow-lg hover:bg-green-700 transition-all active:scale-95"
+                            aria-label="Sauvegarder la séance"
+                        >
+                            <CheckCircle className="h-6 w-6" />
+                        </button>
+                        <button
+                            onClick={toggleCompactView}
+                            className="bg-gray-700 text-gray-300 p-2 rounded-full shadow-lg hover:bg-gray-600 transition-all active:scale-95"
+                            aria-label="Toggle Vue Compacte"
+                        >
+                            {isCompactView ? <Minimize2 className="h-6 w-6" /> : <Maximize2 className="h-6 w-6" />}
+                        </button>
+                        <button
+                            onClick={toggleAdvancedMode}
+                            className="bg-gray-700 text-gray-300 p-2 rounded-full shadow-lg hover:bg-gray-600 transition-all active:scale-95"
+                            aria-label="Toggle Mode Avancé"
+                        >
+                            <Settings className="h-6 w-6" />
+                        </button>
                     </div>
-                </div>
+                </header>
+
+                {/* Contenu principal basé sur la vue sélectionnée */}
+                {renderView()}
+            </div>
+
+            {/* Navigation Bar */}
+            <BottomNavigationBar
+                currentView={currentView}
+                setCurrentView={setCurrentView}
+            />
+
+            {/* Toast Notifications */}
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onClose={hideToast}
+                    duration={toast.duration}
+                    action={toast.action}
+                />
             )}
 
-            {/* Modale de graphique de progression */}
-            {showProgressionGraph && exerciseForAnalysis && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin animate-slide-up">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <LineChartIcon className="h-5 w-5 text-blue-400" />
-                                    Progression de {exerciseForAnalysis.name}
-                                </h3>
-                                <button
-                                    onClick={() => setShowProgressionGraph(false)}
-                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            <div className="bg-gray-700/50 rounded-lg p-4 mb-4 h-80">
+            {/* Modal de progression graphique */}
+            {showProgressionGraph && (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-95 flex items-center justify-center p-4 z-50">
+                    <div className="bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-xl border border-gray-700">
+                        <h2 className="text-xl font-semibold text-blue-400 mb-4 flex items-center gap-2">
+                            <LineChartIcon className="h-6 w-6" />
+                            Progression : {progressionGraphExerciseName}
+                        </h2>
+                        <div className="space-y-4">
+                            <div className="bg-gray-700 rounded-lg p-4 h-64 sm:h-80">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart
-                                        data={
-                                            historicalData
-                                                .filter(session => {
-                                                    return Object.values(session.workoutData?.days || {}).some(day =>
-                                                        Object.values(day.categories || {}).some(exercises =>
-                                                            exercises.some(ex => ex.id === exerciseForAnalysis.id && !ex.isDeleted)
-                                                        )
-                                                    );
-                                                })
-                                                .map(session => {
-                                                    const relevantExercise = Object.values(session.workoutData?.days || {})
-                                                        .flatMap(day => Object.values(day.categories || {}).flatMap(exercises => exercises))
-                                                        .find(ex => ex?.id === exerciseForAnalysis.id && !ex.isDeleted);
-                                                    
-                                                    let sessionMaxWeight = 0;
-                                                    let sessionMaxReps = 0;
-                                                    let sessionMaxVolume = 0;
-
-                                                    if (relevantExercise && Array.isArray(relevantExercise.series)) {
-                                                        relevantExercise.series.forEach(s => {
-                                                            const weight = parseFloat(s.weight) || 0;
-                                                            const reps = parseInt(s.reps) || 0;
-                                                            sessionMaxWeight = Math.max(sessionMaxWeight, weight);
-                                                            sessionMaxReps = Math.max(sessionMaxReps, reps);
-                                                            sessionMaxVolume = Math.max(sessionMaxVolume, weight * reps);
-                                                        });
-                                                    }
-
-                                                    return {
-                                                        date: formatDate(session.timestamp), 
-                                                        rawDate: session.timestamp, 
-                                                        maxWeight: sessionMaxWeight,
-                                                        maxReps: sessionMaxReps, 
-                                                        maxVolume: sessionMaxVolume,
-                                                        series: relevantExercise?.series || []
-                                                    };
-                                                })
-                                                .sort((a, b) => {
-                                                    const dateA = a.rawDate instanceof Timestamp ? a.rawDate.toDate() : new Date(a.rawDate.seconds * 1000);
-                                                    const dateB = b.rawDate instanceof Timestamp ? b.rawDate.toDate() : new Date(b.rawDate.seconds * 1000);
-                                                    return dateA.getTime() - dateB.getTime();
-                                                })
-                                        }
+                                        data={progressionGraphData}
+                                        margin={{
+                                            top: 5,
+                                            right: 10,
+                                            left: 0,
+                                            bottom: 5,
+                                        }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#4a5568" />
-                                        <XAxis 
-                                            dataKey="date" 
-                                            stroke="#cbd5e0" 
-                                            tickFormatter={(tick) => {
-                                                const dateObj = new Date(tick);
-                                                return isNaN(dateObj) ? '' : dateObj.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' });
-                                            }} 
+                                        <XAxis
+                                            dataKey="date"
+                                            stroke="#cbd5e0"
+                                            tickFormatter={(timestamp) => formatDate(timestamp)}
+                                            angle={-30}
+                                            textAnchor="end"
+                                            height={50}
                                         />
-                                        <YAxis yAxisId="left" stroke="#cbd5e0" />
-                                        <YAxis yAxisId="right" orientation="right" stroke="#cbd5e0" />
-                                        <Tooltip 
-                                            contentStyle={{ backgroundColor: '#1f2937', borderColor: '#4a5568', borderRadius: '8px' }} 
+                                        <YAxis yAxisId="left" stroke="#8884d8" domain={['auto', 'auto']} label={{ value: 'Poids (kg)', angle: -90, position: 'insideLeft', fill: '#cbd5e0' }} />
+                                        <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" domain={['auto', 'auto']} label={{ value: 'Reps/Volume', angle: 90, position: 'insideRight', fill: '#cbd5e0' }} />
+                                        <Tooltip
+                                            contentStyle={{ backgroundColor: '#1f2937', borderColor: '#4a5568', borderRadius: '8px' }}
                                             labelStyle={{ color: '#cbd5e0' }}
                                             formatter={(value, name, props) => {
-                                                if (name === 'Poids Max (kg)') return [`${value} kg`, 'Poids Max'];
-                                                if (name === 'Reps Max') return [`${value} reps`, 'Reps Max'];
-                                                if (name === 'Volume Max (kg)') return [`${value} kg`, 'Volume Max'];
+                                                // props.payload contient toutes les données de ce point
+                                                if (name === "Poids Max (kg)") {
+                                                    return [`${value} kg`, name];
+                                                } else if (name === "Reps Max") {
+                                                    return [`${value} reps`, name];
+                                                } else if (name === "Volume Max (kg)") {
+                                                    return [`${value} kg`, name];
+                                                }
                                                 return [value, name];
                                             }}
                                         />
@@ -2092,8 +915,8 @@ const ImprovedWorkoutApp = () => {
                     </div>
                 </div>
             )}
-       </div>
-   );
+        </div>
+    );
 };
 
 export default ImprovedWorkoutApp;
