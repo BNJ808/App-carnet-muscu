@@ -211,11 +211,13 @@ const WorkoutView = ({
     handleDeleteExercise,
     handleToggleSeriesCompleted, // Nouvelle prop
     handleUpdateSeries, // Nouvelle prop
+    handleDeleteSeries, // Nouvelle prop pour supprimer une série
+    analyzeProgressionWithAI, // Passé pour réactiver
     personalBests,
     getDayButtonColors,
     getSeriesDisplay,
-    searchTerm,
-    setSearchTerm,
+    // searchTerm, // Supprimé
+    // setSearchTerm, // Supprimé
     handleAddDay,
     handleEditDay,
     handleDeleteDay,
@@ -301,7 +303,7 @@ const WorkoutView = ({
         return (
             <div className="space-y-2 mt-3">
                 {exercise.series.map((serie, serieIndex) => (
-                    <div key={serie.id || serieIndex} className={`flex items-center gap-2 bg-gray-600/50 rounded-md p-2 ${serie.completed ? 'opacity-60 grayscale' : ''}`}>
+                    <div key={serie.id || serieIndex} className={`flex items-center gap-2 bg-gray-600/50 rounded-md p-2 ${serie.completed ? 'opacity-90' : ''}`}>
                         <span className="text-xs text-gray-400 w-6">#{serieIndex + 1}</span>
                         
                         <div className="flex items-center gap-1">
@@ -337,6 +339,14 @@ const WorkoutView = ({
                         >
                             {serie.completed ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                         </button>
+                        {/* Bouton pour supprimer une série */}
+                        <button
+                            onClick={() => handleDeleteSeries && handleDeleteSeries(dayName, categoryName, exercise.id, serieIndex)}
+                            className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
+                            title="Supprimer la série"
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </button>
                     </div>
                 ))}
             </div>
@@ -350,10 +360,10 @@ const WorkoutView = ({
 
         const personalBest = personalBests?.[exercise.id];
         
-        // Filtrage par terme de recherche
-        if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-            return null;
-        }
+        // Filtrage par terme de recherche - SUPPRIMÉ car barre de recherche retirée
+        // if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+        //     return null;
+        // }
         
         return (
             <div key={exercise.id} className={`bg-gray-700/50 rounded-lg border border-gray-600/50 transition-all p-4`}>
@@ -385,7 +395,7 @@ const WorkoutView = ({
                         </button>
                         
                         <button
-                            onClick={() => console.log('Voir graphique de progression')}
+                            onClick={() => analyzeProgressionWithAI && analyzeProgressionWithAI(exercise, true)} // Utilise la même fonction pour la démo
                             className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
                             title="Voir graphique de progression"
                         >
@@ -403,7 +413,7 @@ const WorkoutView = ({
                         <button
                             onClick={() => handleEditClick && handleEditClick(dayName, categoryName, exercise.id, exercise)}
                             className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 rounded transition-colors"
-                            title="Modifier l'exercice"
+                            title="Modifier l'exercice (nom uniquement)"
                         >
                             <Pencil className="h-4 w-4" />
                         </button>
@@ -430,7 +440,8 @@ const WorkoutView = ({
         }
 
         const activeExercises = exercises.filter(ex => ex && !ex.isDeleted);
-        if (activeExercises.length === 0 && !searchTerm) return null; // Masquer si pas d'exercices actifs et pas de recherche
+        // if (activeExercises.length === 0 && !searchTerm) return null; // Masquer si pas d'exercices actifs et pas de recherche - SUPPRIMÉ
+        if (activeExercises.length === 0) return null; // Masquer si pas d'exercices actifs
         
         const categoryKey = `${dayName}-${categoryName}`;
         const isExpanded = expandedCategories.has(categoryKey);
@@ -573,11 +584,12 @@ const WorkoutView = ({
             <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-white">Jours d'entraînement</h3>
-                    {searchTerm && (
+                    {/* Search term display removed */}
+                    {/* {searchTerm && (
                         <div className="text-sm text-gray-400">
                             Recherche: "{searchTerm}"
                         </div>
-                    )}
+                    )} */}
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
@@ -605,8 +617,8 @@ const WorkoutView = ({
                     </button>
                 </div>
 
-                {/* Barre de recherche */}
-                <div className="relative">
+                {/* Barre de recherche - SUPPRIMÉE */}
+                {/* <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <input
                         type="text"
@@ -623,7 +635,7 @@ const WorkoutView = ({
                             <XCircle className="h-4 w-4" />
                         </button>
                     )}
-                </div>
+                </div> */}
             </div>
             
             {/* Liste des jours */}
@@ -650,7 +662,7 @@ const WorkoutView = ({
 
             {/* Modal d'ajout de jour - optimisé mobile */}
             {showAddDayModal && (
-                <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4"> {/* Changed items-end to items-center */}
                     <div className="bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-slide-up">
                         <div className="p-6">
                             {/* Poignée pour glisser */}
@@ -698,7 +710,7 @@ const WorkoutView = ({
 
             {/* Modal d'édition de jour */}
             {editingDay && (
-                <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4"> {/* Changed items-end to items-center */}
                     <div className="bg-gray-800 rounded-t-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-slide-up">
                         <div className="p-6">
                              {/* Poignée pour glisser */}
@@ -1000,7 +1012,8 @@ const StatsView = ({ workouts = {}, historicalData = [], personalBests = {} }) =
         const thisWeekSessions = historicalData.filter(session => {
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
-            return session.timestamp && session.timestamp >= cutoff;
+            // Changed 'cutoff' to 'weekAgo' to fix the reference error
+            return session.timestamp && new Date(session.timestamp) >= weekAgo; 
         }).length;
 
         return {
@@ -1158,7 +1171,7 @@ const HistoryView = ({
             }
             
             filtered = historicalData.filter(session => 
-                session.timestamp && session.timestamp >= cutoff
+                session.timestamp && new Date(session.timestamp) >= cutoff
             );
         }
         
@@ -1340,7 +1353,7 @@ const WorkoutApp = () => {
     // États de l'interface
     const [toast, setToast] = useState(null);
     const [selectedDayFilter, setSelectedDayFilter] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
+    // const [searchTerm, setSearchTerm] = useState(''); // Supprimé
     
     // États des modales
     const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
@@ -1349,9 +1362,9 @@ const WorkoutApp = () => {
     // États d'édition
     const [editingExercise, setEditingExercise] = useState(null);
     const [editingExerciseName, setEditingExerciseName] = useState('');
-    const [newWeight, setNewWeight] = useState('');
-    const [newSets, setNewSets] = useState('3');
-    const [newReps, setNewReps] = useState('');
+    const [newWeight, setNewWeight] = useState(''); // Conserver car utilisé pour ajouter une nouvelle série
+    const [newSets, setNewSets] = useState('3'); // Conserver car utilisé pour ajouter une nouvelle série
+    const [newReps, setNewReps] = useState(''); // Conserver car utilisé pour ajouter une nouvelle série
     const [selectedDayForAdd, setSelectedDayForAdd] = useState('');
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState('');
     const [newExerciseName, setNewExerciseName] = useState('');
@@ -1476,16 +1489,10 @@ const WorkoutApp = () => {
         setEditingExercise({ day, category, exerciseId });
         setEditingExerciseName(exercise.name);
         
-        // Pour l'édition, pré-remplir avec les données de la première série, ou vide si aucune série
-        if (exercise.series && exercise.series.length > 0) {
-            setNewWeight(exercise.series[0].weight);
-            setNewSets(exercise.series.length.toString());
-            setNewReps(exercise.series[0].reps);
-        } else {
-            setNewWeight('');
-            setNewSets('3');
-            setNewReps('');
-        }
+        // Supprimé le pré-remplissage du poids, des séries et des répétitions pour l'édition
+        // setNewWeight(exercise.series[0].weight);
+        // setNewSets(exercise.series.length.toString());
+        // setNewReps(exercise.series[0].reps);
         setShowAddExerciseModal(true); // Ouvrir le modal pour l'édition
     }, []);
 
@@ -1502,19 +1509,11 @@ const WorkoutApp = () => {
         const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
         if (exerciseIndex === -1) return;
         
-        const setsNum = parseInt(newSets) || 1;
-        // Conserver l'état d'achèvement existant pour les séries qui restent, créer de nouvelles si le nombre de séries change
-        const existingSeries = exercises[exerciseIndex].series || [];
-        const newSeriesArray = Array(setsNum).fill(null).map((_, index) => ({
-            weight: newWeight,
-            reps: newReps,
-            completed: existingSeries[index] ? existingSeries[index].completed : false // Préserver l'état d'achèvement
-        }));
-        
+        // Ne modifie que le nom de l'exercice
         exercises[exerciseIndex] = {
             ...exercises[exerciseIndex],
             name: editingExerciseName.trim(),
-            series: newSeriesArray
+            // Ne pas modifier les séries ici, elles sont gérées individuellement
         };
         
         setWorkouts(updatedWorkouts);
@@ -1522,7 +1521,7 @@ const WorkoutApp = () => {
         setShowAddExerciseModal(false); // Fermer le modal après la sauvegarde
         setIsSavingExercise(false); // Fin de la sauvegarde
         setToast({ message: "Exercice modifié !", type: 'success' });
-    }, [editingExercise, workouts, editingExerciseName, newWeight, newSets, newReps]);
+    }, [editingExercise, workouts, editingExerciseName]); // Retiré newWeight, newSets, newReps des dépendances
 
     const handleDeleteExercise = useCallback((day, category, exerciseId) => {
         setIsDeletingExercise(true); // Début de la suppression
@@ -1602,6 +1601,28 @@ const WorkoutApp = () => {
         });
     }, [newWeight, newReps]);
 
+    // Nouvelle fonction pour supprimer une série
+    const handleDeleteSeries = useCallback((dayName, categoryName, exerciseId, serieIndex) => {
+        setWorkouts(prevWorkouts => {
+            const newWorkouts = { ...prevWorkouts };
+            const day = newWorkouts.days[dayName];
+            if (!day) return prevWorkouts;
+
+            const category = day.categories[categoryName];
+            if (!category) return prevWorkouts;
+
+            const exercise = category.find(ex => ex.id === exerciseId);
+            if (!exercise || !exercise.series) return prevWorkouts;
+
+            const updatedSeries = exercise.series.filter((_, index) => index !== serieIndex);
+            exercise.series = updatedSeries;
+            
+            setToast({ message: "Série supprimée !", type: 'success' });
+            return newWorkouts;
+        });
+    }, []);
+
+
     const handleAddDay = useCallback((dayName) => {
         const updatedWorkouts = { ...workouts };
         updatedWorkouts.days[dayName] = { categories: {} };
@@ -1647,6 +1668,15 @@ const WorkoutApp = () => {
         setTimerIsRunning(false);
         setTimerIsFinished(false);
     }, []);
+
+    // Placeholder pour l'analyse IA et le graphique
+    const analyzeProgressionWithAI = useCallback((exercise, isChart = false) => {
+        const message = isChart 
+            ? `Affichage du graphique de progression pour "${exercise.name}" (fonctionnalité à implémenter)`
+            : `Analyse IA de "${exercise.name}" (fonctionnalité à implémenter)`;
+        setToast({ message, type: 'info' });
+    }, []);
+
 
     // Styles CSS pour mobile
     const mobileStyles = `
@@ -1759,11 +1789,13 @@ const WorkoutApp = () => {
                         handleDeleteExercise={handleDeleteExercise}
                         handleToggleSeriesCompleted={handleToggleSeriesCompleted}
                         handleUpdateSeries={handleUpdateSeries}
+                        handleDeleteSeries={handleDeleteSeries} // Passé à WorkoutView
+                        analyzeProgressionWithAI={analyzeProgressionWithAI} // Passé à WorkoutView
                         personalBests={personalBests}
                         getDayButtonColors={getDayButtonColors}
                         getSeriesDisplay={getSeriesDisplay}
-                        searchTerm={searchTerm}
-                        setSearchTerm={setSearchTerm}
+                        // searchTerm={searchTerm} // Supprimé
+                        // setSearchTerm={setSearchTerm} // Supprimé
                         handleAddDay={handleAddDay}
                         handleEditDay={handleEditDay}
                         handleDeleteDay={handleDeleteDay}
@@ -1815,7 +1847,7 @@ const WorkoutApp = () => {
 
             {/* Modal d'ajout/édition d'exercice - Design mobile-first */}
             {(showAddExerciseModal || editingExercise) && (
-                <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"> {/* Changed items-end to items-center */}
                     <div className="bg-gray-800 rounded-t-3xl shadow-2xl w-full max-w-md border-t border-gray-700 animate-slide-up max-h-[90vh] overflow-y-auto">
                         <div className="p-6">
                             {/* Poignée pour glisser */}
@@ -1888,58 +1920,69 @@ const WorkoutApp = () => {
                                     </div>
                                 )}
 
-                                {/* Poids et Répétitions */}
-                                <div className="grid grid-cols-2 gap-4">
+                                {/* Poids et Répétitions - Masqués en mode édition */}
+                                {!editingExercise && (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                                Poids (kg)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={newWeight}
+                                                onChange={(e) => setNewWeight(e.target.value)}
+                                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+                                                placeholder="60"
+                                                step="0.5"
+                                                min="0"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                                Répétitions
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={newReps}
+                                                onChange={(e) => setNewReps(e.target.value)}
+                                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+                                                placeholder="10"
+                                                min="0"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Séries - Masqué en mode édition */}
+                                {!editingExercise && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                                            Poids (kg)
+                                            Nombre de séries
                                         </label>
                                         <input
                                             type="number"
-                                            value={newWeight}
-                                            onChange={(e) => setNewWeight(e.target.value)}
+                                            value={newSets}
+                                            onChange={(e) => setNewSets(e.target.value)}
                                             className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                            placeholder="60"
-                                            step="0.5"
-                                            min="0"
+                                            placeholder="3"
+                                            min="1"
+                                            max="10"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                                            Répétitions
-                                        </label>
-                                        <input
-                                            type="number"
-                                            value={newReps}
-                                            onChange={(e) => setNewReps(e.target.value)}
-                                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                            placeholder="10"
-                                            min="0"
-                                        />
+                                )}
+
+                                {/* Aperçu - Ajusté pour l'édition */}
+                                {!editingExercise ? (
+                                    <div className="text-sm text-gray-400 bg-gray-700/50 p-4 rounded-xl">
+                                        <p className="font-medium mb-1">Aperçu:</p>
+                                        <p>{newSets || '3'} série(s) de {newWeight || '?'}kg × {newReps || '?'} reps</p>
                                     </div>
-                                </div>
-
-                                {/* Séries */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Nombre de séries
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={newSets}
-                                        onChange={(e) => setNewSets(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                                        placeholder="3"
-                                        min="1"
-                                        max="10"
-                                    />
-                                </div>
-
-                                {/* Aperçu */}
-                                <div className="text-sm text-gray-400 bg-gray-700/50 p-4 rounded-xl">
-                                    <p className="font-medium mb-1">Aperçu:</p>
-                                    <p>{newSets || '3'} série(s) de {newWeight || '?'}kg × {newReps || '?'} reps</p>
-                                </div>
+                                ) : (
+                                    <div className="text-sm text-gray-400 bg-gray-700/50 p-4 rounded-xl">
+                                        <p className="font-medium mb-1">Aperçu du nom modifié:</p>
+                                        <p>{editingExerciseName || 'Nom actuel'}</p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Boutons */}
@@ -1968,7 +2011,7 @@ const WorkoutApp = () => {
 
             {/* Modal des paramètres */}
             {showSettingsModal && (
-                <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"> {/* Changed items-end to items-center */}
                     <div className="bg-gray-800 rounded-t-3xl shadow-2xl w-full max-w-md border-t border-gray-700 animate-slide-up max-h-[90vh] overflow-y-auto">
                         <div className="p-6">
                             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
