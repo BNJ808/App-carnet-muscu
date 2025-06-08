@@ -20,14 +20,15 @@ import StatsView from './StatsView.jsx';
 // Import des services Firebase depuis firebase.js
 import { auth, db } from './firebase.js';
 
-// Initialisation de l'API Google Generative AI
+// Initialisation de l'API Google Generative AI avec le nouveau modèle
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 let genAI;
 let geminiModel;
 if (API_KEY) {
     try {
         genAI = new GoogleGenerativeAI(API_KEY);
-        geminiModel = genAI.getGenerativeModel({ model: "gemini-pro" });
+        // Utiliser le nouveau modèle gemini-1.5-flash qui est disponible et gratuit
+        geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     } catch (error) {
         console.error("Erreur d'initialisation de GoogleGenerativeAI:", error);
     }
@@ -387,7 +388,8 @@ const ImprovedWorkoutApp = () => {
                 series: [{ weight: 0, reps: 0, completed: false, id: `s-${Date.now()}-1` }],
                 notes: '',
                 isDeleted: false,
-                createdAt: serverTimestamp()
+                // CORRECTION: Utiliser Date.now() au lieu de serverTimestamp() dans un objet qui sera dans un tableau
+                createdAt: Date.now()
             };
             updatedWorkouts.days[dayName].categories[categoryName].push(newExercise);
             await saveUserData({ workouts: updatedWorkouts }, "Exercice ajouté !");
@@ -641,9 +643,10 @@ const ImprovedWorkoutApp = () => {
                 return;
             }
 
+            // CORRECTION: Créer l'objet session avec un timestamp normal au lieu de serverTimestamp()
             const newSession = {
                 id: `session-${Date.now()}`,
-                timestamp: serverTimestamp(),
+                timestamp: new Date(), // Utiliser new Date() au lieu de serverTimestamp()
                 exercises: completedExercises,
                 totalVolume: totalVolumeSession,
                 totalExercises: totalExercisesSession
