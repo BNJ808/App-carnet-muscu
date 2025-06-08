@@ -30,25 +30,25 @@ const StatsView = ({
         let totalExercises = 0;
         let totalSeries = 0;
         let totalVolume = 0;
-        let totalSessions = safeHistoricalData.length;
+        const totalSessions = safeHistoricalData.length;
         let thisWeekSessions = 0;
 
         const now = new Date();
         const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
         // Compter les exercices actifs et les séries complétées
-        Object.values(safeWorkouts.days || {}).forEach(day => {
-            if (day?.categories) {
-                Object.values(day.categories).forEach(exercises => {
-                    if (Array.isArray(exercises)) {
-                        const activeExercises = exercises.filter(ex => ex && !ex.isDeleted);
+        Object.values(safeWorkouts.days || {}).forEach(workoutDay => {
+            if (workoutDay?.categories) {
+                Object.values(workoutDay.categories).forEach(exercisesList => {
+                    if (Array.isArray(exercisesList)) {
+                        const activeExercises = exercisesList.filter(ex => ex && !ex.isDeleted);
                         totalExercises += activeExercises.length;
-                        activeExercises.forEach(ex => {
-                            if (ex?.series && Array.isArray(ex.series)) {
-                                totalSeries += ex.series.length;
-                                ex.series.forEach(s => {
-                                    if (s && typeof s === 'object') {
-                                        totalVolume += (s.weight || 0) * (s.reps || 0);
+                        activeExercises.forEach(exercise => {
+                            if (exercise?.series && Array.isArray(exercise.series)) {
+                                totalSeries += exercise.series.length;
+                                exercise.series.forEach(seriesItem => {
+                                    if (seriesItem && typeof seriesItem === 'object') {
+                                        totalVolume += (seriesItem.weight || 0) * (seriesItem.reps || 0);
                                     }
                                 });
                             }
@@ -59,9 +59,11 @@ const StatsView = ({
         });
 
         // Calculer les sessions de la semaine en cours
-        safeHistoricalData.forEach(session => {
-            if (session?.timestamp) {
-                const sessionDate = session.timestamp?.toDate ? session.timestamp.toDate() : new Date(session.timestamp);
+        safeHistoricalData.forEach(sessionItem => {
+            if (sessionItem?.timestamp) {
+                const sessionDate = sessionItem.timestamp?.toDate ? 
+                    sessionItem.timestamp.toDate() : 
+                    new Date(sessionItem.timestamp);
                 if (sessionDate >= oneWeekAgo && sessionDate <= now) {
                     thisWeekSessions++;
                 }
@@ -80,49 +82,51 @@ const StatsView = ({
     // Données pour le graphique des catégories musculaires (Pie Chart)
     const categoryData = useMemo(() => {
         const categoryVolumes = {};
-        safeHistoricalData.forEach(session => {
-            if (session?.exercises && Array.isArray(session.exercises)) {
-                session.exercises.forEach(exercise => {
-                    if (exercise && exercise.name) {
-                        const category = exercise.category || 'Non catégorisé';
-                        const exerciseVolume = (exercise?.series || []).reduce((sum, s) => {
-                            if (s && typeof s === 'object') {
-                                return sum + (s.weight || 0) * (s.reps || 0);
+        safeHistoricalData.forEach(sessionData => {
+            if (sessionData?.exercises && Array.isArray(sessionData.exercises)) {
+                sessionData.exercises.forEach(exerciseData => {
+                    if (exerciseData && exerciseData.name) {
+                        const categoryName = exerciseData.category || 'Non catégorisé';
+                        const exerciseVolume = (exerciseData?.series || []).reduce((accumulator, seriesData) => {
+                            if (seriesData && typeof seriesData === 'object') {
+                                return accumulator + (seriesData.weight || 0) * (seriesData.reps || 0);
                             }
-                            return sum;
+                            return accumulator;
                         }, 0);
-                        categoryVolumes[category] = (categoryVolumes[category] || 0) + exerciseVolume;
+                        categoryVolumes[categoryName] = (categoryVolumes[categoryName] || 0) + exerciseVolume;
                     }
                 });
             }
         });
         return Object.entries(categoryVolumes)
-            .map(([name, volume]) => ({ name, value: parseFloat(volume.toFixed(2)) }))
-            .filter(item => item.value > 0)
-            .sort((a, b) => b.value - a.value);
+            .map(([categoryName, volume]) => ({ name: categoryName, value: parseFloat(volume.toFixed(2)) }))
+            .filter(categoryItem => categoryItem.value > 0)
+            .sort((categoryA, categoryB) => categoryB.value - categoryA.value);
     }, [safeHistoricalData]);
 
     // Données pour le graphique de progression du volume hebdomadaire
     const weeklyVolumeData = useMemo(() => {
         const volumesByWeek = {};
 
-        safeHistoricalData.forEach(session => {
-            if (session?.timestamp && session?.exercises) {
-                const sessionDate = session.timestamp?.toDate ? session.timestamp.toDate() : new Date(session.timestamp);
+        safeHistoricalData.forEach(sessionRecord => {
+            if (sessionRecord?.timestamp && sessionRecord?.exercises) {
+                const sessionDate = sessionRecord.timestamp?.toDate ? 
+                    sessionRecord.timestamp.toDate() : 
+                    new Date(sessionRecord.timestamp);
                 const year = sessionDate.getFullYear();
                 const weekNumber = getWeekNumber(sessionDate);
 
                 const weekKey = `${year}-${String(weekNumber).padStart(2, '0')}`;
-                const sessionVolume = (session.exercises || []).reduce((sum, ex) => {
-                    if (ex && ex.series && Array.isArray(ex.series)) {
-                        return sum + ex.series.reduce((sSum, s) => {
-                            if (s && typeof s === 'object') {
-                                return sSum + (s.reps || 0) * (s.weight || 0);
+                const sessionVolume = (sessionRecord.exercises || []).reduce((sessionSum, exerciseRecord) => {
+                    if (exerciseRecord && exerciseRecord.series && Array.isArray(exerciseRecord.series)) {
+                        return sessionSum + exerciseRecord.series.reduce((exerciseSum, seriesRecord) => {
+                            if (seriesRecord && typeof seriesRecord === 'object') {
+                                return exerciseSum + (seriesRecord.reps || 0) * (seriesRecord.weight || 0);
                             }
-                            return sSum;
+                            return exerciseSum;
                         }, 0);
                     }
-                    return sum;
+                    return sessionSum;
                 }, 0);
 
                 volumesByWeek[weekKey] = (volumesByWeek[weekKey] || 0) + sessionVolume;
@@ -138,26 +142,26 @@ const StatsView = ({
 
     // Helper function to get week number (ISO week date system)
     const getWeekNumber = (date) => {
-        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-        const dayNum = d.getUTCDay() || 7;
-        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-        return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        const dateObject = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const dayNum = dateObject.getUTCDay() || 7;
+        dateObject.setUTCDate(dateObject.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(dateObject.getUTCFullYear(), 0, 1));
+        return Math.ceil((((dateObject - yearStart) / 86400000) + 1) / 7);
     };
 
     // Données pour le graphique des top exercices (Bar Chart)
     const topExercisesData = useMemo(() => {
         const exerciseVolumes = {};
-        safeHistoricalData.forEach(session => {
-            if (session?.exercises && Array.isArray(session.exercises)) {
-                session.exercises.forEach(exercise => {
-                    if (exercise && exercise.name) {
-                        const exerciseName = exercise.name;
-                        const exerciseVolume = (exercise?.series || []).reduce((sum, s) => {
-                            if (s && typeof s === 'object') {
-                                return sum + (s.weight || 0) * (s.reps || 0);
+        safeHistoricalData.forEach(sessionEntry => {
+            if (sessionEntry?.exercises && Array.isArray(sessionEntry.exercises)) {
+                sessionEntry.exercises.forEach(exerciseEntry => {
+                    if (exerciseEntry && exerciseEntry.name) {
+                        const exerciseName = exerciseEntry.name;
+                        const exerciseVolume = (exerciseEntry?.series || []).reduce((volumeSum, seriesEntry) => {
+                            if (seriesEntry && typeof seriesEntry === 'object') {
+                                return volumeSum + (seriesEntry.weight || 0) * (seriesEntry.reps || 0);
                             }
-                            return sum;
+                            return volumeSum;
                         }, 0);
                         exerciseVolumes[exerciseName] = (exerciseVolumes[exerciseName] || 0) + exerciseVolume;
                     }
@@ -165,9 +169,9 @@ const StatsView = ({
             }
         });
         return Object.entries(exerciseVolumes)
-            .map(([name, volume]) => ({ name, volume: parseFloat(volume.toFixed(2)) }))
-            .filter(item => item.volume > 0)
-            .sort((a, b) => b.volume - a.volume)
+            .map(([exerciseName, volume]) => ({ name: exerciseName, volume: parseFloat(volume.toFixed(2)) }))
+            .filter(exerciseItem => exerciseItem.volume > 0)
+            .sort((exerciseA, exerciseB) => exerciseB.volume - exerciseA.volume)
             .slice(0, 5);
     }, [safeHistoricalData]);
 
@@ -255,13 +259,13 @@ const StatsView = ({
                             <PieChartIcon className="h-10 w-10 mx-auto mb-3" />
                             <p className="mb-4">Graphique circulaire des catégories disponible avec les bibliothèques de charts</p>
                             <div className="grid grid-cols-2 gap-2 text-sm">
-                                {categoryData.map((category, index) => (
-                                    <div key={category.name} className="flex items-center gap-2">
+                                {categoryData.map((categoryItem, index) => (
+                                    <div key={categoryItem.name} className="flex items-center gap-2">
                                         <div 
                                             className="w-4 h-4 rounded-full" 
                                             style={{ backgroundColor: COLORS[index % COLORS.length] }}
                                         ></div>
-                                        <span>{category.name}: {category.value} kg</span>
+                                        <span>{categoryItem.name}: {categoryItem.value} kg</span>
                                     </div>
                                 ))}
                             </div>
@@ -290,10 +294,10 @@ const StatsView = ({
                             <div className="text-sm">
                                 <p>Données de volume par semaine :</p>
                                 <div className="grid grid-cols-1 gap-1 mt-2 max-h-32 overflow-y-auto">
-                                    {weeklyVolumeData.map(data => (
-                                        <div key={data.week} className="flex justify-between">
-                                            <span>Semaine {data.week}:</span>
-                                            <span>{data.volume} kg</span>
+                                    {weeklyVolumeData.map(weekData => (
+                                        <div key={weekData.week} className="flex justify-between">
+                                            <span>Semaine {weekData.week}:</span>
+                                            <span>{weekData.volume} kg</span>
                                         </div>
                                     ))}
                                 </div>
@@ -324,13 +328,13 @@ const StatsView = ({
                                 <div className="text-sm">
                                     <p>Top exercices par volume :</p>
                                     <div className="space-y-2 mt-2">
-                                        {topExercisesData.map((exercise, index) => (
-                                            <div key={exercise.name} className="flex justify-between items-center bg-gray-700 p-2 rounded">
+                                        {topExercisesData.map((exerciseData, index) => (
+                                            <div key={exerciseData.name} className="flex justify-between items-center bg-gray-700 p-2 rounded">
                                                 <span className="flex items-center gap-2">
                                                     <span className="text-yellow-400 font-bold">#{index + 1}</span>
-                                                    {exercise.name}
+                                                    {exerciseData.name}
                                                 </span>
-                                                <span className="font-semibold">{exercise.volume} kg</span>
+                                                <span className="font-semibold">{exerciseData.volume} kg</span>
                                             </div>
                                         ))}
                                     </div>
@@ -381,15 +385,15 @@ const StatsView = ({
                         Progression Récente
                     </h3>
                     <div className="space-y-2">
-                        {safeHistoricalData.slice(-5).reverse().map((session, index) => (
-                            <div key={session?.id || index} className="bg-gray-700/50 rounded-lg p-3 border border-gray-600">
+                        {safeHistoricalData.slice(-5).reverse().map((sessionItem, index) => (
+                            <div key={sessionItem?.id || index} className="bg-gray-700/50 rounded-lg p-3 border border-gray-600">
                                 <div className="flex justify-between items-center">
                                     <span className="text-white font-medium">
-                                        {formatDate && formatDate(session?.timestamp)}
+                                        {formatDate && formatDate(sessionItem?.timestamp)}
                                     </span>
                                     <div className="text-sm text-gray-400">
-                                        {(session?.exercises || []).length} exercices - 
-                                        {(session?.exercises || []).reduce((sum, ex) => 
+                                        {(sessionItem?.exercises || []).length} exercices - 
+                                        {(sessionItem?.exercises || []).reduce((sum, ex) => 
                                             sum + (ex?.series || []).reduce((sSum, s) => 
                                                 sSum + ((s?.weight || 0) * (s?.reps || 0)), 0
                                             ), 0
