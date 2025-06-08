@@ -51,7 +51,6 @@ const MainWorkoutView = ({
     const [newExerciseCategory, setNewExerciseCategory] = useState('');
     const [activeExerciseNotes, setActiveExerciseNotes] = useState({});
     const [editingNotesExerciseId, setEditingNotesExerciseId] = useState(null);
-    const [showDayOptions, setShowDayOptions] = useState(null);
 
     const toggleDayExpansion = (dayId) => {
         setExpandedDays(prev => {
@@ -120,7 +119,7 @@ const MainWorkoutView = ({
         }
     };
 
-    // Filter exercises by search term - CORRECTION DES VARIABLES
+    // Filter exercises by search term
     const filteredWorkouts = useMemo(() => {
         if (!searchTerm || !workouts?.dayOrder) return workouts;
 
@@ -195,41 +194,6 @@ const MainWorkoutView = ({
         const notesToSave = activeExerciseNotes[exerciseId] || '';
         handleEditClick(dayId, categoryName, exerciseId, { notes: notesToSave });
         setEditingNotesExerciseId(null);
-    };
-
-    const getProgressionGraphData = (exerciseName) => {
-        const data = [];
-        Object.values(workouts?.days || {}).forEach(dayRecord => {
-            if (dayRecord?.categories) {
-                Object.values(dayRecord.categories).forEach(exercisesData => {
-                    if (Array.isArray(exercisesData)) {
-                        const exerciseRecord = exercisesData.find(exerciseElement => exerciseElement?.name === exerciseName && !exerciseElement?.isDeleted);
-                        if (exerciseRecord?.series && Array.isArray(exerciseRecord.series)) {
-                            let maxWeight = 0;
-                            let maxReps = 0;
-                            let maxVolume = 0;
-
-                            exerciseRecord.series.forEach(seriesRecord => {
-                                const currentWeight = seriesRecord?.weight || 0;
-                                const currentReps = seriesRecord?.reps || 0;
-                                const currentVolume = currentWeight * currentReps;
-
-                                if (currentWeight > maxWeight) maxWeight = currentWeight;
-                                if (currentReps > maxReps) maxReps = currentReps;
-                                if (currentVolume > maxVolume) maxVolume = currentVolume;
-                            });
-                            data.push({
-                                date: new Date(),
-                                maxWeight,
-                                maxReps,
-                                maxVolume
-                            });
-                        }
-                    }
-                });
-            }
-        });
-        return data.sort((dataA, dataB) => dataA.date.getTime() - dataB.date.getTime());
     };
 
     return (
@@ -442,7 +406,9 @@ const MainWorkoutView = ({
 
                                                                                 {hasPb && isAdvancedMode && (
                                                                                     <div className="mt-2 text-xs text-gray-400 border-t border-gray-500 pt-2">
-                                                                                        <p className="font-semibold text-yellow-400 flex items-center gap-1"><Award className="h-3 w-3" />Records Personnels :</p>
+                                                                                        <p className="font-semibold text-yellow-400 flex items-center gap-1">
+                                                                                            <Award className="h-3 w-3" />Records Personnels :
+                                                                                        </p>
                                                                                         {personalBest.bestWeightSeries && <p>Max Poids: {personalBest.bestWeightSeries.weight}kg x {personalBest.bestWeightSeries.reps} reps</p>}
                                                                                         {personalBest.bestRepsSeries && <p>Max Reps: {personalBest.bestRepsSeries.reps} reps @ {personalBest.bestRepsSeries.weight}kg</p>}
                                                                                         {personalBest.maxVolume > 0 && <p>Max Volume: {personalBest.maxVolume} kg</p>}
@@ -467,7 +433,6 @@ const MainWorkoutView = ({
                 )}
             </div>
 
-            {/* Modals */}
             {/* Modal pour ajouter un jour */}
             {showAddDayModal && (
                 <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
@@ -494,6 +459,42 @@ const MainWorkoutView = ({
                             <button
                                 onClick={handleAddDaySubmit}
                                 disabled={!newDayName?.trim()}
+                                className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                            >
+                                Ajouter
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal pour modifier un jour */}
+            {showEditDayModal && (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+                    <div className="bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm border border-gray-700">
+                        <h3 className="text-xl font-semibold text-white mb-4">Modifier le jour</h3>
+                        <input
+                            type="text"
+                            value={tempDayName}
+                            onChange={(e) => setTempDayName(e.target.value)}
+                            placeholder="Nouveau nom du jour"
+                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-base"
+                            autoFocus
+                        />
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setEditingDay(null);
+                                    setTempDayName('');
+                                    setShowEditDayModal(false);
+                                }}
+                                className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={handleEditDaySubmit}
+                                disabled={!tempDayName?.trim()}
                                 className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                             >
                                 Sauvegarder
@@ -579,40 +580,4 @@ const MainWorkoutView = ({
     );
 };
 
-export default MainWorkoutView;disabled:cursor-not-allowed transition-all active:scale-95"
-                            >
-                                Ajouter
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal pour modifier un jour */}
-            {showEditDayModal && (
-                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
-                    <div className="bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-sm border border-gray-700">
-                        <h3 className="text-xl font-semibold text-white mb-4">Modifier le jour</h3>
-                        <input
-                            type="text"
-                            value={tempDayName}
-                            onChange={(e) => setTempDayName(e.target.value)}
-                            placeholder="Nouveau nom du jour"
-                            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-base"
-                            autoFocus
-                        />
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => {
-                                    setEditingDay(null);
-                                    setTempDayName('');
-                                    setShowEditDayModal(false);
-                                }}
-                                className="flex-1 px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all active:scale-95"
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                onClick={handleEditDaySubmit}
-                                disabled={!tempDayName?.trim()}
-                                className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50
+export default MainWorkoutView;

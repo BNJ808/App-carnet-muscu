@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, collection, query, limit, addDoc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore'; // Removed orderBy as per past instructions for performance
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ChevronUp, Pencil, Sparkles, ArrowUp, ArrowDown,
@@ -30,7 +30,7 @@ const firebaseConfig = {
 };
 
 // Configuration Gemini AI
-const genAI = new GoogleGenerativeAI(import.meta.env?.VITE_GEMINI_API_KEY || "demo-key");
+const genAI = new GenerativeAIModule.GoogleGenerativeAI(import.meta.env?.VITE_GEMINI_API_KEY || "demo-key"); // CORRECTION: Utilisation de GenerativeAIModule.GoogleGenerativeAI
 
 // Constantes
 const MAX_UNDO_STATES = 20;
