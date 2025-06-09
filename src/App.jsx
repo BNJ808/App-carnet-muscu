@@ -2,14 +2,13 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, query, limit, addDoc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ChevronUp, Pencil, Sparkles, ArrowUp, ArrowDown,
     Plus, Trash2, Play, Pause, RotateCcw, Search, Filter, Dumbbell, Clock, History, NotebookText,
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
     Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
 } from 'lucide-react';
-import * as GenerativeAIModule from '@google/generative-ai'; // Corrected import syntax
+import * as GenerativeAIModule from '@google/generative-ai';
 
 // Import des composants
 import Toast from './components/Toast.jsx';
@@ -18,1004 +17,790 @@ import HistoryView from './components/HistoryView.jsx';
 import TimerView from './components/TimerView.jsx';
 import StatsView from './components/StatsView.jsx';
 import BottomNavigationBar from './components/BottomNavigationBar.jsx';
-import TimerModal from './components/TimerModal.jsx';
+import TimerModal from './components/TimerModal.jsx'; // Import du TimerModal
 
-// Configuration Firebase
+
+// --- Firebase Configuration ---
+// Remplacez par vos propres informations de configuration Firebase
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_AUTH_DOMAIN",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_STORAGE_BUCKET",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID"
 };
 
-// Initialisation Firebase (si les clés sont valides)
-let app;
-let auth;
-let db;
-let hasValidFirebaseConfig = false;
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-try {
-    if (firebaseConfig.apiKey && firebaseConfig.projectId && !firebaseConfig.apiKey.includes('demo')) {
-        app = initializeApp(firebaseConfig);
-        auth = getAuth(app);
-        db = getFirestore(app);
-        hasValidFirebaseConfig = true;
-        console.log('Firebase initialized successfully with valid config.');
-    } else {
-        console.warn('Firebase not initialized: Missing or demo API keys. Functionality will be limited to local storage.');
-        // Mock Firebase objects for graceful degradation
-        auth = {
-            currentUser: null,
-            onAuthStateChanged: (callback) => {
-                callback(null); // Immediately call with null user
-                return () => { }; // Return an unsubscribe function
-            },
-            signInAnonymously: () => Promise.reject(new Error('Firebase not configured')),
-            signInWithCustomToken: () => Promise.reject(new Error('Firebase not configured'))
-        };
-        db = {
-            collection: () => ({
-                doc: () => ({
-                    set: () => Promise.reject(new Error('Firebase not configured')),
-                    onSnapshot: (callback) => {
-                        callback({ exists: () => false, data: () => ({}) }); // Call with empty data
-                        return () => { };
-                    },
-                    update: () => Promise.reject(new Error('Firebase not configured'))
-                })
-            }),
-            runTransaction: (callback) => {
-                return Promise.reject(new Error('Firebase not configured for transactions'));
-            },
-            writeBatch: () => ({
-                set: () => { },
-                update: () => { },
-                delete: () => { },
-                commit: () => Promise.reject(new Error('Firebase not configured for batch writes'))
-            })
-        };
-    }
-} catch (error) {
-    console.error('Firebase initialization error:', error);
-    hasValidFirebaseConfig = false;
-    // Fallback to mock objects in case of any initialization error
-    auth = {
-        currentUser: null,
-        onAuthStateChanged: (callback) => {
-            callback(null);
-            return () => { };
-        },
-        signInAnonymously: () => Promise.reject(new Error('Firebase not configured')),
-        signInWithCustomToken: () => Promise.reject(new Error('Firebase not configured'))
-    };
-    db = {
-        collection: () => ({
-            doc: () => ({
-                set: () => Promise.reject(new Error('Firebase not configured')),
-                onSnapshot: (callback) => {
-                    callback({ exists: () => false, data: () => ({}) });
-                    return () => { };
-                },
-                update: () => Promise.reject(new Error('Firebase not configured'))
-            })
-        }),
-        runTransaction: (callback) => {
-            return Promise.reject(new Error('Firebase not configured for transactions'));
-        },
-        writeBatch: () => ({
-            set: () => { },
-            update: () => { },
-            delete: () => { },
-            commit: () => Promise.reject(new Error('Firebase not configured for batch writes'))
-        })
-    };
-}
+// --- Historique des états pour Undo/Redo ---
+const MAX_HISTORY_SIZE = 20; // Nombre maximum d'états à conserver
 
+const useHistory = (initialState) => {
+    const [history, setHistory] = useState([initialState]);
+    const [currentIndex, setCurrentIndex] = useState(0);
 
-// Configuration de l'API Gemini
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-let generativeModel = null;
-if (GEMINI_API_KEY) {
-    try {
-        const genAI = new GenerativeAIModule.GoogleGenerativeAI(GEMINI_API_KEY);
-        generativeModel = genAI.getGenerativeModel({ model: "gemini-pro" });
-        console.log("Gemini model initialized.");
-    } catch (error) {
-        console.error("Failed to initialize Gemini model:", error);
-    }
-} else {
-    console.warn("Gemini API key not found. AI features will be disabled.");
-}
+    const setState = useCallback((newState, { shallow = false } = {}) => {
+        setHistory(prevHistory => {
+            const newHistory = prevHistory.slice(0, currentIndex + 1);
+            if (shallow) {
+                // Si shallow est vrai, ne pas ajouter si l'état est identique (référence)
+                if (newHistory[newHistory.length - 1] === newState) {
+                    return prevHistory;
+                }
+            } else {
+                // Pour une comparaison profonde, comparer avec JSON.stringify ou une lib comme lodash.isEqual
+                // Pour l'instant, on va juste vérifier si l'objet est 'profondément' le même
+                if (JSON.stringify(newHistory[newHistory.length - 1]) === JSON.stringify(newState)) {
+                    return prevHistory;
+                }
+            }
+
+            const updatedHistory = [...newHistory, newState];
+            if (updatedHistory.length > MAX_HISTORY_SIZE) {
+                updatedHistory.shift(); // Supprime l'état le plus ancien
+            }
+            setCurrentIndex(updatedHistory.length - 1);
+            return updatedHistory;
+        });
+    }, [currentIndex]);
+
+    const undo = useCallback(() => {
+        if (currentIndex > 0) {
+            setCurrentIndex(prev => prev - 1);
+        }
+    }, [currentIndex]);
+
+    const redo = useCallback(() => {
+        if (currentIndex < history.length - 1) {
+            setCurrentIndex(prev => prev + 1);
+        }
+    }, [currentIndex, history.length]);
+
+    const canUndo = currentIndex > 0;
+    const canRedo = currentIndex < history.length - 1;
+
+    const currentState = history[currentIndex];
+
+    return [currentState, setState, undo, redo, canUndo, canRedo];
+};
+
 
 const ImprovedWorkoutApp = () => {
-    const [workouts, setWorkouts] = useState({
-        days: {
-            'monday': {
-                name: 'Lundi',
-                exercises: []
-            }
-        },
-        dayOrder: ['monday']
-    });
-    const [currentView, setCurrentView] = useState('workout'); // 'workout', 'timer', 'history', 'stats'
-    const [userId, setUserId] = useState(null);
-    const [toast, setToast] = useState(null); // { message, type, action }
-    const [showSettings, setShowSettings] = useState(false);
-    const [theme, setTheme] = useState('dark'); // 'light', 'dark', 'system'
+    // --- États globaux ---
+    const [workouts, setWorkouts, undo, redo, canUndo, canRedo] = useHistory({ days: {}, dayOrder: [] });
+    const [historicalData, setHistoricalData] = useState([]);
+    const [personalBests, setPersonalBests] = useState({});
+    const [currentView, setCurrentView] = useState('workout'); // 'workout', 'timer', 'stats', 'history'
     const [isAdvancedMode, setIsAdvancedMode] = useState(false);
-    const [restTimeInput, setRestTimeInput] = useState('90'); // Default 90 seconds rest time
+    const [toast, setToast] = useState(null); // { message, type, action }
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [userId, setUserId] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    // AI States
+    const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false); // Global workout analysis
+    const [aiWorkoutAnalysisContent, setAiWorkoutAnalysisContent] = useState('');
+    const [aiSuggestionsLoading, setAiSuggestionsLoading] = useState(false); // Exercise suggestions for current day
+    const [aiExerciseSuggestions, setAiExerciseSuggestions] = useState([]);
+    const [isLoadingAIProgression, setIsLoadingAIProgression] = useState(false); // For history view progression analysis
+    const [aiProgressionAnalysisContent, setAiProgressionAnalysisContent] = useState(''); // For history view progression analysis
+
+    // Timer States
     const [timerSeconds, setTimerSeconds] = useState(0);
     const [timerIsRunning, setTimerIsRunning] = useState(false);
     const [timerIsFinished, setTimerIsFinished] = useState(false);
-    const [timerModalOpen, setTimerModalOpen] = useState(false);
-    const [globalNotes, setGlobalNotes] = useState('');
-    const [isLoadingAI, setIsLoadingAI] = useState(false);
-    const [progressionAnalysisContent, setProgressionAnalysisContent] = useState(''); // State pour l'analyse de progression
-    const [aiSuggestions, setAiSuggestions] = useState([]); // Pour les suggestions globales de l'IA
-    const [historyChanges, setHistoryChanges] = useState([]);
-    const [futureChanges, setFutureChanges] = useState([]);
+    const [isTimerModalOpen, setIsTimerModalOpen] = useState(false);
+    const timerIntervalRef = useRef(null);
+    const notificationSoundRef = useRef(new Audio('/assets/notification.mp3')); // Chemin vers votre son de notification
 
-    const timerRef = useRef(null);
-    const workoutsRef = useRef(workouts);
-
-    // Mettre à jour la ref lorsque les workouts changent
+    // --- Firebase Auth & Data Loading ---
     useEffect(() => {
-        workoutsRef.current = workouts;
-    }, [workouts]);
+        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                setUserId(user.uid);
+                setIsAuthenticated(true);
+            } else {
+                signInAnonymously(auth).then((userCredential) => {
+                    setUserId(userCredential.user.uid);
+                    setIsAuthenticated(true);
+                }).catch((error) => {
+                    console.error("Erreur d'authentification anonyme:", error);
+                    showToast("Impossible de se connecter. Veuillez réessayer.", "error");
+                });
+            }
+        });
 
-    // Authentification anonyme et chargement des données
+        return () => unsubscribeAuth();
+    }, []);
+
     useEffect(() => {
-        if (!hasValidFirebaseConfig) {
-            // Load from local storage immediately if Firebase is not configured
-            console.log('Loading data from local storage (Firebase not configured).');
-            loadWorkoutsFromLocal();
-            loadSettingsFromLocal();
+        if (!isAuthenticated || !userId) {
+            setLoading(false);
             return;
         }
 
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                setUserId(user.uid);
-                console.log('Firebase user authenticated:', user.uid);
-                // Charger les données de Firestore
-                const userDocRef = doc(db, 'users', user.uid);
-                onSnapshot(userDocRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        console.log('Firestore data loaded:', data);
-                        if (data.workouts) setWorkouts(data.workouts);
-                        if (data.settings) {
-                            if (data.settings.theme) setTheme(data.settings.theme);
-                            if (data.settings.isAdvancedMode !== undefined) setIsAdvancedMode(data.settings.isAdvancedMode);
-                            if (data.settings.restTimeInput) setRestTimeInput(data.settings.restTimeInput);
-                            if (data.settings.globalNotes) setGlobalNotes(data.settings.globalNotes);
-                        }
-                    } else {
-                        console.log('No user data in Firestore, initializing...');
-                        // Initialiser les données pour un nouvel utilisateur
-                        setDoc(userDocRef, {
-                            workouts: { days: { 'monday': { name: 'Lundi', exercises: [] } }, dayOrder: ['monday'] },
-                            settings: { theme: 'dark', isAdvancedMode: false, restTimeInput: '90', globalNotes: '' },
-                            createdAt: serverTimestamp()
-                        }, { merge: true });
-                    }
-                }, (error) => {
-                    console.error('Error fetching Firestore data:', error);
-                    showToast('Erreur de chargement des données. Vérifiez votre connexion.', 'error');
-                });
-            } else {
-                console.log('No Firebase user, signing in anonymously...');
-                try {
-                    await signInAnonymously(auth);
-                } catch (error) {
-                    console.error('Error signing in anonymously:', error);
-                    showToast('Erreur de connexion anonyme. Fonctionnalité limitée.', 'error');
-                    // Fallback to local storage if anonymous sign-in fails
-                    loadWorkoutsFromLocal();
-                    loadSettingsFromLocal();
+        const userDocRef = doc(db, 'users', userId);
+        const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.workouts) {
+                    setWorkouts(data.workouts, { shallow: false });
                 }
+                if (data.historicalData) {
+                    setHistoricalData(data.historicalData);
+                }
+            } else {
+                // Initialisation des données si le document n'existe pas
+                setDoc(userDocRef, { workouts: { days: {}, dayOrder: [] }, historicalData: [] }, { merge: true })
+                    .then(() => console.log("Données utilisateur initialisées."))
+                    .catch(e => console.error("Erreur d'initialisation des données:", e));
             }
+            setLoading(false);
+        }, (error) => {
+            console.error("Erreur de récupération des données Firestore:", error);
+            showToast("Erreur de chargement des données. Veuillez réessayer.", "error");
+            setLoading(false);
         });
 
         return () => unsubscribe();
+    }, [isAuthenticated, userId, setWorkouts]);
+
+    // Save data to Firestore whenever workouts or historicalData changes
+    const saveToFirestore = useCallback(async (dataToSave, collectionName) => {
+        if (userId) {
+            const userDocRef = doc(db, 'users', userId);
+            try {
+                await setDoc(userDocRef, { [collectionName]: dataToSave }, { merge: true });
+                console.log(`${collectionName} saved successfully.`);
+            } catch (e) {
+                console.error(`Error saving ${collectionName}:`, e);
+                showToast(`Erreur de sauvegarde des ${collectionName}.`, "error");
+            }
+        }
+    }, [userId, showToast]);
+
+    useEffect(() => {
+        // Debounce saving workouts to avoid excessive writes
+        const handler = setTimeout(() => {
+            saveToFirestore(workouts, 'workouts');
+        }, 500); // 500ms debounce
+        return () => clearTimeout(handler);
+    }, [workouts, saveToFirestore]);
+
+    useEffect(() => {
+        // Debounce saving historicalData
+        const handler = setTimeout(() => {
+            saveToFirestore(historicalData, 'historicalData');
+        }, 500); // 500ms debounce
+        return () => clearTimeout(handler);
+    }, [historicalData, saveToFirestore]);
+
+
+    // --- Utils Functions ---
+    const generateUniqueId = useCallback(() => Date.now().toString(36) + Math.random().toString(36).substring(2), []);
+
+    const formatDate = useCallback((dateString) => {
+        if (!dateString) return '';
+        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+        return new Date(dateString).toLocaleDateString('fr-FR', options);
     }, []);
 
-    // Synchronisation des workouts vers Firebase ou Local Storage
-    useEffect(() => {
-        if (userId && hasValidFirebaseConfig) {
-            console.log('Saving workouts to Firestore for user:', userId);
-            const userDocRef = doc(db, 'users', userId);
-            setDoc(userDocRef, { workouts }, { merge: true })
-                .catch(error => console.error('Error saving workouts to Firestore:', error));
-        } else if (!hasValidFirebaseConfig) {
-            console.log('Saving workouts to local storage.');
-            localStorage.setItem('workouts', JSON.stringify(workouts));
-        }
-    }, [workouts, userId, hasValidFirebaseConfig]);
-
-    // Synchronisation des settings vers Firebase ou Local Storage
-    useEffect(() => {
-        const settings = { theme, isAdvancedMode, restTimeInput, globalNotes };
-        if (userId && hasValidFirebaseConfig) {
-            console.log('Saving settings to Firestore for user:', userId);
-            const userDocRef = doc(db, 'users', userId);
-            setDoc(userDocRef, { settings }, { merge: true })
-                .catch(error => console.error('Error saving settings to Firestore:', error));
-        } else if (!hasValidFirebaseConfig) {
-            console.log('Saving settings to local storage.');
-            localStorage.setItem('settings', JSON.stringify(settings));
-        }
-    }, [theme, isAdvancedMode, restTimeInput, globalNotes, userId, hasValidFirebaseConfig]);
-
-    const loadWorkoutsFromLocal = () => {
-        try {
-            const storedWorkouts = localStorage.getItem('workouts');
-            if (storedWorkouts) {
-                setWorkouts(JSON.parse(storedWorkouts));
-            } else {
-                // Initialisation par défaut si rien n'est trouvé
-                setWorkouts({
-                    days: {
-                        'monday': { name: 'Lundi', exercises: [] }
-                    },
-                    dayOrder: ['monday']
-                });
-            }
-        } catch (error) {
-            console.error('Error loading workouts from local storage:', error);
-            showToast('Erreur de chargement des données locales.', 'error');
-        }
-    };
-
-    const loadSettingsFromLocal = () => {
-        try {
-            const storedSettings = localStorage.getItem('settings');
-            if (storedSettings) {
-                const settings = JSON.parse(storedSettings);
-                setTheme(settings.theme || 'dark');
-                setIsAdvancedMode(settings.isAdvancedMode !== undefined ? settings.isAdvancedMode : false);
-                setRestTimeInput(settings.restTimeInput || '90');
-                setGlobalNotes(settings.globalNotes || '');
-            }
-        } catch (error) {
-            console.error('Error loading settings from local storage:', error);
-            showToast('Erreur de chargement des paramètres locaux.', 'error');
-        }
-    };
-
-    // Gestion de l'historique (Undo/Redo)
-    const saveStateToHistory = useCallback(() => {
-        setHistoryChanges(prev => {
-            const newHistory = [...prev, workoutsRef.current];
-            // Limiter l'historique pour éviter une consommation excessive de mémoire
-            return newHistory.slice(-50); // Garde les 50 dernières modifications
-        });
-        setFutureChanges([]); // Effacer l'historique futur à chaque nouvelle action
+    const formatTime = useCallback((totalSeconds) => {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }, []);
 
-    const undo = useCallback(() => {
-        if (historyChanges.length > 0) {
-            const previousWorkouts = historyChanges[historyChanges.length - 1];
-            setHistoryChanges(prev => prev.slice(0, prev.length - 1));
-            setFutureChanges(prev => [workouts, ...prev]);
-            setWorkouts(previousWorkouts);
-            showToast('Annulé !', 'info', { label: 'Rétablir', onClick: redo });
-        } else {
-            showToast('Rien à annuler.', 'warning');
-        }
-    }, [historyChanges, workouts]);
-
-    const redo = useCallback(() => {
-        if (futureChanges.length > 0) {
-            const nextWorkouts = futureChanges[0];
-            setFutureChanges(prev => prev.slice(1));
-            setHistoryChanges(prev => [...prev, workouts]);
-            setWorkouts(nextWorkouts);
-            showToast('Rétabli !', 'info', { label: 'Annuler', onClick: undo });
-        } else {
-            showToast('Rien à rétablir.', 'warning');
-        }
-    }, [futureChanges, workouts]);
-
-
-    // Appliquer le thème au document
-    useEffect(() => {
-        const root = document.documentElement;
-        if (theme === 'system') {
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            root.classList.toggle('dark', prefersDark);
-            root.classList.toggle('light', !prefersDark);
-        } else {
-            root.classList.toggle('dark', theme === 'dark');
-            root.classList.toggle('light', theme === 'light');
-        }
-    }, [theme]);
+    const getSeriesDisplay = useCallback((serie) => {
+        let display = '';
+        if (serie.weight) display += `${serie.weight} kg`;
+        if (serie.reps) display += ` x ${serie.reps} reps`;
+        if (serie.rpe) display += ` @ RPE ${serie.rpe}`;
+        return display.trim();
+    }, []);
 
     const showToast = useCallback((message, type = 'info', action = null, duration = 3000) => {
         setToast({ message, type, action, duration });
     }, []);
 
-    const closeToast = useCallback(() => {
-        setToast(null);
-    }, []);
-
-
-    // Fonctions utilitaires partagées
-    const formatDate = (date) => {
-        if (!date) return 'N/A';
-        let d;
-        if (date instanceof Timestamp) {
-            d = date.toDate();
-        } else if (typeof date === 'string' || typeof date === 'number') {
-            d = new Date(date);
-        } else if (date instanceof Date) {
-            d = date;
-        } else {
-            return 'Date invalide';
-        }
-
-        const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-        return d.toLocaleDateString('fr-FR', options);
-    };
-
-    const formatTime = (totalSeconds) => {
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    };
-
-    const getSeriesDisplay = (serie) => {
-        let display = '';
-        if (serie.reps !== null && serie.reps !== undefined) {
-            display += `${serie.reps} reps`;
-        }
-        if (serie.weight !== null && serie.weight !== undefined) {
-            if (display) display += ' x ';
-            display += `${serie.weight} kg`;
-        }
-        return display || 'Nouvelle série';
-    };
-
-    // Fonctions de gestion du minuteur
-    const startTimer = useCallback((seconds) => {
-        setTimerSeconds(seconds);
-        setTimerIsRunning(true);
-        setTimerIsFinished(false);
-        setTimerModalOpen(true);
-
-        if (timerRef.current) {
-            clearInterval(timerRef.current);
-        }
-
-        timerRef.current = setInterval(() => {
-            setTimerSeconds(prevSeconds => {
-                if (prevSeconds <= 1) {
-                    clearInterval(timerRef.current);
-                    setTimerIsRunning(false);
-                    setTimerIsFinished(true);
-                    // Jouer un son ou vibrer
-                    if (window.navigator && window.navigator.vibrate) {
-                        window.navigator.vibrate([200, 100, 200]);
-                    }
-                    try {
-                        const audio = new Audio('/ding.mp3'); // Assurez-vous que le chemin est correct
-                        audio.play();
-                    } catch (e) {
-                        console.warn("Audio playback failed:", e);
-                    }
-                    return 0;
-                }
-                return prevSeconds - 1;
-            });
-        }, 1000);
-    }, []);
-
-    const pauseTimer = useCallback(() => {
-        setTimerIsRunning(false);
-        if (timerRef.current) {
-            clearInterval(timerRef.current);
-        }
-    }, []);
-
-    const resetTimer = useCallback(() => {
-        pauseTimer();
-        setTimerSeconds(0);
-        setTimerIsFinished(false);
-        setTimerModalOpen(false); // Fermer la modal lors du reset complet
-    }, [pauseTimer]);
-
-    const setTimerPreset = useCallback((seconds) => {
-        setRestTimeInput(String(seconds));
-        setTimerSeconds(seconds);
-        pauseTimer(); // Mettre en pause si un preset est sélectionné
-    }, [pauseTimer]);
-
-
-    // Fonctions de gestion des entraînements
-    const addDay = useCallback(() => {
-        saveStateToHistory();
+    // --- Logic for Workouts (CRUD Operations) ---
+    const addDay = useCallback((name) => {
         setWorkouts(prevWorkouts => {
-            const newDayKey = `day${Object.keys(prevWorkouts.days).length + 1}`;
+            const newDayId = generateUniqueId();
             return {
                 ...prevWorkouts,
                 days: {
                     ...prevWorkouts.days,
-                    [newDayKey]: { name: `Nouveau Jour ${Object.keys(prevWorkouts.days).length + 1}`, exercises: [] }
+                    [newDayId]: { id: newDayId, name, exercises: [], notes: '' }
                 },
-                dayOrder: [...prevWorkouts.dayOrder, newDayKey]
+                dayOrder: [...prevWorkouts.dayOrder, newDayId]
             };
         });
-        showToast('Jour d\'entraînement ajouté !', 'success');
-    }, [saveStateToHistory, showToast]);
+    }, [setWorkouts, generateUniqueId]);
 
-    const addExercise = useCallback((dayKey) => {
-        saveStateToHistory();
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            updatedDays[dayKey].exercises.push({
-                id: Date.now(),
-                name: 'Nouvel Exercice',
-                category: 'Autre',
-                series: [{ id: Date.now() + 1, reps: null, weight: null, completed: false }]
-            });
-            return { ...prevWorkouts, days: updatedDays };
-        });
-        showToast('Exercice ajouté !', 'success');
-    }, [saveStateToHistory, showToast]);
-
-    const addSerie = useCallback((dayKey, exerciseId) => {
-        saveStateToHistory();
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            const exerciseIndex = updatedDays[dayKey].exercises.findIndex(ex => ex.id === exerciseId);
-            if (exerciseIndex > -1) {
-                updatedDays[dayKey].exercises[exerciseIndex].series.push({ id: Date.now(), reps: null, weight: null, completed: false });
+    const renameDay = useCallback((dayId, newName) => {
+        setWorkouts(prevWorkouts => ({
+            ...prevWorkouts,
+            days: {
+                ...prevWorkouts.days,
+                [dayId]: { ...prevWorkouts.days[dayId], name: newName }
             }
-            return { ...prevWorkouts, days: updatedDays };
-        });
-        showToast('Série ajoutée !', 'info');
-    }, [saveStateToHistory, showToast]);
+        }));
+    }, [setWorkouts]);
 
-    const removeSerie = useCallback((dayKey, exerciseId, serieId) => {
-        saveStateToHistory();
+    const deleteDay = useCallback((dayId) => {
         setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            const exercise = updatedDays[dayKey].exercises.find(ex => ex.id === exerciseId);
-            if (exercise) {
-                exercise.series = exercise.series.filter(s => s.id !== serieId);
-                // Si plus de séries, supprimer l'exercice
-                if (exercise.series.length === 0) {
-                    updatedDays[dayKey].exercises = updatedDays[dayKey].exercises.filter(ex => ex.id !== exerciseId);
-                    showToast('Série et exercice supprimés !', 'warning');
-                } else {
-                    showToast('Série supprimée !', 'info');
-                }
-            }
-            return { ...prevWorkouts, days: updatedDays };
-        });
-    }, [saveStateToHistory, showToast]);
-
-    const updateSerie = useCallback((dayKey, exerciseId, serieId, updates) => {
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            const exercise = updatedDays[dayKey].exercises.find(ex => ex.id === exerciseId);
-            if (exercise) {
-                const serie = exercise.series.find(s => s.id === serieId);
-                if (serie) {
-                    // Si reps ou weight changent, marquer la série comme non complétée
-                    if ((updates.reps !== undefined && updates.reps !== serie.reps) ||
-                        (updates.weight !== undefined && updates.weight !== serie.weight)) {
-                        serie.completed = false;
-                    }
-                    Object.assign(serie, updates);
-                }
-            }
-            return { ...prevWorkouts, days: updatedDays };
-        });
-    }, []);
-
-    const toggleSerieCompleted = useCallback((dayKey, exerciseId, serieId) => {
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            const exercise = updatedDays[dayKey].exercises.find(ex => ex.id === exerciseId);
-            if (exercise) {
-                const serie = exercise.series.find(s => s.id === serieId);
-                if (serie) {
-                    const newCompletedState = !serie.completed;
-                    serie.completed = newCompletedState;
-                    if (newCompletedState) {
-                        startTimer(parseInt(restTimeInput, 10)); // Démarrer le minuteur
-                    } else {
-                        pauseTimer(); // Mettre en pause si on dévalide
-                    }
-                }
-            }
-            return { ...prevWorkouts, days: updatedDays };
-        });
-    }, [restTimeInput, startTimer, pauseTimer]);
-
-    const updateExerciseNotes = useCallback((dayKey, exerciseId, notes) => {
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            const exercise = updatedDays[dayKey].exercises.find(ex => ex.id === exerciseId);
-            if (exercise) {
-                exercise.notes = notes;
-            }
-            return { ...prevWorkouts, days: updatedDays };
-        });
-    }, []);
-
-    const editExercise = useCallback((dayKey, exerciseId, newName, newCategory) => {
-        saveStateToHistory();
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            const exercise = updatedDays[dayKey].exercises.find(ex => ex.id === exerciseId);
-            if (exercise) {
-                exercise.name = newName;
-                exercise.category = newCategory;
-            }
-            return { ...prevWorkouts, days: updatedDays };
-        });
-        showToast('Exercice mis à jour !', 'success');
-    }, [saveStateToHistory, showToast]);
-
-    const deleteExercise = useCallback((dayKey, exerciseId) => {
-        saveStateToHistory();
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            updatedDays[dayKey].exercises = updatedDays[dayKey].exercises.filter(ex => ex.id !== exerciseId);
-            return { ...prevWorkouts, days: updatedDays };
-        });
-        showToast('Exercice supprimé !', 'warning');
-    }, [saveStateToHistory, showToast]);
-
-    const renameDay = useCallback((dayKey, newName) => {
-        saveStateToHistory();
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            if (updatedDays[dayKey]) {
-                updatedDays[dayKey].name = newName;
-            }
-            return { ...prevWorkouts, days: updatedDays };
-        });
-        showToast('Nom du jour mis à jour !', 'success');
-    }, [saveStateToHistory, showToast]);
-
-    const deleteDay = useCallback((dayKey) => {
-        saveStateToHistory();
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            delete updatedDays[dayKey];
-            const updatedDayOrder = prevWorkouts.dayOrder.filter(key => key !== dayKey);
-            return {
-                days: updatedDays,
-                dayOrder: updatedDayOrder
-            };
-        });
-        showToast('Jour d\'entraînement supprimé !', 'warning');
-    }, [saveStateToHistory, showToast]);
-
-    const moveDay = useCallback((fromIndex, toIndex) => {
-        saveStateToHistory();
-        setWorkouts(prevWorkouts => {
-            const newDayOrder = [...prevWorkouts.dayOrder];
-            const [movedDay] = newDayOrder.splice(fromIndex, 1);
-            newDayOrder.splice(toIndex, 0, movedDay);
+            const newDays = { ...prevWorkouts.days };
+            delete newDays[dayId];
+            const newDayOrder = prevWorkouts.dayOrder.filter(id => id !== dayId);
             return {
                 ...prevWorkouts,
+                days: newDays,
                 dayOrder: newDayOrder
             };
         });
-    }, [saveStateToHistory]);
+    }, [setWorkouts]);
 
-    const moveExercise = useCallback((dayKey, fromIndex, toIndex) => {
-        saveStateToHistory();
+    const duplicateDay = useCallback((dayId) => {
         setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            const newExercises = [...updatedDays[dayKey].exercises];
-            const [movedExercise] = newExercises.splice(fromIndex, 1);
-            newExercises.splice(toIndex, 0, movedExercise);
+            const originalDay = prevWorkouts.days[dayId];
+            if (!originalDay) return prevWorkouts;
+
+            const newDayId = generateUniqueId();
+            const duplicatedDay = {
+                ...originalDay,
+                id: newDayId,
+                name: `${originalDay.name} (Copie)`,
+                exercises: originalDay.exercises.map(ex => ({
+                    ...ex,
+                    id: generateUniqueId(), // New ID for duplicated exercises
+                    series: ex.series.map(s => ({ ...s, completed: false })) // Reset completed status
+                }))
+            };
+
+            const newDayOrder = [...prevWorkouts.dayOrder, newDayId]; // Add at the end
             return {
                 ...prevWorkouts,
                 days: {
-                    ...updatedDays,
-                    [dayKey]: { ...updatedDays[dayKey], exercises: newExercises }
+                    ...prevWorkouts.days,
+                    [newDayId]: duplicatedDay
+                },
+                dayOrder: newDayOrder
+            };
+        });
+    }, [setWorkouts, generateUniqueId]);
+
+    const moveDay = useCallback((dayId, direction) => {
+        setWorkouts(prevWorkouts => {
+            const newDayOrder = [...prevWorkouts.dayOrder];
+            const index = newDayOrder.indexOf(dayId);
+            if (index === -1) return prevWorkouts;
+
+            const newIndex = index + (direction === 'up' ? -1 : 1);
+            if (newIndex < 0 || newIndex >= newDayOrder.length) return prevWorkouts;
+
+            const [movedDay] = newDayOrder.splice(index, 1);
+            newDayOrder.splice(newIndex, 0, movedDay);
+
+            return { ...prevWorkouts, dayOrder: newDayOrder };
+        });
+    }, [setWorkouts]);
+
+    const addExercise = useCallback((dayId, name, category = '') => {
+        setWorkouts(prevWorkouts => {
+            const newExerciseId = generateUniqueId();
+            const newExercise = {
+                id: newExerciseId,
+                name,
+                category,
+                series: [{ set: 1, weight: 0, reps: 0, rpe: 0, completed: false }],
+                notes: '',
+                hidden: false
+            };
+            const updatedDay = {
+                ...prevWorkouts.days[dayId],
+                exercises: [...prevWorkouts.days[dayId].exercises, newExercise]
+            };
+            return {
+                ...prevWorkouts,
+                days: {
+                    ...prevWorkouts.days,
+                    [dayId]: updatedDay
                 }
             };
         });
-    }, [saveStateToHistory]);
+    }, [setWorkouts, generateUniqueId]);
 
-
-    // Fonctions de gestion de l'historique des séances
-    const [historicalData, setHistoricalData] = useState([]);
-    const [personalBests, setPersonalBests] = useState({});
-
-    useEffect(() => {
-        if (!userId || !hasValidFirebaseConfig) {
-            // Load from local storage for history if Firebase is not configured
-            try {
-                const storedHistory = localStorage.getItem('historicalData');
-                if (storedHistory) {
-                    setHistoricalData(JSON.parse(storedHistory).map(session => ({
-                        ...session,
-                        date: new Date(session.date) // Convert date string back to Date object
-                    })));
+    const onDeleteExercise = useCallback((dayId, exerciseId) => {
+        setWorkouts(prevWorkouts => {
+            const updatedDay = {
+                ...prevWorkouts.days[dayId],
+                exercises: prevWorkouts.days[dayId].exercises.filter(ex => ex.id !== exerciseId)
+            };
+            return {
+                ...prevWorkouts,
+                days: {
+                    ...prevWorkouts.days,
+                    [dayId]: updatedDay
                 }
-            } catch (error) {
-                console.error('Error loading historical data from local storage:', error);
-                showToast('Erreur de chargement de l\'historique local.', 'error');
-            }
-            return;
-        }
+            };
+        });
+    }, [setWorkouts]);
 
-        const q = query(collection(db, `users/${userId}/history`), limit(500)); // Limite à 500 entrées pour des raisons de performance
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                date: doc.data().date instanceof Timestamp ? doc.data().date.toDate() : new Date(doc.data().date) // Assurer que la date est un objet Date
-            }));
-            data.sort((a, b) => b.date.getTime() - a.date.getTime()); // Trier par date décroissante
-            setHistoricalData(data);
-        }, (error) => {
-            console.error('Error fetching historical data from Firestore:', error);
-            showToast('Erreur de chargement de l\'historique. Vérifiez votre connexion.', 'error');
+    const toggleExerciseVisibility = useCallback((dayId, exerciseId) => {
+        setWorkouts(prevWorkouts => {
+            const updatedExercises = prevWorkouts.days[dayId].exercises.map(ex =>
+                ex.id === exerciseId ? { ...ex, hidden: !ex.hidden } : ex
+            );
+            const updatedDay = {
+                ...prevWorkouts.days[dayId],
+                exercises: updatedExercises
+            };
+            return {
+                ...prevWorkouts,
+                days: {
+                    ...prevWorkouts.days,
+                    [dayId]: updatedDay
+                }
+            };
+        });
+    }, [setWorkouts]);
+
+    const onAddSerie = useCallback((dayId, exerciseId) => {
+        setWorkouts(prevWorkouts => {
+            const updatedExercises = prevWorkouts.days[dayId].exercises.map(exercise => {
+                if (exercise.id === exerciseId) {
+                    const newSetNumber = exercise.series.length + 1;
+                    return {
+                        ...exercise,
+                        series: [...exercise.series, { set: newSetNumber, weight: 0, reps: 0, rpe: 0, completed: false }]
+                    };
+                }
+                return exercise;
+            });
+            const updatedDay = { ...prevWorkouts.days[dayId], exercises: updatedExercises };
+            return { ...prevWorkouts, days: { ...prevWorkouts.days, [dayId]: updatedDay } };
+        });
+    }, [setWorkouts]);
+
+    const onRemoveSerie = useCallback((dayId, exerciseId, serieIndex) => {
+        setWorkouts(prevWorkouts => {
+            const updatedExercises = prevWorkouts.days[dayId].exercises.map(exercise => {
+                if (exercise.id === exerciseId) {
+                    const newSeries = exercise.series.filter((_, index) => index !== serieIndex)
+                        .map((s, idx) => ({ ...s, set: idx + 1 })); // Re-number sets
+                    return { ...exercise, series: newSeries };
+                }
+                return exercise;
+            });
+            const updatedDay = { ...prevWorkouts.days[dayId], exercises: updatedExercises };
+            return { ...prevWorkouts, days: { ...prevWorkouts.days, [dayId]: updatedDay } };
+        });
+    }, [setWorkouts]);
+
+    const onUpdateSerie = useCallback((dayId, exerciseId, serieIndex, field, value) => {
+        setWorkouts(prevWorkouts => {
+            const updatedExercises = prevWorkouts.days[dayId].exercises.map(exercise => {
+                if (exercise.id === exerciseId) {
+                    const newSeries = exercise.series.map((serie, index) => {
+                        if (index === serieIndex) {
+                            return { ...serie, [field]: value };
+                        }
+                        return serie;
+                    });
+                    return { ...exercise, series: newSeries };
+                }
+                return exercise;
+            });
+            const updatedDay = { ...prevWorkouts.days[dayId], exercises: updatedExercises };
+            return { ...prevWorkouts, days: { ...prevWorkouts.days, [dayId]: updatedDay } };
+        });
+    }, [setWorkouts]);
+
+    const onToggleSerieCompleted = useCallback((dayId, exerciseId, serieIndex) => {
+        setWorkouts(prevWorkouts => {
+            const updatedExercises = prevWorkouts.days[dayId].exercises.map(exercise => {
+                if (exercise.id === exerciseId) {
+                    const newSeries = exercise.series.map((serie, index) => {
+                        if (index === serieIndex) {
+                            return { ...serie, completed: !serie.completed };
+                        }
+                        return serie;
+                    });
+                    return { ...exercise, series: newSeries };
+                }
+                return exercise;
+            });
+            const updatedDay = { ...prevWorkouts.days[dayId], exercises: updatedExercises };
+            return { ...prevWorkouts, days: { ...prevWorkouts.days, [dayId]: updatedDay } };
+        });
+    }, [setWorkouts]);
+
+    const onUpdateExerciseNotes = useCallback((dayId, exerciseId, notes) => {
+        setWorkouts(prevWorkouts => {
+            const updatedExercises = prevWorkouts.days[dayId].exercises.map(exercise => {
+                if (exercise.id === exerciseId) {
+                    return { ...exercise, notes };
+                }
+                return exercise;
+            });
+            const updatedDay = { ...prevWorkouts.days[dayId], exercises: updatedExercises };
+            return { ...prevWorkouts, days: { ...prevWorkouts.days, [dayId]: updatedDay } };
+        });
+    }, [setWorkouts]);
+
+    // Save current workout to historical data
+    const saveCurrentWorkoutToHistory = useCallback(() => {
+        const currentDate = new Date().toISOString();
+        const workoutToSave = {
+            id: generateUniqueId(),
+            date: currentDate,
+            name: workouts.days[workouts.dayOrder[0]]?.name || 'Séance du jour', // Use the first day's name as session name
+            exercises: []
+        };
+
+        workouts.dayOrder.forEach(dayId => {
+            workouts.days[dayId].exercises.forEach(exercise => {
+                // Ensure exercises are not duplicated if from different days but same name
+                const existingExerciseInSession = workoutToSave.exercises.find(ex => ex.name === exercise.name);
+
+                if (existingExerciseInSession) {
+                    // If exercise already exists, add series to it
+                    existingExerciseInSession.series.push(...exercise.series.map(s => ({ ...s, completed: true })));
+                } else {
+                    workoutToSave.exercises.push({
+                        id: generateUniqueId(), // Unique ID for historical exercise
+                        name: exercise.name,
+                        category: exercise.category,
+                        series: exercise.series.map(s => ({ ...s, completed: true })), // Mark all as completed for history
+                        notes: exercise.notes,
+                        deleted: exercise.deleted || false // Carry over deleted status if exists
+                    });
+                }
+            });
         });
 
-        return () => unsubscribe();
-    }, [userId, hasValidFirebaseConfig]);
+        setHistoricalData(prevData => {
+            // Check if a session for today already exists
+            const today = new Date().toDateString();
+            const sessionAlreadyExists = prevData.some(session => new Date(session.date).toDateString() === today);
 
-    useEffect(() => {
-        if (!hasValidFirebaseConfig) {
-            // Save to local storage for history if Firebase is not configured
-            try {
-                localStorage.setItem('historicalData', JSON.stringify(historicalData));
-            } catch (error) {
-                console.error('Error saving historical data to local storage:', error);
+            if (sessionAlreadyExists) {
+                // Find existing session and update it
+                return prevData.map(session => {
+                    if (new Date(session.date).toDateString() === today) {
+                        return workoutToSave; // Replace with the new session
+                    }
+                    return session;
+                });
+            } else {
+                return [...prevData, workoutToSave];
             }
-        }
-    }, [historicalData, hasValidFirebaseConfig]);
+        });
+        showToast("Séance sauvegardée dans l'historique !", "success");
+    }, [workouts, setHistoricalData, generateUniqueId, showToast]);
 
-    const calculatePersonalBests = useCallback((history) => {
-        const bests = {};
-        history.forEach(session => {
+    // Calculate personal bests whenever historical data changes
+    useEffect(() => {
+        const newPersonalBests = {};
+        historicalData.forEach(session => {
             session.exercises.forEach(exercise => {
-                if (!bests[exercise.name]) {
-                    bests[exercise.name] = { volume: 0, maxWeight: 0, maxRepsAtWeight: {}, oneRepMax: 0 };
-                }
-
-                // Calculate volume for the session
-                const sessionVolume = exercise.series.reduce((sum, serie) => sum + (serie.weight || 0) * (serie.reps || 0), 0);
-                if (sessionVolume > bests[exercise.name].volume) {
-                    bests[exercise.name].volume = sessionVolume;
-                }
-
                 exercise.series.forEach(serie => {
-                    const weight = serie.weight || 0;
-                    const reps = serie.reps || 0;
-
-                    // Max weight lifted
-                    if (weight > bests[exercise.name].maxWeight) {
-                        bests[exercise.name].maxWeight = weight;
-                    }
-
-                    // Max reps at a given weight
-                    if (weight > 0) {
-                        if (!bests[exercise.name].maxRepsAtWeight[weight] || reps > bests[exercise.name].maxRepsAtWeight[weight]) {
-                            bests[exercise.name].maxRepsAtWeight[weight] = reps;
-                        }
-                    }
-
-                    // One Rep Max (Brzycki Formula: Weight * (36 / (37 - Reps)))
-                    if (reps > 0 && reps <= 15 && weight > 0) { // Limit reps for 1RM calculation
-                        const oneRM = weight * (36 / (37 - reps));
-                        if (oneRM > bests[exercise.name].oneRepMax) {
-                            bests[exercise.name].oneRepMax = oneRM;
+                    if (serie.weight && serie.reps) {
+                        const current1RM = serie.weight * (1 + (serie.reps / 30)); // Epley formula
+                        if (!newPersonalBests[exercise.name] || current1RM > (newPersonalBests[exercise.name].weight * (1 + (newPersonalBests[exercise.name].reps / 30)))) {
+                            newPersonalBests[exercise.name] = { weight: serie.weight, reps: serie.reps, date: session.date };
                         }
                     }
                 });
             });
         });
-        setPersonalBests(bests);
-    }, []);
+        setPersonalBests(newPersonalBests);
+    }, [historicalData]);
 
-    useEffect(() => {
-        calculatePersonalBests(historicalData);
-    }, [historicalData, calculatePersonalBests]);
+    const deleteHistoricalSession = useCallback((sessionId) => {
+        setHistoricalData(prevData => prevData.filter(session => session.id !== sessionId));
+        showToast("Séance historique supprimée !", "success");
+    }, [setHistoricalData, showToast]);
 
+    const handleReactivateExercise = useCallback((exerciseName) => {
+        setWorkouts(prevWorkouts => {
+            const updatedDays = { ...prevWorkouts.days };
+            let exerciseFound = false;
 
-    const saveWorkoutSession = async (completedDay) => {
-        if (!completedDay || !completedDay.exercises || completedDay.exercises.length === 0) {
-            showToast('Aucun exercice complété pour sauvegarder.', 'warning');
-            return;
-        }
-
-        const session = {
-            date: serverTimestamp(),
-            dayName: completedDay.name,
-            exercises: completedDay.exercises.map(ex => ({
-                name: ex.name,
-                category: ex.category,
-                notes: ex.notes,
-                series: ex.series.map(s => ({
-                    reps: s.reps,
-                    weight: s.weight,
-                    completed: s.completed, // Garder l'état complété dans l'historique
-                    id: s.id
-                }))
-            })).filter(ex => ex.series.some(s => s.completed && (s.reps > 0 || s.weight > 0))) // Filtrer les exercices sans séries complétées ou non renseignées
-        };
-
-        if (session.exercises.length === 0) {
-            showToast('Veuillez compléter au moins une série avec des reps/poids pour sauvegarder.', 'warning');
-            return;
-        }
-
-        try {
-            if (userId && hasValidFirebaseConfig) {
-                await addDoc(collection(db, `users/${userId}/history`), session);
+            for (const dayId in updatedDays) {
+                updatedDays[dayId] = {
+                    ...updatedDays[dayId],
+                    exercises: updatedDays[dayId].exercises.map(ex => {
+                        if (ex.name === exerciseName && ex.deleted) {
+                            exerciseFound = true;
+                            return { ...ex, deleted: false, hidden: false }; // Also unhide
+                        }
+                        return ex;
+                    })
+                };
+            }
+            if (exerciseFound) {
+                showToast(`L'exercice "${exerciseName}" a été réactivé dans tous les jours d'entraînement.`, "success");
             } else {
-                // Fallback to local storage
-                const currentHistory = JSON.parse(localStorage.getItem('historicalData') || '[]');
-                // Add a local timestamp for local storage
-                const sessionToSave = { ...session, date: new Date().toISOString() };
-                currentHistory.push(sessionToSave);
-                localStorage.setItem('historicalData', JSON.stringify(currentHistory));
-            }
-            showToast('Séance sauvegardée dans l\'historique !', 'success');
-
-            // Réinitialiser les séries complétées dans le workout actuel
-            setWorkouts(prevWorkouts => {
-                const newWorkouts = JSON.parse(JSON.stringify(prevWorkouts)); // Deep copy
-                const dayToReset = newWorkouts.days[completedDay.id];
-                if (dayToReset) {
-                    dayToReset.exercises.forEach(exercise => {
-                        exercise.series.forEach(serie => {
-                            serie.completed = false; // Remettre à faux toutes les séries
-                            // Optionnel: Réinitialiser reps/weight à null si vous voulez un "fresh start"
-                            // serie.reps = null;
-                            // serie.weight = null;
-                        });
-                    });
-                }
-                return newWorkouts;
-            });
-            resetTimer(); // Réinitialiser le minuteur après la sauvegarde
-        } catch (error) {
-            console.error('Error saving workout session:', error);
-            showToast('Erreur lors de la sauvegarde de la séance.', 'error');
-        }
-    };
-
-
-    const reactivateExercise = useCallback(async (sessionId, exerciseName) => {
-        if (!userId || !hasValidFirebaseConfig) {
-            showToast('Fonctionnalité non disponible hors ligne.', 'error');
-            return;
-        }
-        try {
-            const historyRef = doc(db, `users/${userId}/history`, sessionId);
-            const batch = writeBatch(db);
-
-            batch.update(historyRef, {
-                exercises: historicalData.find(s => s.id === sessionId).exercises.map(ex =>
-                    ex.name === exerciseName ? { ...ex, isDeleted: false } : ex
-                )
-            });
-
-            await batch.commit();
-            showToast('Exercice réactivé dans l\'historique !', 'success');
-        } catch (error) {
-            console.error('Error reactivating exercise:', error);
-            showToast('Erreur lors de la réactivation de l\'exercice.', 'error');
-        }
-    }, [userId, historicalData, hasValidFirebaseConfig, showToast]);
-
-    const deleteHistoricalSession = useCallback(async (sessionId) => {
-        if (window.confirm('Êtes-vous sûr de vouloir supprimer cette séance de l\'historique ? Cette action est irréversible.')) {
-            try {
-                if (userId && hasValidFirebaseConfig) {
-                    const sessionRef = doc(db, `users/${userId}/history`, sessionId);
-                    await setDoc(sessionRef, { isDeleted: true }, { merge: true }); // Marquer comme supprimé
-                } else {
-                    // Fallback local storage
-                    const currentHistory = JSON.parse(localStorage.getItem('historicalData') || '[]');
-                    const updatedHistory = currentHistory.map(session =>
-                        session.id === sessionId ? { ...session, isDeleted: true } : session
-                    );
-                    localStorage.setItem('historicalData', JSON.stringify(updatedHistory));
-                }
-                showToast('Séance marquée comme supprimée.', 'warning');
-            } catch (error) {
-                console.error('Error deleting historical session:', error);
-                showToast('Erreur lors de la suppression de la séance.', 'error');
-            }
-        }
-    }, [userId, hasValidFirebaseConfig, showToast]);
-
-    const analyzeProgressionWithAI = useCallback(async (exerciseName, history) => {
-        if (!generativeModel) {
-            showToast('Fonctionnalité IA non disponible (clé API manquante ou invalide).', 'error');
-            return;
-        }
-        if (!exerciseName || !history || history.length === 0) {
-            setProgressionAnalysisContent('Veuillez sélectionner un exercice ou assurez-vous qu\'il y a des données d\'historique pour l\'analyse.');
-            return;
-        }
-
-        setIsLoadingAI(true);
-        setProgressionAnalysisContent('Analyse de votre progression par l\'IA en cours...');
-
-        try {
-            const exerciseHistory = history.filter(session =>
-                session.exercises.some(ex => ex.name === exerciseName)
-            ).map(session => {
-                const exerciseData = session.exercises.find(ex => ex.name === exerciseName);
-                const seriesData = exerciseData.series.map(s => `(${s.reps} reps @ ${s.weight}kg)`).join(', ');
-                return `Date: ${formatDate(session.date)}, Séries: ${seriesData}`;
-            }).join('\n');
-
-            if (!exerciseHistory) {
-                setProgressionAnalysisContent(`Aucune donnée d'historique trouvée pour l'exercice "${exerciseName}".`);
-                setIsLoadingAI(false);
-                return;
+                showToast(`L'exercice "${exerciseName}" n'a pas été trouvé ou n'était pas marqué comme supprimé.`, "warning");
             }
 
-            const prompt = `Voici l'historique des entraînements pour l'exercice "${exerciseName}" :\n${exerciseHistory}\n\nAnalysez cette progression. Identifiez les tendances (augmentation/diminution du poids, des répétitions), les pics de performance, les plateaux ou les baisses. Fournissez une analyse concise et des suggestions basées sur les données. Utilisez des phrases courtes et claires, en français. Structurez la réponse avec des points clés pour la lisibilité.`;
+            return { ...prevWorkouts, days: updatedDays };
+        });
+    }, [setWorkouts, showToast]);
 
-            const result = await generativeModel.generateContent(prompt);
-            const responseText = result.response.text();
-            setProgressionAnalysisContent(responseText);
-            showToast('Analyse de progression IA terminée !', 'success');
-        } catch (error) {
-            console.error('Error analyzing progression with AI:', error);
-            setProgressionAnalysisContent('Erreur lors de l\'analyse de la progression. Veuillez réessayer.');
-            showToast('Erreur lors de l\'analyse IA.', 'error');
-        } finally {
-            setIsLoadingAI(false);
+
+    // --- AI Integration ---
+    const generateAIResponse = useCallback(async (prompt) => {
+        if (!process.env.REACT_APP_GEMINI_API_KEY) {
+            showToast("Clé API Gemini manquante. Veuillez la configurer dans .env.", "error");
+            return "Clé API Gemini non configurée.";
         }
-    }, [generativeModel, showToast, formatDate]);
 
-    const analyzeGlobalStatsWithAI = useCallback(async (globalNotesContent, workoutsData, historicalData) => {
-        if (!generativeModel) {
-            showToast('Fonctionnalité IA non disponible (clé API manquante ou invalide).', 'error');
+        try {
+            const { GoogleGenerativeAI } = GenerativeAIModule;
+            const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
+            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            return response.text();
+        } catch (error) {
+            console.error("Erreur lors de l'appel à l'API Gemini:", error);
+            showToast(`Erreur AI: ${error.message}`, "error");
+            return "Erreur lors de la génération de la réponse IA.";
+        }
+    }, [showToast]);
+
+    const analyzeWorkoutWithAI = useCallback(async (currentWorkoutDay) => {
+        setAiAnalysisLoading(true);
+        setAiWorkoutAnalysisContent('');
+        if (!currentWorkoutDay || !currentWorkoutDay.exercises.length) {
+            setAiAnalysisLoading(false);
+            showToast("Pas d'exercices à analyser dans cette séance.", "info");
             return;
         }
 
-        setIsLoadingAI(true);
-        setProgressionAnalysisContent('Analyse générale de vos statistiques par l\'IA en cours...'); // Réutiliser le même état pour l'affichage
-
-        try {
-            const workoutSummary = Object.values(workoutsData.days).map(day =>
-                `Jour: ${day.name}\n` +
-                day.exercises.map(ex =>
-                    `  - ${ex.name} (${ex.category}): ${ex.series.length} séries`
-                ).join('\n')
-            ).join('\n\n');
-
-            const historySummary = historicalData.slice(0, 10).map(session => // Limite à 10 sessions pour le prompt
-                `Séance du ${formatDate(session.date)}: ${session.exercises.map(ex => `${ex.name} (${ex.series.length} séries)`).join(', ')}`
-            ).join('\n');
-
-            const prompt = `Je cherche une analyse de mes habitudes d'entraînement et des suggestions d'amélioration. Voici un résumé de mes entraînements actuels et de mon historique :\n\n--- Entraînements Actuels ---\n${workoutSummary}\n\n--- Dernières Séances Historiques (10 dernières) ---\n${historySummary}\n\n--- Mes Notes Générales ---\n${globalNotesContent || 'Pas de notes générales fournies.'}\n\nEn vous basant sur ces informations, pouvez-vous :\n1. Fournir une analyse concise de mes habitudes d'entraînement (fréquence, types d'exercices, etc.).\n2. Identifier des points forts ou des points faibles (par exemple, déséquilibre, manque de variété).\n3. Proposer 2-3 suggestions concrètes pour améliorer mon programme ou ma performance. Soyez direct et clair.`;
-
-            const result = await generativeModel.generateContent(prompt);
-            const responseText = result.response.text();
-            setProgressionAnalysisContent(responseText);
-            showToast('Analyse IA globale terminée !', 'success');
-        } catch (error) {
-            console.error('Error analyzing global stats with AI:', error);
-            setProgressionAnalysisContent('Erreur lors de l\'analyse globale. Veuillez réessayer.');
-            showToast('Erreur lors de l\'analyse IA globale.', 'error');
-        } finally {
-            setIsLoadingAI(false);
-        }
-    }, [generativeModel, showToast, formatDate]);
-
-
-    const getWorkoutStats = useCallback((workoutsData, historicalData) => {
-        const stats = {
-            totalExercises: 0,
-            totalSeries: 0,
-            totalCompletedWorkouts: historicalData.length,
-            uniqueExercises: new Set(),
-            exercisesByCategory: {},
-            topExercises: {}, // Pour les exercices les plus fréquents dans l'historique
-        };
-
-        // Current workouts stats
-        Object.values(workoutsData.days).forEach(day => {
-            stats.totalExercises += day.exercises.length;
-            day.exercises.forEach(ex => {
-                stats.totalSeries += ex.series.length;
-                stats.uniqueExercises.add(ex.name);
-                stats.exercisesByCategory[ex.category] = (stats.exercisesByCategory[ex.category] || 0) + 1;
+        let prompt = `Analyse le programme d'entraînement suivant pour la séance "${currentWorkoutDay.name}" en français. Fournis des conseils sur la structure, la progression, l'équilibre musculaire, et les améliorations possibles. Si le volume est faible, suggère d'augmenter le nombre de séries ou d'exercices. Ne donne pas de répétition spécifique. Garde la réponse concise et directement applicable.
+        
+        Programme:
+        `;
+        currentWorkoutDay.exercises.forEach(exercise => {
+            prompt += `- ${exercise.name} (${exercise.category || 'Aucune catégorie'}):\n`;
+            exercise.series.forEach(serie => {
+                prompt += `  - Série ${serie.set}: ${serie.weight || '?'}kg x ${serie.reps || '?'} reps @ RPE ${serie.rpe || '?'}\n`;
             });
+            if (exercise.notes) prompt += `  Notes: ${exercise.notes}\n`;
         });
 
-        // Historical data stats
-        historicalData.forEach(session => {
-            session.exercises.forEach(ex => {
-                stats.uniqueExercises.add(ex.name);
-                stats.topExercises[ex.name] = (stats.topExercises[ex.name] || 0) + 1;
-            });
-        });
+        const analysis = await generateAIResponse(prompt);
+        setAiWorkoutAnalysisContent(analysis);
+        setAiAnalysisLoading(false);
+        showToast("Analyse IA terminée !", "success");
+    }, [generateAIResponse, showToast]);
 
-        stats.uniqueExercisesCount = stats.uniqueExercises.size;
-
-        // Sort top exercises
-        stats.sortedTopExercises = Object.entries(stats.topExercises)
-            .sort(([, countA], [, countB]) => countB - countA)
-            .slice(0, 5); // Top 5
-
-        return stats;
+    const clearAiWorkoutAnalysis = useCallback(() => {
+        setAiWorkoutAnalysisContent('');
     }, []);
 
-    const showProgressionGraphForExercise = useCallback((exerciseData) => {
-        // Cette fonction ne fait que rediriger vers la vue Stats et passe les données
-        // L'affichage du graphique se fera dans StatsView
-        setCurrentView('stats');
-        // Dans une application plus complexe, vous pourriez stocker exerciseData
-        // dans un état global ou un contexte pour que StatsView puisse le récupérer.
-        // Pour cet exemple, on peut imaginer que StatsView aura un moyen de filtrer par exercice
-        // ou que les données de l'exercice seront passées explicitement via un état.
-        // Puisque StatsView a accès à historicalData, il peut filtrer par exerciseName.
-        showToast(`Affichage des stats pour : ${exerciseData.name}`, 'info');
-    }, [setCurrentView, showToast]);
+    const generateExerciseSuggestionsAI = useCallback(async (currentWorkoutDay) => {
+        setAiSuggestionsLoading(true);
+        setAiExerciseSuggestions([]);
+        if (!currentWorkoutDay) {
+            setAiSuggestionsLoading(false);
+            showToast("Veuillez sélectionner un jour d'entraînement pour générer des suggestions.", "info");
+            return;
+        }
 
+        let prompt = `Suggère 3-5 exercices complémentaires pour un programme d'entraînement en français. Le programme actuel se concentre sur les muscles suivants et contient les exercices suivants :
+        
+        Exercices actuels pour "${currentWorkoutDay.name}":
+        `;
+        if (currentWorkoutDay.exercises.length === 0) {
+            prompt += "Aucun exercice pour l'instant. Proposez des exercices de base variés pour un entraînement complet du corps.\n";
+        } else {
+            currentWorkoutDay.exercises.forEach(exercise => {
+                prompt += `- ${exercise.name} (Catégorie: ${exercise.category || 'Non spécifiée'})\n`;
+            });
+        }
+        prompt += "\nBasé sur cela, propose 3 à 5 nouveaux exercices pour équilibrer ou compléter le programme, en incluant leur catégorie (ex: 'Pompes (Pectoraux)'). Réponds sous forme de liste numérotée simple d'exercices.\n";
+
+
+        const suggestionsText = await generateAIResponse(prompt);
+        // Parse the suggestions (expecting a numbered list)
+        const parsedSuggestions = suggestionsText.split('\n').filter(line => line.match(/^\d+\./)).map(line => line.replace(/^\d+\.\s*/, '').trim());
+        setAiExerciseSuggestions(parsedSuggestions);
+        setAiSuggestionsLoading(false);
+        showToast("Suggestions d'exercices IA générées !", "success");
+    }, [generateAIResponse, showToast]);
+
+    const clearAiExerciseSuggestions = useCallback(() => {
+        setAiExerciseSuggestions([]);
+    }, []);
+
+    const analyzeProgressionWithAI = useCallback(async (exerciseName, historicalData) => {
+        setIsLoadingAIProgression(true);
+        setAiProgressionAnalysisContent('');
+
+        const relevantData = historicalData.filter(session =>
+            session.exercises.some(ex => ex.name === exerciseName)
+        );
+
+        if (relevantData.length === 0) {
+            setAiProgressionAnalysisContent("Pas de données suffisantes pour analyser la progression de cet exercice.");
+            setIsLoadingAIProgression(false);
+            return;
+        }
+
+        let prompt = `Analyse la progression de l'exercice "${exerciseName}" en français, basée sur les données historiques suivantes. Donne des conseils sur la surcharge progressive, la périodisation, et les ajustements si la progression stagne. Ne donne pas de répétition spécifique. Garde la réponse concise et directement applicable.\n\nHistorique pour ${exerciseName}:\n`;
+        relevantData.forEach(session => {
+            session.exercises.forEach(ex => {
+                if (ex.name === exerciseName) {
+                    prompt += `Date: ${formatDate(session.date)}, Séries: [`;
+                    ex.series.forEach(s => prompt += `${s.weight || '?'}kgx${s.reps || '?'}reps `);
+                    prompt += `]\n`;
+                }
+            });
+        });
+
+        const analysis = await generateAIResponse(prompt);
+        setAiProgressionAnalysisContent(analysis);
+        setIsLoadingAIProgression(false);
+        showToast("Analyse de progression IA terminée !", "success");
+    }, [generateAIResponse, showToast, formatDate]);
+
+
+    // --- Timer Logic ---
+    const startTimer = useCallback(() => {
+        if (!timerIsRunning && timerSeconds > 0) {
+            setTimerIsRunning(true);
+            timerIntervalRef.current = setInterval(() => {
+                setTimerSeconds(prevSeconds => {
+                    if (prevSeconds <= 1) {
+                        clearInterval(timerIntervalRef.current);
+                        setTimerIsRunning(false);
+                        setTimerIsFinished(true);
+                        notificationSoundRef.current.play(); // Play sound
+                        return 0;
+                    }
+                    return prevSeconds - 1;
+                });
+            }, 1000);
+        } else if (timerSeconds === 0) {
+            showToast("Veuillez définir une durée pour le minuteur.", "warning");
+        }
+    }, [timerIsRunning, timerSeconds, showToast]);
+
+    const pauseTimer = useCallback(() => {
+        clearInterval(timerIntervalRef.current);
+        setTimerIsRunning(false);
+    }, []);
+
+    const resetTimer = useCallback(() => {
+        clearInterval(timerIntervalRef.current);
+        setTimerIsRunning(false);
+        setTimerSeconds(0);
+        setTimerIsFinished(false);
+    }, []);
+
+    // --- Data Export/Import ---
+    const exportData = useCallback(() => {
+        const dataToExport = {
+            workouts,
+            historicalData,
+        };
+        const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'workout_data.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast("Données exportées avec succès !", "success");
+    }, [workouts, historicalData, showToast]);
+
+    const importData = useCallback(() => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'application/json';
+        input.onchange = (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (importedData.workouts && importedData.historicalData) {
+                            setWorkouts(importedData.workouts);
+                            setHistoricalData(importedData.historicalData);
+                            showToast("Données importées avec succès !", "success");
+                        } else {
+                            throw new Error("Format de fichier incorrect.");
+                        }
+                    } catch (error) {
+                        console.error("Erreur d'importation des données:", error);
+                        showToast(`Erreur d'importation: ${error.message}`, "error");
+                    }
+                };
+                reader.readAsText(file);
+            }
+        };
+        input.click();
+    }, [setWorkouts, setHistoricalData, showToast]);
+
+    // --- Main Render ---
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white text-xl">
+                <RotateCcw className="animate-spin mr-3" /> Chargement...
+            </div>
+        );
+    }
 
     return (
-        <div className="relative min-h-screen bg-gray-900 text-gray-100 flex flex-col font-sans">
-            {/* Header */}
-            <header className="flex items-center justify-between p-4 bg-gray-900 border-b border-gray-700 shadow-md">
-                <div className="flex items-center gap-3">
-                    <Dumbbell className="h-8 w-8 text-blue-400" />
-                    <h1 className="text-2xl font-bold text-white tracking-tight">LiftLog</h1>
-                    {isAdvancedMode && (
-                        <span className="ml-2 px-2 py-0.5 bg-purple-600 text-white text-xs font-semibold rounded-full animate-pulse">
-                            Mode Avancé
-                        </span>
-                    )}
-                </div>
-                <button
-                    onClick={() => setShowSettings(true)}
-                    className="p-2 rounded-full bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors duration-200"
-                    aria-label="Paramètres"
-                >
-                    <Settings className="h-6 w-6" />
-                </button>
-            </header>
-
-            {/* Main Content Area */}
-            <main className="flex-1 overflow-y-auto p-4 pb-20 no-scrollbar"> {/* Ajout pb-20 pour laisser de la place à la nav bar */}
+        <div className="bg-gray-900 min-h-screen flex flex-col">
+            {/* Contenu principal en fonction de la vue */}
+            <main className="flex-grow pb-16"> {/* Padding bottom for the nav bar */}
                 {currentView === 'workout' && (
                     <MainWorkoutView
                         workouts={workouts}
                         setWorkouts={setWorkouts}
-                        onToggleSerieCompleted={toggleSerieCompleted}
-                        onUpdateSerie={updateSerie}
-                        onAddSerie={addSerie}
-                        onRemoveSerie={removeSerie}
-                        onUpdateExerciseNotes={updateExerciseNotes}
-                        onEditClick={editExercise}
-                        onDeleteExercise={deleteExercise}
+                        onToggleSerieCompleted={onToggleSerieCompleted}
+                        onUpdateSerie={onUpdateSerie}
+                        onAddSerie={onAddSerie}
+                        onRemoveSerie={onRemoveSerie}
+                        onUpdateExerciseNotes={onUpdateExerciseNotes}
                         addDay={addDay}
                         renameDay={renameDay}
                         deleteDay={deleteDay}
+                        duplicateDay={duplicateDay}
                         moveDay={moveDay}
-                        moveExercise={moveExercise}
-                        saveWorkoutSession={saveWorkoutSession}
-                        showToast={showToast}
+                        addExercise={addExercise}
+                        onDeleteExercise={onDeleteExercise}
+                        toggleExerciseVisibility={toggleExerciseVisibility}
                         formatDate={formatDate}
-                        getSeriesDisplay={getSeriesDisplay}
+                        showToast={showToast}
                         isAdvancedMode={isAdvancedMode}
-                        personalBests={personalBests}
-                        startRestTimer={startTimer}
-                        restTimeInput={restTimeInput}
-                        hasValidFirebaseConfig={hasValidFirebaseConfig}
-                        saveStateToHistory={saveStateToHistory}
+                        toggleAdvancedMode={() => setIsAdvancedMode(prev => !prev)}
+                        exportData={exportData}
+                        importData={importData}
+                        undo={undo}
+                        redo={redo}
+                        canUndo={canUndo}
+                        canRedo={canRedo}
+                        analyzeWorkoutWithAI={analyzeWorkoutWithAI}
+                        aiAnalysisLoading={aiAnalysisLoading}
+                        aiWorkoutAnalysisContent={aiWorkoutAnalysisContent}
+                        clearAiWorkoutAnalysis={clearAiWorkoutAnalysis}
+                        generateExerciseSuggestionsAI={generateExerciseSuggestionsAI}
+                        aiSuggestionsLoading={aiSuggestionsLoading}
+                        aiExerciseSuggestions={aiExerciseSuggestions}
+                        clearAiExerciseSuggestions={clearAiExerciseSuggestions}
                     />
                 )}
                 {currentView === 'timer' && (
@@ -1027,24 +812,8 @@ const ImprovedWorkoutApp = () => {
                         pauseTimer={pauseTimer}
                         resetTimer={resetTimer}
                         setTimerSeconds={setTimerSeconds}
-                        restTimeInput={restTimeInput}
-                        setRestTimeInput={setRestTimeInput}
                         formatTime={formatTime}
-                        setTimerPreset={setTimerPreset}
-                    />
-                )}
-                {currentView === 'history' && (
-                    <HistoryView
-                        historicalData={historicalData}
-                        personalBests={personalBests}
-                        handleReactivateExercise={reactivateExercise}
-                        analyzeProgressionWithAI={analyzeProgressionWithAI}
-                        showProgressionGraphForExercise={showProgressionGraphForExercise}
-                        formatDate={formatDate}
-                        getSeriesDisplay={getSeriesDisplay}
-                        isAdvancedMode={isAdvancedMode}
-                        deleteHistoricalSession={deleteHistoricalSession}
-                        isLoadingAI={isLoadingAI}
+                        setTimerPreset={(seconds) => setTimerSeconds(seconds)} // Simpler way to set preset
                     />
                 )}
                 {currentView === 'stats' && (
@@ -1053,26 +822,53 @@ const ImprovedWorkoutApp = () => {
                         historicalData={historicalData}
                         personalBests={personalBests}
                         formatDate={formatDate}
-                        globalNotes={globalNotes}
-                        setGlobalNotes={setGlobalNotes}
-                        analyzeGlobalStatsWithAI={analyzeGlobalStatsWithAI}
-                        aiAnalysisLoading={isLoadingAI} // Use isLoadingAI for all AI analysis loading
-                        progressionAnalysisContent={progressionAnalysisContent} // Pass this down
-                        getWorkoutStats={getWorkoutStats}
+                        getWorkoutStats={() => { /* Implement if needed */ }}
+                        analyzeGlobalStatsWithAI={() => { /* Implement if needed */ }}
+                        aiAnalysisLoading={aiAnalysisLoading} // Re-using global AI loading
+                        aiWorkoutAnalysisContent={aiWorkoutAnalysisContent} // Re-using global AI content
+                        showToast={showToast}
+                    />
+                )}
+                {currentView === 'history' && (
+                    <HistoryView
+                        historicalData={historicalData}
+                        personalBests={personalBests}
+                        handleReactivateExercise={handleReactivateExercise}
+                        analyzeProgressionWithAI={analyzeProgressionWithAI}
+                        progressionAnalysisContent={aiProgressionAnalysisContent}
+                        formatDate={formatDate}
+                        getSeriesDisplay={getSeriesDisplay}
+                        isAdvancedMode={isAdvancedMode}
+                        deleteHistoricalSession={deleteHistoricalSession}
+                        isLoadingAI={isLoadingAIProgression}
+                        showToast={showToast}
                     />
                 )}
             </main>
 
-            {/* Bottom Navigation Bar */}
+            {/* Barre de navigation inférieure */}
             <BottomNavigationBar
                 currentView={currentView}
                 setCurrentView={setCurrentView}
             />
 
-            {/* Timer Modal */}
+            {/* Toast notification */}
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onClose={() => setToast(null)}
+                    action={toast.action}
+                    duration={toast.duration}
+                />
+            )}
+
+            {/* Timer Modal (if needed for specific use cases like per-serie timer) */}
+            {/* Si vous avez une modale de minuteur séparée qui est contrôlée globalement */}
+            {/*
             <TimerModal
-                isOpen={timerModalOpen}
-                onClose={() => setTimerModalOpen(false)}
+                isOpen={isTimerModalOpen}
+                onClose={() => setIsTimerModalOpen(false)}
                 timerSeconds={timerSeconds}
                 timerIsRunning={timerIsRunning}
                 timerIsFinished={timerIsFinished}
@@ -1081,173 +877,8 @@ const ImprovedWorkoutApp = () => {
                 resetTimer={resetTimer}
                 setTimerSeconds={setTimerSeconds}
                 formatTime={formatTime}
-                setTimerPreset={setTimerPreset}
-                restTimeInput={restTimeInput} // Passer la valeur de restTimeInput
             />
-
-            {/* Toast Notification */}
-            {toast && (
-                <Toast
-                    message={toast.message}
-                    type={toast.type}
-                    onClose={closeToast}
-                    action={toast.action}
-                    duration={toast.duration}
-                />
-            )}
-
-            {/* Settings Modal */}
-            {showSettings && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
-                    <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-2xl border border-gray-700 transform animate-scale-in">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                                <Settings className="h-6 w-6 text-blue-400" />
-                                Paramètres
-                            </h2>
-                            <button
-                                onClick={() => setShowSettings(false)}
-                                className="p-2 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-                                aria-label="Fermer les paramètres"
-                            >
-                                <XCircle className="h-6 w-6" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-6">
-                            {/* Thème */}
-                            <div>
-                                <label htmlFor="theme-select" className="block text-gray-300 text-sm font-medium mb-2">Thème</label>
-                                <select
-                                    id="theme-select"
-                                    value={theme}
-                                    onChange={(e) => setTheme(e.target.value)}
-                                    className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 text-sm focus:ring-blue-500 focus:border-blue-500 transition-all appearance-none"
-                                    style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
-                                >
-                                    <option value="system">Système</option>
-                                    <option value="dark">Sombre</option>
-                                    <option value="light">Clair</option>
-                                </select>
-                            </div>
-
-                            {/* Mode Avancé */}
-                            <div className="flex items-center justify-between bg-gray-700/50 p-4 rounded-lg border border-gray-600">
-                                <span className="text-gray-300 font-medium flex items-center gap-2">
-                                    <Sparkles className="h-5 w-5 text-purple-400" /> Mode Avancé
-                                    <span className="text-xs text-gray-400 ml-2">(Fonctionnalités expérimentales)</span>
-                                </span>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={isAdvancedMode}
-                                        onChange={() => setIsAdvancedMode(!isAdvancedMode)}
-                                        className="sr-only peer"
-                                    />
-                                    <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
-                                </label>
-                            </div>
-
-                            {/* Temps de repos par défaut */}
-                            <div>
-                                <label htmlFor="rest-time-input" className="block text-gray-300 text-sm font-medium mb-2">
-                                    Temps de repos par défaut (secondes)
-                                </label>
-                                <input
-                                    type="number"
-                                    id="rest-time-input"
-                                    value={restTimeInput}
-                                    onChange={(e) => setRestTimeInput(e.target.value)}
-                                    min="0"
-                                    step="15"
-                                    className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 text-sm focus:ring-green-500 focus:border-green-500 transition-all"
-                                    placeholder="Ex: 90"
-                                />
-                            </div>
-
-                            {/* Notes Générales */}
-                            <div>
-                                <label htmlFor="global-notes" className="block text-gray-300 text-sm font-medium mb-2">
-                                    Notes Générales
-                                </label>
-                                <textarea
-                                    id="global-notes"
-                                    value={globalNotes}
-                                    onChange={(e) => setGlobalNotes(e.target.value)}
-                                    rows="4"
-                                    className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 text-sm focus:ring-blue-500 focus:border-blue-500 transition-all resize-y"
-                                    placeholder="Vos objectifs, rappels, etc."
-                                ></textarea>
-                            </div>
-
-                            {/* Boutons Undo/Redo (dans les paramètres pour le moment) */}
-                            <div className="flex justify-around gap-4 mt-6">
-                                <button
-                                    onClick={undo}
-                                    disabled={historyChanges.length === 0}
-                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <Undo2 className="h-5 w-5" />
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={redo}
-                                    disabled={futureChanges.length === 0}
-                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <Redo2 className="h-5 w-5" />
-                                    Rétablir
-                                </button>
-                            </div>
-
-
-                            <div className="text-sm text-gray-400 mt-6 text-center">
-                                Application version 1.0.0
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modale d'analyse de progression AI */}
-            {progressionAnalysisContent && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-[60] animate-fade-in">
-                    <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-2xl border border-gray-700 transform animate-scale-in">
-                        <div className="flex flex-col">
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Sparkles className="h-6 w-6 text-yellow-400" />
-                                    Analyse IA
-                                </h2>
-                                <button
-                                    onClick={() => setProgressionAnalysisContent('')}
-                                    className="p-2 rounded-full bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-lg p-4 mb-4">
-                                <div className="text-sm text-white whitespace-pre-wrap leading-relaxed">
-                                    {progressionAnalysisContent}
-                                </div>
-                            </div>
-
-                            <div className="text-xs text-gray-400 mb-4">
-                                💡 Cette analyse est générée par IA et doit être considérée comme un conseil général.
-                                Consultez un professionnel pour un programme personnalisé.
-                            </div>
-
-                            <button
-                                onClick={() => setProgressionAnalysisContent('')}
-                                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all"
-                            >
-                                Fermer l'analyse
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            */}
         </div>
     );
 };
