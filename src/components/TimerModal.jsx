@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, RotateCcw, Plus, Minus, Clock, Zap, X } from 'lucide-react';
+import { Play, Pause, RotateCcw, Plus, Minus, Clock, Zap, X, ChevronUp, ChevronDown } from 'lucide-react';
 
 /**
  * Composant TimerModal pour la gestion du minuteur de repos en modal.
@@ -18,8 +18,8 @@ const TimerModal = ({
 }) => {
     const [customMinutes, setCustomMinutes] = useState(1);
     const [customSeconds, setCustomSeconds] = useState(30);
-    const [selectedPreset, setSelectedPreset] = useState(90);
-    
+    const [selectedPreset, setSelectedPreset] = useState(90); // Default to 90s
+
     if (!isOpen) return null;
 
     // Presets de temps populaires
@@ -35,118 +35,95 @@ const TimerModal = ({
     const handleCustomTimerStart = () => {
         const totalSeconds = (customMinutes * 60) + customSeconds;
         if (totalSeconds > 0) {
-            if (setTimerSeconds) setTimerSeconds(totalSeconds);
-            setSelectedPreset(totalSeconds);
-            if (startTimer) startTimer();
+            setTimerSeconds(totalSeconds);
+            startTimer();
         }
     };
 
-    const handlePresetStart = (seconds) => {
-        setSelectedPreset(seconds);
-        if (setTimerSeconds) setTimerSeconds(seconds);
-        if (startTimer) startTimer();
-    };
-
-    const getTimerDisplay = () => {
-        if (timerSeconds === 0 && !timerIsRunning) {
-            return '00:00';
+    const handlePresetClick = (value) => {
+        setSelectedPreset(value);
+        setTimerSeconds(value);
+        if (!timerIsRunning) { // Démarrer seulement si pas déjà en cours
+            startTimer();
         }
-        return formatTime ? formatTime(timerSeconds) : '00:00';
     };
 
-    const getTimerStatusColor = () => {
-        if (timerIsFinished) return 'text-red-400';
-        if (timerIsRunning) return 'text-blue-400';
-        if (timerSeconds > 0) return 'text-yellow-400';
-        return 'text-gray-400';
+    const increaseMinute = () => {
+        setCustomMinutes(prev => Math.min(prev + 1, 59));
     };
 
-    const getProgressPercentage = () => {
-        if (selectedPreset === 0) return 0;
-        return ((selectedPreset - timerSeconds) / selectedPreset) * 100;
+    const decreaseMinute = () => {
+        setCustomMinutes(prev => Math.max(prev - 1, 0));
     };
+
+    const increaseSecond = () => {
+        setCustomSeconds(prev => (prev === 59 ? 0 : prev + 1));
+    };
+
+    const decreaseSecond = () => {
+        setCustomSeconds(prev => (prev === 0 ? 59 : prev - 1));
+    };
+
 
     return (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-2xl border border-gray-700 shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-gray-900/90 backdrop-blur-lg z-[100] flex items-center justify-center p-4 sm:p-6"> {/* MODIFIED: Added p-4 sm:p-6 for mobile padding */}
+            <div className="relative bg-gray-800 rounded-2xl shadow-xl border border-gray-700 w-full max-w-sm mx-auto overflow-hidden">
                 <div className="p-6">
-                    {/* Header */}
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                            <Clock className="h-6 w-6 text-blue-400" />
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                            <Clock className="h-6 w-6 text-green-400" />
                             Minuteur de repos
                         </h2>
                         <button
                             onClick={onClose}
-                            className="p-2 text-gray-400 hover:text-gray-300 transition-colors"
+                            className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                            aria-label="Fermer le minuteur"
                         >
                             <X className="h-5 w-5" />
                         </button>
                     </div>
 
-                    {/* Affichage du temps */}
+                    {/* Affichage du temps restant */}
                     <div className="text-center mb-6">
-                        <div className={`text-5xl font-mono font-bold ${getTimerStatusColor()} mb-4`}>
-                            {getTimerDisplay()}
-                        </div>
-                        
-                        {/* Barre de progression */}
-                        {selectedPreset > 0 && timerSeconds > 0 && (
-                            <div className="w-full bg-gray-700 rounded-full h-2 mb-4">
-                                <div 
-                                    className="bg-blue-500 h-2 rounded-full transition-all duration-1000 ease-linear"
-                                    style={{ width: `${getProgressPercentage()}%` }}
-                                ></div>
-                            </div>
-                        )}
-                        
+                        <p className={`font-mono text-7xl sm:text-8xl font-extrabold transition-colors duration-300 ${timerIsFinished ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
+                            {formatTime(timerSeconds)}
+                        </p>
                         {timerIsFinished && (
-                            <div className="text-green-400 font-semibold text-lg animate-pulse">
-                                ⏰ Temps terminé !
-                            </div>
+                            <p className="text-red-400 text-sm mt-2 animate-bounce">Temps écoulé !</p>
                         )}
                     </div>
 
-                    {/* Contrôles */}
-                    <div className="flex justify-center gap-3 mb-6">
-                        {timerSeconds > 0 && (
-                            <>
-                                <button
-                                    onClick={timerIsRunning ? pauseTimer : startTimer}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
-                                        timerIsRunning 
-                                            ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
-                                            : 'bg-green-600 hover:bg-green-700 text-white'
-                                    }`}
-                                >
-                                    {timerIsRunning ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                                    {timerIsRunning ? 'Pause' : 'Start'}
-                                </button>
-                                <button
-                                    onClick={resetTimer}
-                                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-all flex items-center gap-2"
-                                >
-                                    <RotateCcw className="h-4 w-4" />
-                                    Reset
-                                </button>
-                            </>
-                        )}
+                    {/* Contrôles du minuteur */}
+                    <div className="flex justify-center gap-4 mb-6">
+                        <button
+                            onClick={timerIsRunning ? pauseTimer : startTimer}
+                            className={`p-4 rounded-full ${timerIsRunning ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600'} text-white transition-all shadow-lg flex items-center justify-center`}
+                            aria-label={timerIsRunning ? "Pause" : "Démarrer"}
+                        >
+                            {timerIsRunning ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                        </button>
+                        <button
+                            onClick={resetTimer}
+                            className="p-4 rounded-full bg-gray-600 hover:bg-gray-700 text-white transition-all shadow-lg flex items-center justify-center"
+                            aria-label="Réinitialiser"
+                        >
+                            <RotateCcw className="h-6 w-6" />
+                        </button>
                     </div>
 
-                    {/* Presets rapides */}
+                    {/* Presets */}
                     <div className="mb-6">
-                        <h3 className="text-sm font-medium text-gray-300 mb-3">Temps prédéfinis</h3>
+                        <h3 className="text-md font-semibold text-gray-300 mb-3">Presets rapides :</h3>
                         <div className="grid grid-cols-3 gap-2">
                             {timePresets.map((preset) => (
                                 <button
                                     key={preset.value}
-                                    onClick={() => handlePresetStart(preset.value)}
-                                    disabled={timerIsRunning}
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                                        selectedPreset === preset.value
-                                            ? 'bg-blue-600 text-white'
+                                    onClick={() => handlePresetClick(preset.value)}
+                                    className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                                        selectedPreset === preset.value && timerSeconds === preset.value && timerIsRunning
+                                            ? 'bg-green-600 text-white'
                                             : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                    }`}
                                 >
                                     {preset.label}
                                 </button>
@@ -155,10 +132,11 @@ const TimerModal = ({
                     </div>
 
                     {/* Minuteur personnalisé */}
-                    <div>
-                        <h3 className="text-sm font-medium text-gray-300 mb-3">Temps personnalisé</h3>
-                        <div className="flex items-center justify-center gap-3 mb-3">
-                            <div className="flex items-center gap-1">
+                    <div className="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                        <h3 className="text-md font-semibold text-gray-300 mb-3 flex items-center gap-2"><Zap className="h-4 w-4 text-purple-400" /> Personnalisé</h3>
+                        <div className="flex items-center justify-center gap-4">
+                            <div className="flex flex-col items-center">
+                                <button onClick={increaseMinute} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronUp className="h-5 w-5" /></button>
                                 <input
                                     type="number"
                                     min="0"
@@ -167,11 +145,14 @@ const TimerModal = ({
                                     onChange={(e) => setCustomMinutes(parseInt(e.target.value) || 0)}
                                     className="bg-gray-700 text-white text-center rounded-lg px-2 py-1 w-12 text-sm"
                                     disabled={timerIsRunning}
+                                    inputMode="numeric" {/* MODIFIED: Added inputMode */}
                                 />
-                                <span className="text-gray-400 text-sm">m</span>
+                                <button onClick={decreaseMinute} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronDown className="h-5 w-5" /></button>
+                                <span className="text-gray-400 text-xs mt-1">min</span>
                             </div>
-                            
-                            <div className="flex items-center gap-1">
+                            <span className="text-gray-400 text-lg">:</span>
+                            <div className="flex flex-col items-center">
+                                <button onClick={increaseSecond} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronUp className="h-5 w-5" /></button>
                                 <input
                                     type="number"
                                     min="0"
@@ -180,10 +161,12 @@ const TimerModal = ({
                                     onChange={(e) => setCustomSeconds(parseInt(e.target.value) || 0)}
                                     className="bg-gray-700 text-white text-center rounded-lg px-2 py-1 w-12 text-sm"
                                     disabled={timerIsRunning}
+                                    inputMode="numeric" {/* MODIFIED: Added inputMode */}
                                 />
-                                <span className="text-gray-400 text-sm">s</span>
+                                <button onClick={decreaseSecond} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronDown className="h-5 w-5" /></button>
+                                <span className="text-gray-400 text-xs mt-1">s</span>
                             </div>
-                            
+
                             <button
                                 onClick={handleCustomTimerStart}
                                 disabled={timerIsRunning || (customMinutes === 0 && customSeconds === 0)}

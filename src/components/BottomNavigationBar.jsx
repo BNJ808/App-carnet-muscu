@@ -6,27 +6,27 @@ import { Dumbbell, Clock, History, BarChart3 } from 'lucide-react';
  */
 const BottomNavigationBar = ({ currentView, setCurrentView }) => {
     const navItems = [
-        { 
-            name: 'Entraînement', 
-            icon: Dumbbell, 
+        {
+            name: 'Entraînement',
+            icon: Dumbbell,
             view: 'workout',
             color: 'text-blue-400'
         },
-        { 
-            name: 'Minuteur', 
-            icon: Clock, 
+        {
+            name: 'Minuteur',
+            icon: Clock,
             view: 'timer',
             color: 'text-green-400'
         },
-        { 
-            name: 'Statistiques', 
-            icon: BarChart3, 
+        {
+            name: 'Statistiques',
+            icon: BarChart3,
             view: 'stats',
             color: 'text-purple-400'
         },
-        { 
-            name: 'Historique', 
-            icon: History, 
+        {
+            name: 'Historique',
+            icon: History,
             view: 'history',
             color: 'text-yellow-400'
         }
@@ -40,8 +40,8 @@ const BottomNavigationBar = ({ currentView, setCurrentView }) => {
                         key={item.view}
                         onClick={() => setCurrentView(item.view)}
                         className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-200 ease-in-out min-w-0 flex-1 mx-1 ${
-                            currentView === item.view 
-                                ? `${item.color} bg-gray-800/50 scale-105` 
+                            currentView === item.view
+                                ? `${item.color} bg-gray-800/50 scale-105`
                                 : 'text-gray-400 hover:text-white hover:bg-gray-800/30'
                         }`}
                     >
