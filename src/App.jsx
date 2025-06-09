@@ -84,12 +84,6 @@ const logError = (type, message, error = null) => {
     }
 };
 
-const formatTime = useCallback((seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}, []);
-
 // Données de base pour initialisation
 const baseInitialData = {
     days: {
@@ -271,6 +265,10 @@ function App() {
     const genAI = useMemo(() => {
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         return apiKey ? new GoogleGenerativeAI(apiKey) : null;
+    }, []);
+
+    // Formatage du temps pour le minuteur
+    const formatTime = useCallback((seconds) => {
 
     const formatTime = useCallback((seconds) => {
         const mins = Math.floor(seconds / 60);
