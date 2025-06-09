@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react'; 
 import { 
     Search, 
     Filter, 
@@ -17,675 +17,491 @@ import {
     MoreVertical,
     Copy,
     History,
-    TrendingUp
+    TrendingUp,
+    Dumbbell, 
+    BarChart3, 
+    Layers 
 } from 'lucide-react';
+
+const stableSort = (array, compareFunction) => {
+    return array
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => compareFunction(a.item, b.item) || a.index - b.index)
+        .map(({ item }) => item);
+};
 
 function MainWorkoutView({
     workouts,
-    onToggleSerieCompleted,
-    onUpdateSerie,
-    onAddSerie,
-    onRemoveSerie,
-    onUpdateExerciseNotes,
-    onEditClick,
-    onDeleteExercise,
-    onAnalyzeProgression,
+    onToggleSerieCompleted = () => {}, // Default empty function
+    onUpdateSerie = () => {}, // Default empty function
+    onAddSerie = () => {}, // Default empty function
+    onRemoveSerie = () => {}, // Default empty function
+    onUpdateExerciseNotes = () => {}, // Default empty function
+    onEditClick = () => {}, // Default empty function
+    onDeleteExercise = () => {}, // Default empty function
+    onAnalyzeProgression = () => {}, // Default empty function
     searchTerm,
-    onSearchChange,
+    setSearchTerm = () => {}, // Default empty function
     selectedDayFilter,
-    onDayFilterChange,
+    setSelectedDayFilter = () => {}, // Default empty function
     selectedCategoryFilter,
-    onCategoryFilterChange,
+    onCategoryFilterChange = () => {}, // Default empty function
     showOnlyCompleted,
-    onToggleCompletedFilter,
-    onAddExercise,
-    onSaveToHistory,
+    onToggleCompletedFilter = () => {}, // Default empty function
+    onAddExercise = () => {}, // Default empty function
+    onSaveToHistory = () => {}, // Default empty function
     isCompactView = false,
-    historicalData = []
+    historicalData = [],
+    personalBests = {}, // Added for PB display in MainWorkoutView
+    getDayButtonColors = () => 'bg-gray-700', // Default color if not provided
+    formatDate = (date) => date.toLocaleString(), // Default formatting
+    getSeriesDisplay = (series) => '', // Default empty string
+    isSavingExercise = false, // Added for loading state
+    isDeletingExercise = false, // Added for loading state
+    isAddingExercise = false, // Added for loading state
+    isAdvancedMode = false, // Added for advanced features toggle
+    days = [], // Explicitly accept days array
+    categories = [], // Explicitly accept categories array
+    handleAddDay = () => {},
+    handleEditDay = () => {},
+    handleDeleteDay = () => {},
+    handleAddCategory = () => {},
+    handleEditCategory = () => {},
+    handleDeleteCategory = () => {}
 }) {
-    // États locaux pour l'interface
-    const [expandedExercises, setExpandedExercises] = useState(new Set());
-    const [editingNotes, setEditingNotes] = useState(null);
-    const [tempNotes, setTempNotes] = useState('');
-    const [editingSerie, setEditingSerie] = useState(null);
-    const [tempWeight, setTempWeight] = useState('');
-    const [tempReps, setTempReps] = useState('');
-    const [showFilters, setShowFilters] = useState(false);
+    // État local pour gérer l'expansion des jours et catégories
+    const [expandedDays, setExpandedDays] = useState(new Set(workouts.dayOrder));
+    const [expandedCategories, setExpandedCategories] = useState(new Set());
+    const [exerciseMenuOpen, setExerciseMenuOpen] = useState(null); // { dayName, categoryName, exerciseId }
 
-    // Obtenir les jours disponibles
-    const getAvailableDays = () => {
-        return workouts?.dayOrder || Object.keys(workouts?.days || {});
-    };
-
-    // Obtenir les catégories pour un jour donné
-    const getAvailableCategories = (dayName) => {
-        if (!workouts?.days?.[dayName]?.categories) {
-            return [];
-        }
-        
-        return Object.keys(workouts.days[dayName].categories).filter(categoryName => {
-            const exercises = workouts.days[dayName].categories[categoryName];
-            return Array.isArray(exercises) && exercises.length > 0;
+    // Filtrer les exercices basés sur le terme de recherche
+    const filterExercises = useCallback((exercises, dayName, categoryName) => {
+        if (!exercises) return [];
+        return exercises.filter(exercise => {
+            const matchesSearch = searchTerm ? exercise.name.toLowerCase().includes(searchTerm.toLowerCase()) : true;
+            const matchesCategory = selectedCategoryFilter === 'all' || selectedCategoryFilter === '' ? true : exercise.category === selectedCategoryFilter;
+            const matchesCompletion = showOnlyCompleted ? exercise.series.every(s => s.isCompleted) : true;
+            const isNotDeleted = !exercise.isDeleted;
+            return matchesSearch && matchesCategory && matchesCompletion && isNotDeleted;
         });
-    };
+    }, [searchTerm, selectedCategoryFilter, showOnlyCompleted]);
 
-    // Obtenir toutes les catégories disponibles (pour le filtre global)
-    const getAllCategories = () => {
-        const categories = new Set();
-        Object.values(workouts?.days || {}).forEach(day => {
-            Object.keys(day.categories || {}).forEach(category => {
-                categories.add(category);
-            });
-        });
-        return Array.from(categories);
-    };
-
-    // Calculer les records personnels pour un exercice
-    const getPersonalBest = (exerciseName) => {
-        if (!historicalData.length) return null;
-
-        let maxWeight = 0;
-        let maxReps = 0;
-        let maxVolume = 0;
-
-        historicalData.forEach(session => {
-            Object.values(session.days || {}).forEach(day => {
-                Object.values(day.categories || {}).forEach(exercises => {
-                    if (Array.isArray(exercises)) {
-                        const exercise = exercises.find(ex => ex.name === exerciseName);
-                        if (exercise?.series) {
-                            exercise.series.forEach(serie => {
-                                if (serie.completed) {
-                                    const weight = parseFloat(serie.weight) || 0;
-                                    const reps = parseInt(serie.reps) || 0;
-                                    const volume = weight * reps;
-
-                                    if (weight > maxWeight) maxWeight = weight;
-                                    if (reps > maxReps) maxReps = reps;
-                                    if (volume > maxVolume) maxVolume = volume;
-                                }
-                            });
-                        }
-                    }
-                });
-            });
-        });
-
-        if (maxWeight === 0 && maxReps === 0) return null;
-
-        return {
-            maxWeight,
-            maxReps,
-            maxVolume
-        };
-    };
-
-    // Basculer l'expansion d'un exercice
-    const toggleExerciseExpansion = (exerciseId) => {
-        const newExpanded = new Set(expandedExercises);
-        if (newExpanded.has(exerciseId)) {
-            newExpanded.delete(exerciseId);
-        } else {
-            newExpanded.add(exerciseId);
-        }
-        setExpandedExercises(newExpanded);
-    };
-
-    // Démarrer l'édition des notes
-    const startEditingNotes = (exerciseId, currentNotes) => {
-        setEditingNotes(exerciseId);
-        setTempNotes(currentNotes || '');
-    };
-
-    // Sauvegarder les notes
-    const saveNotes = (dayName, categoryName, exerciseId) => {
-        if (onUpdateExerciseNotes) {
-            onUpdateExerciseNotes(dayName, categoryName, exerciseId, tempNotes);
-        }
-        setEditingNotes(null);
-        setTempNotes('');
-    };
-
-    // Annuler l'édition des notes
-    const cancelEditingNotes = () => {
-        setEditingNotes(null);
-        setTempNotes('');
-    };
-
-    // Démarrer l'édition d'une série
-    const startEditingSerie = (exerciseId, serieIndex, weight, reps) => {
-        setEditingSerie(`${exerciseId}-${serieIndex}`);
-        setTempWeight(weight.toString());
-        setTempReps(reps.toString());
-    };
-
-    // Sauvegarder une série modifiée
-    const saveSerie = (dayName, categoryName, exerciseId, serieIndex) => {
-        if (onUpdateSerie) {
-            onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, tempWeight, tempReps);
-        }
-        setEditingSerie(null);
-        setTempWeight('');
-        setTempReps('');
-    };
-
-    // Annuler l'édition d'une série
-    const cancelEditingSerie = () => {
-        setEditingSerie(null);
-        setTempWeight('');
-        setTempReps('');
-    };
-
-    // Obtenir l'affichage des séries pour un exercice
-    const getSeriesDisplay = (series) => {
-        if (!series || series.length === 0) return "Aucune série";
-        
-        const completedSeries = series.filter(s => s.completed).length;
-        const totalSeries = series.length;
-        
-        return `${completedSeries}/${totalSeries} séries terminées`;
-    };
-
-    // Calculer le volume total d'un exercice
-    const getExerciseVolume = (series) => {
-        if (!series) return 0;
-        
-        return series.reduce((total, serie) => {
-            if (serie.completed) {
-                const weight = parseFloat(serie.weight) || 0;
-                const reps = parseInt(serie.reps) || 0;
-                return total + (weight * reps);
+    // Obtenir les jours disponibles après filtrage
+    const getAvailableDays = useCallback(() => {
+        return (workouts?.dayOrder || []).filter(dayName => {
+            if (selectedDayFilter && selectedDayFilter !== 'all' && dayName !== selectedDayFilter) {
+                return false;
             }
-            return total;
-        }, 0);
-    };
+            const dayData = workouts.days[dayName];
+            if (!dayData || !dayData.categories) return false;
 
-    // Rendu d'une série individuelle
-    const renderSerie = (serie, serieIndex, exerciseId, dayName, categoryName) => {
-        const serieKey = `${exerciseId}-${serieIndex}`;
-        const isEditing = editingSerie === serieKey;
+            const hasVisibleExercises = Object.entries(dayData.categories).some(([categoryName, exercises]) => {
+                const filteredExercises = filterExercises(exercises, dayName, categoryName);
+                return filteredExercises.length > 0;
+            });
+            return hasVisibleExercises;
+        });
+    }, [workouts, selectedDayFilter, filterExercises]);
 
-        return (
-            <div 
-                key={serie.id || serieIndex} 
-                className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                    serie.completed 
-                        ? 'bg-green-500/20 border border-green-500/30' 
-                        : 'bg-gray-600/50 border border-gray-600/50'
-                }`}
-            >
-                <span className="text-xs text-gray-400 w-8 text-center">
-                    #{serieIndex + 1}
-                </span>
-                
-                {isEditing ? (
-                    <>
-                        <div className="flex items-center gap-2 flex-1">
-                            <input
-                                type="number"
-                                value={tempWeight}
-                                onChange={(e) => setTempWeight(e.target.value)}
-                                className="w-16 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white"
-                                placeholder="kg"
-                            />
-                            <span className="text-gray-400 text-xs">×</span>
-                            <input
-                                type="number"
-                                value={tempReps}
-                                onChange={(e) => setTempReps(e.target.value)}
-                                className="w-16 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white"
-                                placeholder="reps"
-                            />
-                        </div>
-                        
-                        <div className="flex gap-1">
-                            <button
-                                onClick={() => saveSerie(dayName, categoryName, exerciseId, serieIndex)}
-                                className="p-1 text-green-400 hover:text-green-300 transition-colors"
-                                title="Sauvegarder"
-                            >
-                                <Check className="h-3 w-3" />
-                            </button>
-                            <button
-                                onClick={cancelEditingSerie}
-                                className="p-1 text-red-400 hover:text-red-300 transition-colors"
-                                title="Annuler"
-                            >
-                                <X className="h-3 w-3" />
-                            </button>
-                        </div>
-                    </>
-                ) : (
-                    <>
-                        <div 
-                            className="flex items-center gap-2 flex-1 cursor-pointer"
-                            onClick={() => startEditingSerie(exerciseId, serieIndex, serie.weight, serie.reps)}
-                        >
-                            <span className="text-sm font-medium text-white">
-                                {serie.weight || '?'}kg
-                            </span>
-                            <span className="text-gray-400">×</span>
-                            <span className="text-sm font-medium text-white">
-                                {serie.reps || '?'}
-                            </span>
-                            <span className="text-xs text-gray-400 ml-2">
-                                ({((parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0))}kg)
-                            </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-1">
-                            <button
-                                onClick={() => onToggleSerieCompleted?.(dayName, categoryName, exerciseId, serieIndex)}
-                                className={`p-1.5 rounded transition-colors ${
-                                    serie.completed 
-                                        ? 'text-green-400 hover:text-green-300 bg-green-400/10' 
-                                        : 'text-gray-400 hover:text-gray-300 hover:bg-gray-400/10'
-                                }`}
-                                title={serie.completed ? "Marquer comme non terminée" : "Marquer comme terminée"}
-                            >
-                                <Check className="h-4 w-4" />
-                            </button>
-                            
-                            {serie.completed && (
-                                <button
-                                    onClick={() => onRemoveSerie?.(dayName, categoryName, exerciseId, serieIndex)}
-                                    className="p-1 text-red-400 hover:text-red-300 transition-colors"
-                                    title="Supprimer la série"
-                                >
-                                    <X className="h-3 w-3" />
-                                </button>
-                            )}
-                        </div>
-                    </>
-                )}
-            </div>
+
+    const toggleDayExpansion = useCallback((dayName) => {
+        setExpandedDays(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(dayName)) {
+                newSet.delete(dayName);
+            } else {
+                newSet.add(dayName);
+            }
+            return newSet;
+        });
+    }, []);
+
+    const toggleCategoryExpansion = useCallback((categoryName) => {
+        setExpandedCategories(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(categoryName)) {
+                newSet.delete(categoryName);
+            } else {
+                newSet.add(categoryName);
+            }
+            return newSet;
+        });
+    }, []);
+
+    const toggleExerciseMenu = useCallback((dayName, categoryName, exerciseId) => {
+        setExerciseMenuOpen(prev => 
+            (prev?.dayName === dayName && prev?.categoryName === categoryName && prev?.exerciseId === exerciseId)
+                ? null 
+                : { dayName, categoryName, exerciseId }
         );
-    };
+    }, []);
 
-    // Rendu d'un exercice
-    const renderExercise = (exercise, dayName, categoryName) => {
-        const personalBest = getPersonalBest(exercise.name);
-        const isExpanded = expandedExercises.has(exercise.id);
-        const isEditingNotesForThisExercise = editingNotes === exercise.id;
-        const exerciseVolume = getExerciseVolume(exercise.series);
-
-        // Filtrage par terme de recherche
-        if (searchTerm && !exercise.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-            return null;
+    // Fermer le menu si on clique en dehors
+    const handleClickOutside = useCallback((event) => {
+        if (exerciseMenuOpen && !event.target.closest('.exercise-menu-button') && !event.target.closest('.exercise-menu-dropdown')) {
+            setExerciseMenuOpen(null);
         }
+    }, [exerciseMenuOpen]);
+
+    useEffect(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [handleClickOutside]);
+
+
+    const renderSerie = useCallback((dayName, categoryName, exerciseId, serie, serieIndex, exerciseName) => {
+        const volume = (parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0);
+        const isCompleted = serie.isCompleted;
+
+        // Récupérer le record personnel pour cet exercice
+        const pb = personalBests[exerciseName];
+        const isMaxWeight = pb && parseFloat(serie.weight) === pb.maxWeight;
+        const isMaxReps = pb && parseInt(serie.reps) === pb.maxReps;
+        const isMaxVolume = pb && volume === pb.maxVolume && volume > 0;
 
         return (
-            <div key={exercise.id} className={`bg-gray-700/50 rounded-xl border border-gray-600/50 transition-all hover:bg-gray-700/70 ${isCompactView ? 'p-3' : 'p-4'}`}>
-                {/* En-tête de l'exercice */}
-                <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-semibold text-white text-lg">{exercise.name}</h4>
-                            <button
-                                onClick={() => toggleExerciseExpansion(exercise.id)}
-                                className="p-1 text-gray-400 hover:text-gray-300 transition-colors"
-                                title={isExpanded ? "Réduire" : "Développer"}
-                            >
-                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            </button>
-                        </div>
-                        
-                        {personalBest && (
-                            <div className="text-xs text-yellow-400 mb-2 flex items-center gap-1">
-                                <Target className="h-3 w-3" />
-                                Record: {personalBest.maxWeight}kg × {personalBest.maxReps} reps 
-                                <span className="text-gray-400">({personalBest.maxVolume}kg volume)</span>
-                            </div>
-                        )}
-
-                        <div className="flex items-center gap-4 text-sm text-gray-300 mb-2">
-                            <span>{getSeriesDisplay(exercise.series)}</span>
-                            {exerciseVolume > 0 && (
-                                <span className="text-blue-400">Volume: {exerciseVolume}kg</span>
-                            )}
-                        </div>
-
-                        {/* Notes de l'exercice */}
-                        {isEditingNotesForThisExercise ? (
-                            <div className="mt-2">
-                                <textarea
-                                    value={tempNotes}
-                                    onChange={(e) => setTempNotes(e.target.value)}
-                                    className="w-full px-3 py-2 text-sm bg-gray-600 border border-gray-500 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none"
-                                    placeholder="Ajouter des notes..."
-                                    rows={3}
-                                />
-                                <div className="flex gap-2 mt-2">
-                                    <button
-                                        onClick={() => saveNotes(dayName, categoryName, exercise.id)}
-                                        className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                                    >
-                                        Sauvegarder
-                                    </button>
-                                    <button
-                                        onClick={cancelEditingNotes}
-                                        className="px-3 py-1 text-xs bg-gray-600 text-gray-300 rounded hover:bg-gray-700 transition-colors"
-                                    >
-                                        Annuler
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            exercise.notes && (
-                                <div className="text-xs text-gray-400 mt-2 p-2 bg-gray-600/30 rounded border-l-2 border-blue-500">
-                                    📝 {exercise.notes}
-                                </div>
-                            )
-                        )}
+            <div key={serieIndex} className={`flex items-center gap-2 p-2 rounded-lg transition-all duration-200 ${isCompleted ? 'bg-green-700/30' : 'bg-gray-700/30'}`}>
+                <input
+                    type="checkbox"
+                    checked={isCompleted}
+                    onChange={() => onToggleSerieCompleted(dayName, categoryName, exerciseId, serieIndex)}
+                    className="form-checkbox h-5 w-5 text-green-500 rounded border-gray-500 bg-gray-600 cursor-pointer"
+                />
+                <span className="text-gray-400 text-sm w-4 text-center">{serieIndex + 1}.</span>
+                
+                <div className="flex-1 grid grid-cols-2 gap-2">
+                    <div className="flex items-center border border-gray-600 rounded-md overflow-hidden">
+                        <input
+                            type="number"
+                            value={serie.weight}
+                            onChange={(e) => onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, 'weight', e.target.value)}
+                            className={`w-full p-2 bg-gray-800 text-white text-center focus:outline-none text-sm ${isMaxWeight ? 'font-bold text-yellow-300' : ''}`}
+                            placeholder="Poids"
+                            step="0.5"
+                            min="0"
+                        />
+                        <span className="bg-gray-600 text-gray-300 p-2 text-xs">kg</span>
                     </div>
-                    
-                    {/* Menu d'actions */}
-                    <div className="flex items-center gap-1 ml-3">
-                        {/* Analyse IA */}
-                        <button
-                            onClick={() => onAnalyzeProgression?.(exercise)}
-                            className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10 rounded transition-colors"
-                            title="Analyser avec IA"
-                        >
-                            <Sparkles className="h-4 w-4" />
-                        </button>
-                        
-                        {/* Graphique de progression */}
-                        <button
-                            onClick={() => console.log('Voir graphique de progression pour', exercise.name)}
-                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors"
-                            title="Voir graphique de progression"
-                        >
-                            <LineChartIcon className="h-4 w-4" />
-                        </button>
-                        
-                        {/* Modifier les notes */}
-                        <button
-                            onClick={() => startEditingNotes(exercise.id, exercise.notes)}
-                            className="p-1.5 text-purple-400 hover:text-purple-300 hover:bg-purple-400/10 rounded transition-colors"
-                            title="Modifier les notes"
-                        >
-                            <NotebookText className="h-4 w-4" />
-                        </button>
-                        
-                        {/* Modifier l'exercice */}
-                        <button
-                            onClick={() => onEditClick?.(dayName, categoryName, exercise.id, exercise)}
-                            className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-400/10 rounded transition-colors"
-                            title="Modifier l'exercice"
-                        >
-                            <Pencil className="h-4 w-4" />
-                        </button>
-                        
-                        {/* Supprimer l'exercice */}
-                        <button
-                            onClick={() => onDeleteExercise?.(dayName, categoryName, exercise.id)}
-                            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors"
-                            title="Supprimer l'exercice"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </button>
+                    <div className="flex items-center border border-gray-600 rounded-md overflow-hidden">
+                        <input
+                            type="number"
+                            value={serie.reps}
+                            onChange={(e) => onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, 'reps', e.target.value)}
+                            className={`w-full p-2 bg-gray-800 text-white text-center focus:outline-none text-sm ${isMaxReps ? 'font-bold text-yellow-300' : ''}`}
+                            placeholder="Reps"
+                            min="0"
+                        />
+                        <span className="bg-gray-600 text-gray-300 p-2 text-xs">reps</span>
                     </div>
                 </div>
 
-                {/* Séries de l'exercice */}
-                {isExpanded && (
-                    <div className="space-y-2 mt-4">
-                        {exercise.series && exercise.series.length > 0 ? (
-                            <>
-                                {exercise.series.map((serie, serieIndex) => 
-                                    renderSerie(serie, serieIndex, exercise.id, dayName, categoryName)
-                                )}
-                                
-                                {/* Bouton d'ajout de série */}
-                                <button
-                                    onClick={() => onAddSerie?.(dayName, categoryName, exercise.id)}
-                                    className="w-full p-3 border-2 border-dashed border-gray-600 rounded-lg text-gray-400 hover:text-gray-300 hover:border-gray-500 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    <Plus className="h-4 w-4" />
-                                    Ajouter une série
-                                </button>
-                            </>
-                        ) : (
-                            <div className="text-gray-400 text-sm italic text-center py-4">
-                                Aucune série configurée
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Résumé compact quand l'exercice n'est pas développé */}
-                {!isExpanded && exercise.series && exercise.series.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        {exercise.series.slice(0, 4).map((serie, index) => (
-                            <div 
-                                key={serie.id || index}
-                                className={`text-xs px-2 py-1 rounded ${
-                                    serie.completed 
-                                        ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                                        : 'bg-gray-600/50 text-gray-300'
-                                }`}
-                            >
-                                {serie.weight}kg × {serie.reps}
-                            </div>
-                        ))}
-                        {exercise.series.length > 4 && (
-                            <div className="text-xs px-2 py-1 rounded bg-gray-600/50 text-gray-400">
-                                +{exercise.series.length - 4} autres
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    // Si pas de données
-    if (!workouts?.days || Object.keys(workouts.days).length === 0) {
-        return (
-            <div className="text-center py-12">
-                <div className="text-gray-400 mb-4">
-                    <Target className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                    <h3 className="text-xl font-medium text-gray-300 mb-2">Aucun entraînement configuré</h3>
-                    <p className="text-gray-400">Commencez par ajouter votre premier exercice !</p>
+                <div className="text-right text-gray-400 text-sm w-16 flex-shrink-0">
+                    <span className={`inline-flex items-center ${isMaxVolume ? 'font-bold text-yellow-300' : ''}`}>
+                        {volume} <Activity className="ml-1 h-4 w-4" />
+                    </span>
                 </div>
+                
                 <button
-                    onClick={onAddExercise}
-                    className="mt-4 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 mx-auto"
+                    onClick={() => onRemoveSerie(dayName, categoryName, exerciseId, serieIndex)}
+                    className="p-1 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/40 transition-colors flex-shrink-0"
+                    title="Supprimer la série"
                 >
-                    <Plus className="h-5 w-5" />
-                    Ajouter un exercice
+                    <X className="h-4 w-4" />
                 </button>
             </div>
         );
-    }
+    }, [onToggleSerieCompleted, onUpdateSerie, onRemoveSerie, personalBests]);
 
-    return (
-        <div className="space-y-6">
-            {/* Barre de recherche et filtres */}
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-lg">
-                <div className="flex flex-col sm:flex-row gap-4">
-                    {/* Recherche */}
-                    <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => onSearchChange?.(e.target.value)}
-                            placeholder="Rechercher un exercice..."
-                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                        />
+    const renderExercise = useCallback((exercise, dayName, categoryName) => {
+        const exerciseVolume = (exercise.series || []).reduce((sum, serie) => sum + ((parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0)), 0);
+        const isExpanded = expandedCategories.has(exercise.id);
+
+        return (
+            <div key={exercise.id} className="bg-gray-800 rounded-lg shadow-xl border border-gray-700">
+                <button
+                    onClick={() => toggleCategoryExpansion(exercise.id)}
+                    className="w-full p-4 flex justify-between items-center text-left focus:outline-none"
+                >
+                    <div className="flex items-center gap-3 flex-grow">
+                        <Dumbbell className="h-6 w-6 text-yellow-400 flex-shrink-0" />
+                        <h4 className="text-xl font-semibold text-white flex-grow">
+                            {exercise.name}
+                        </h4>
+                        <span className="text-sm text-gray-400 flex-shrink-0">
+                            {Math.round(exerciseVolume)} kg
+                        </span>
                     </div>
+                    {isExpanded ? (
+                        <ChevronUp className="h-6 w-6 text-gray-400 ml-2" />
+                    ) : (
+                        <ChevronDown className="h-6 w-6 text-gray-400 ml-2" />
+                    )}
+                </button>
 
-                    {/* Boutons d'action */}
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setShowFilters(!showFilters)}
-                            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                                showFilters
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                        >
-                            <Filter className="h-4 w-4" />
-                            Filtres
-                        </button>
-
-                        <button
-                            onClick={onAddExercise}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-                        >
-                            <Plus className="h-4 w-4" />
-                            Exercice
-                        </button>
-
-                        <button
-                            onClick={onSaveToHistory}
-                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
-                            title="Sauvegarder la séance dans l'historique"
-                        >
-                            <Calendar className="h-4 w-4" />
-                            Historique
-                        </button>
-                    </div>
-                </div>
-
-                {/* Filtres étendus */}
-                {showFilters && (
-                    <div className="mt-4 pt-4 border-t border-gray-700 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {/* Filtre par jour */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">
-                                Jour
-                            </label>
-                            <select
-                                value={selectedDayFilter}
-                                onChange={(e) => onDayFilterChange?.(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                            >
-                                <option value="">Tous les jours</option>
-                                {getAvailableDays().map(day => (
-                                    <option key={day} value={day}>{day}</option>
-                                ))}
-                            </select>
+                {isExpanded && (
+                    <div className="border-t border-gray-700 p-4 space-y-3">
+                        <div className="space-y-2 mb-4">
+                            {(exercise.series || []).map((serie, serieIndex) => 
+                                renderSerie(dayName, categoryName, exercise.id, serie, serieIndex, exercise.name)
+                            )}
                         </div>
 
-                        {/* Filtre par catégorie */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">
-                                Catégorie
-                            </label>
-                            <select
-                                value={selectedCategoryFilter}
-                                onChange={(e) => onCategoryFilterChange?.(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                            >
-                                <option value="">Toutes les catégories</option>
-                                {getAllCategories().map(category => (
-                                    <option key={category} value={category}>{category}</option>
-                                ))}
-                            </select>
+                        <button
+                            onClick={() => onAddSerie(dayName, categoryName, exercise.id)}
+                            className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                        >
+                            <Plus className="h-4 w-4" /> Ajouter une série
+                        </button>
+
+                        <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Notes:</label>
+                            <textarea
+                                value={exercise.notes}
+                                onChange={(e) => onUpdateExerciseNotes(dayName, categoryName, exercise.id, e.target.value)}
+                                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                rows="3"
+                                placeholder="Ajoutez des notes sur votre performance, vos sensations..."
+                            ></textarea>
                         </div>
 
-                        {/* Filtre exercices terminés */}
-                        <div className="flex items-end">
-                            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={showOnlyCompleted}
-                                    onChange={(e) => onToggleCompletedFilter?.(e.target.checked)}
-                                    className="rounded border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-800"
-                                />
-                                Exercices terminés uniquement
-                            </label>
-                        </div>
+                        {isAdvancedMode && (
+                            <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-700">
+                                <button
+                                    onClick={() => onAnalyzeProgression({ name: exercise.name, series: exercise.series })}
+                                    className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 text-sm"
+                                    disabled={onAnalyzeProgression === null} // Check if function is available
+                                >
+                                    <Sparkles className="h-4 w-4" /> Analyse IA
+                                </button>
+                                <div className="relative inline-block text-left">
+                                    <button
+                                        onClick={() => toggleExerciseMenu(dayName, categoryName, exercise.id)}
+                                        className="exercise-menu-button p-2 bg-gray-600 text-gray-200 rounded-lg hover:bg-gray-500 transition-colors"
+                                        title="Plus d'options"
+                                    >
+                                        <MoreVertical className="h-5 w-5" />
+                                    </button>
+                                    {exerciseMenuOpen?.dayName === dayName && 
+                                     exerciseMenuOpen?.categoryName === categoryName && 
+                                     exerciseMenuOpen?.exerciseId === exercise.id && (
+                                        <div className="exercise-menu-dropdown origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-gray-700 ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
+                                            <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                                                <button
+                                                    onClick={() => { onEditClick(dayName, categoryName, exercise.id, exercise); setExerciseMenuOpen(null); }}
+                                                    className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600 w-full text-left"
+                                                    disabled={onEditClick === null}
+                                                >
+                                                    <Pencil className="inline-block h-4 w-4 mr-2" /> Modifier
+                                                </button>
+                                                <button
+                                                    onClick={() => { onDeleteExercise(dayName, categoryName, exercise.id); setExerciseMenuOpen(null); }}
+                                                    className="block px-4 py-2 text-sm text-red-400 hover:bg-gray-600 w-full text-left"
+                                                    disabled={onDeleteExercise === null}
+                                                >
+                                                    <Trash2 className="inline-block h-4 w-4 mr-2" /> Supprimer
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
+        );
+    }, [expandedCategories, toggleCategoryExpansion, renderSerie, onAddSerie, onUpdateExerciseNotes, isAdvancedMode, onAnalyzeProgression, onEditClick, onDeleteExercise, exerciseMenuOpen, toggleExerciseMenu, personalBests]);
 
-            {/* Liste des jours et exercices */}
-            <div className="space-y-6">
-                {getAvailableDays().map(dayName => {
-                    const day = workouts.days[dayName];
-                    if (!day?.categories || Object.keys(day.categories).length === 0) {
-                        return null;
-                    }
 
-                    const hasVisibleExercises = Object.values(day.categories).some(exercises => 
-                        Array.isArray(exercises) && exercises.some(exercise => {
-                            const matchesSearch = !searchTerm || 
-                                exercise.name.toLowerCase().includes(searchTerm.toLowerCase());
-                            const matchesCompletion = !showOnlyCompleted || 
-                                (exercise.series && exercise.series.some(serie => serie.completed));
-                            const notDeleted = !exercise.isDeleted;
-                            return matchesSearch && matchesCompletion && notDeleted;
-                        })
-                    );
+    const renderCategory = useCallback((categoryName, dayName) => {
+        const exercises = workouts.days[dayName]?.categories[categoryName] || [];
+        const visibleExercises = filterExercises(exercises, dayName, categoryName);
 
-                    if (!hasVisibleExercises) {
-                        return null;
+        if (visibleExercises.length === 0 && (searchTerm || selectedCategoryFilter)) {
+            return null; // Don't render category if no exercises match filters
+        }
+
+        return (
+            <div key={categoryName} className="space-y-4">
+                <div className="flex items-center justify-between mt-6 mb-4">
+                    <h3 className="text-xl font-bold text-green-400 flex items-center gap-2">
+                        <Layers className="h-6 w-6" />
+                        {categoryName} ({visibleExercises.length})
+                    </h3>
+                    {isAdvancedMode && (
+                        <div className="flex gap-2">
+                             <button
+                                onClick={() => handleEditCategory(dayName, categoryName)}
+                                className="p-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                title="Modifier la catégorie"
+                            >
+                                <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                                onClick={() => handleDeleteCategory(dayName, categoryName)}
+                                className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/40 transition-colors"
+                                title="Supprimer la catégorie"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </button>
+                        </div>
+                    )}
+                </div>
+                <div className="space-y-4">
+                    {stableSort(visibleExercises, (a, b) => a.name.localeCompare(b.name)).map(exercise => (
+                        renderExercise(exercise, dayName, categoryName)
+                    ))}
+                </div>
+            </div>
+        );
+    }, [workouts, filterExercises, searchTerm, selectedCategoryFilter, renderExercise, isAdvancedMode, handleEditCategory, handleDeleteCategory]);
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-blue-400 flex items-center gap-2 mb-6">
+                <Dumbbell className="h-7 w-7" />
+                Votre Entraînement
+            </h2>
+
+            {/* Barre de recherche et filtres */}
+            <div className="bg-gray-800 rounded-2xl p-4 border border-gray-700 shadow-lg">
+                <div className="mb-4">
+                    <label htmlFor="search-main" className="block text-sm font-medium text-gray-300 mb-2">Rechercher un exercice:</label>
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <input
+                            type="text"
+                            id="search-main"
+                            placeholder="Ex: Développé couché, Squat..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label htmlFor="day-filter" className="block text-sm font-medium text-gray-300 mb-2">Filtrer par jour:</label>
+                        <select
+                            id="day-filter"
+                            value={selectedDayFilter}
+                            onChange={(e) => setSelectedDayFilter(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                        >
+                            <option value="all">Tous les jours</option>
+                            {(workouts?.dayOrder || []).map(day => (
+                                <option key={day} value={day}>{day}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="category-filter" className="block text-sm font-medium text-gray-300 mb-2">Filtrer par catégorie:</label>
+                        <select
+                            id="category-filter"
+                            value={selectedCategoryFilter}
+                            onChange={(e) => onCategoryFilterChange(e)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                        >
+                            <option value="all">Toutes les catégories</option>
+                            {categories.map(category => (
+                                <option key={category} value={category}>{category}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                    <label htmlFor="show-completed" className="flex items-center text-gray-300 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            id="show-completed"
+                            checked={showOnlyCompleted}
+                            onChange={onToggleCompletedFilter}
+                            className="form-checkbox h-4 w-4 text-green-500 rounded border-gray-600 bg-gray-700 focus:ring-green-500 mr-2"
+                        />
+                        Afficher seulement les séries complétées
+                    </label>
+                </div>
+            </div>
+
+            {/* Boutons d'actions rapides */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+                <button
+                    onClick={onAddExercise}
+                    className="p-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                >
+                    <Plus className="h-5 w-5" /> Ajouter Exercice
+                </button>
+                <button
+                    onClick={onSaveToHistory}
+                    className="p-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                >
+                    <History className="h-5 w-5" /> Sauvegarder Séance
+                </button>
+                {isAdvancedMode && (
+                    <button
+                        onClick={handleAddDay}
+                        className="p-3 bg-purple-600 text-white rounded-lg shadow-md hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                    >
+                        <Calendar className="h-5 w-5" /> Ajouter Jour
+                    </button>
+                )}
+            </div>
+
+            {/* Affichage des entraînements par jour et catégorie */}
+            <div className="mt-8 space-y-8">
+                {(workouts?.dayOrder || []).map((dayName, index) => {
+                    const dayData = workouts.days[dayName];
+                    if (!dayData) return null;
+
+                    const visibleCategoriesForDay = (dayData?.categoryOrder || []).filter(categoryName => {
+                        const exercises = dayData.categories[categoryName];
+                        return filterExercises(exercises, dayName, categoryName).length > 0;
+                    });
+
+                    // Si aucun exercice ne correspond aux filtres pour ce jour, ne pas l'afficher
+                    if (visibleCategoriesForDay.length === 0 && (searchTerm || selectedDayFilter || selectedCategoryFilter || showOnlyCompleted)) {
+                        return null; 
                     }
 
                     return (
-                        <div key={dayName} className="bg-gray-800/50 rounded-xl border border-gray-700/50 overflow-hidden">
-                            {/* En-tête du jour */}
-                            <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-b border-gray-700/50 p-4">
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                                        <Calendar className="h-5 w-5 text-blue-400" />
-                                        {dayName}
-                                    </h2>
-                                    
-                                    <div className="text-sm text-gray-400">
-                                        {Object.values(day.categories).reduce((total, exercises) => 
-                                            total + (Array.isArray(exercises) ? exercises.filter(ex => !ex.isDeleted).length : 0), 0
-                                        )} exercices
+                        <div key={dayName} className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h2 className={`text-2xl font-bold ${getDayButtonColors(index, selectedDayFilter === dayName)} mt-6 mb-4`}>
+                                    {dayName}
+                                </h2>
+                                {isAdvancedMode && (
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleEditDay(dayName)}
+                                            className="p-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                            title="Modifier le jour"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteDay(dayName)}
+                                            className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/40 transition-colors"
+                                            title="Supprimer le jour"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleAddCategory(dayName)}
+                                            className="p-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/40 transition-colors"
+                                            title="Ajouter une catégorie à ce jour"
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                        </button>
                                     </div>
-                                </div>
+                                )}
                             </div>
-
-                            {/* Contenu du jour */}
-                            <div className="p-4">
-                                {Object.entries(day.categories).map(([categoryName, exercises]) => {
-                                    if (!Array.isArray(exercises) || exercises.length === 0) {
-                                        return null;
-                                    }
-
-                                    const visibleExercises = exercises.filter(exercise => {
-                                        const matchesSearch = !searchTerm || 
-                                            exercise.name.toLowerCase().includes(searchTerm.toLowerCase());
-                                        const matchesCompletion = !showOnlyCompleted || 
-                                            (exercise.series && exercise.series.some(serie => serie.completed));
-                                        const notDeleted = !exercise.isDeleted;
-                                        const matchesCategory = !selectedCategoryFilter || categoryName === selectedCategoryFilter;
-                                        return matchesSearch && matchesCompletion && notDeleted && matchesCategory;
-                                    });
-
-                                    if (visibleExercises.length === 0) {
-                                        return null;
-                                    }
-
-                                    return (
-                                        <div key={categoryName} className="mb-6 last:mb-0">
-                                            {/* En-tête de catégorie */}
-                                            <div className="flex items-center justify-between mb-4">
-                                                <h3 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
-                                                    <TrendingUp className="h-4 w-4 text-green-400" />
-                                                    {categoryName}
-                                                </h3>
-                                                <span className="text-sm text-gray-500">
-                                                    {visibleExercises.length} exercices
-                                                </span>
-                                            </div>
-
-                                            {/* Liste des exercices */}
-                                            <div className="space-y-4">
-                                                {visibleExercises.map(exercise => 
-                                                    renderExercise(exercise, dayName, categoryName)
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
+                            <div className="space-y-4">
+                                {stableSort(visibleCategoriesForDay, (a, b) => a.localeCompare(b)).map(categoryName => {
+                                    return renderCategory(categoryName, dayName);
                                 })}
                             </div>
                         </div>
@@ -694,15 +510,24 @@ function MainWorkoutView({
             </div>
 
             {/* Message si aucun résultat */}
-            {getAvailableDays().length > 0 && (
-                searchTerm || selectedDayFilter || selectedCategoryFilter || showOnlyCompleted
-            ) && (
+            {(getAvailableDays().length === 0 && (searchTerm || selectedDayFilter || selectedCategoryFilter || showOnlyCompleted)) && (
                 <div className="text-center py-8">
                     <div className="text-gray-400">
                         <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <h3 className="text-lg font-medium text-gray-300 mb-2">Aucun exercice trouvé</h3>
                         <p className="text-gray-400">Essayez de modifier vos critères de recherche</p>
                     </div>
+                </div>
+            )}
+            
+            {/* Message si aucune donnée d'entraînement */}
+            {workouts.dayOrder.length === 0 && (
+                 <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700 mt-8">
+                    <Dumbbell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-400 mb-2">Commencez votre entraînement !</p>
+                    <p className="text-sm text-gray-500">
+                        Cliquez sur "Ajouter Exercice" pour créer votre premier entraînement.
+                    </p>
                 </div>
             )}
         </div>
