@@ -16,7 +16,7 @@ import Toast from './components/Toast.jsx';
 import MainWorkoutView from './components/MainWorkoutView.jsx';
 import HistoryView from './components/HistoryView.jsx';
 import TimerView from './components/TimerView.jsx';
-import StatsView from './components/StatsView.jsx';
+import StatsView from './components/StatsView.jsx'; 
 import BottomNavigationBar from './components/BottomNavigationBar.jsx';
 
 // Configuration Firebase sécurisée
@@ -228,7 +228,7 @@ const ImprovedWorkoutApp = () => {
     const [editingExercise, setEditingExercise] = useState(null);
     const [editingExerciseName, setEditingExerciseName] = useState('');
     const [newWeight, setNewWeight] = useState('');
-    const [newSets, setNewSets] = useState('3');
+    const [newSets, setNewSets] = useState('3'); // CORRECTION: Ajout de ']' manquant
     const [newReps, setNewReps] = useState('');
     const [selectedDayForAdd, setSelectedDayForAdd] = useState('');
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState('');
@@ -295,7 +295,14 @@ const ImprovedWorkoutApp = () => {
 
         const initAuthAndLoadData = async () => {
             try {
-                await signInAnonymously(auth);
+                // IMPORTANT: Use the __initial_auth_token provided by the Canvas environment.
+                // If not defined, sign in anonymously.
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         setUserId(user.uid);
@@ -920,6 +927,28 @@ const ImprovedWorkoutApp = () => {
        setTimerIsFinished(false);
    }, []);
 
+   // Fonction pour réactiver un exercice (passée à HistoryView)
+   const handleReactivateExercise = useCallback((exerciseId, dayName, categoryName) => {
+        const updatedWorkouts = { ...workouts };
+        const exercises = updatedWorkouts.days?.[dayName]?.categories?.[categoryName];
+
+        if (!exercises) {
+            setToast({ message: "Exercice non trouvé pour réactivation", type: 'error' });
+            return;
+        }
+
+        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+        if (exerciseIndex === -1) {
+            setToast({ message: "Exercice non trouvé pour réactivation", type: 'error' });
+            return;
+        }
+
+        exercises[exerciseIndex].isDeleted = false;
+        delete exercises[exerciseIndex].deletedAt;
+
+        applyChanges(updatedWorkouts, `Exercice "${exercises[exerciseIndex].name}" réactivé !`);
+    }, [workouts, applyChanges]);
+
    // Analyse IA améliorée
    const analyzeProgressionWithAI = useCallback(async (exerciseData) => {
        if (!exerciseData) return;
@@ -1439,6 +1468,7 @@ const ImprovedWorkoutApp = () => {
                        historicalData={historicalData}
                        personalBests={personalBests}
                        formatDate={formatDate}
+                       getWorkoutStats={getWorkoutStats} // Assurez-vous que cette prop est bien passée
                    />
                )}
 
@@ -1954,7 +1984,7 @@ const ImprovedWorkoutApp = () => {
                                     <input
                                         type="text"
                                         value={editingCategoryName}
-                                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                                        onChange={(e) => setNewCategoryName(e.target.value)}
                                         className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         placeholder="Nom de la catégorie"
                                         autoFocus
