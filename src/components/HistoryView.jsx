@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
     Sparkles, LineChart as LineChartIcon, NotebookText, RotateCcw, Search,
     Filter, Calendar, Award, TrendingUp, Activity, Eye, EyeOff, ChevronDown, ChevronUp, History
@@ -12,7 +12,7 @@ const HistoryView = ({
     personalBests = {},
     handleReactivateExercise,
     analyzeProgressionWithAI,
-    showProgressionGraphForExercise,
+    showProgressionGraphForExercise, // This prop is now expected to be a function that takes exerciseData
     formatDate,
     getSeriesDisplay,
     isAdvancedMode,
@@ -45,16 +45,25 @@ const HistoryView = ({
         { value: 'thisYear', label: 'Cette année' }
     ];
 
-    // Calcul des exercices uniques et leurs catégories pour le filtre - CORRECTION DES VARIABLES
+    // Calcul des exercices uniques et leurs catégories pour le filtre
     const allExercises = useMemo(() => {
         const exerciseMap = new Map();
         safeHistoricalData.forEach(sessionData => {
-            if (sessionData?.exercises && Array.isArray(sessionData.exercises)) {
-                sessionData.exercises.forEach(exerciseItem => {
-                    if (exerciseItem?.name && (!exerciseItem.isDeleted || showDeletedExercises)) {
-                        exerciseMap.set(exerciseItem.name, { 
-                            name: exerciseItem.name, 
-                            category: exerciseItem.category || 'Non catégorisé' 
+            // Access workoutData from sessionData
+            if (sessionData?.workoutData?.days) { 
+                Object.values(sessionData.workoutData.days).forEach(day => {
+                    if (day?.categories) {
+                        Object.values(day.categories).forEach(exercisesArray => {
+                            if (Array.isArray(exercisesArray)) {
+                                exercisesArray.forEach(exerciseItem => {
+                                    if (exerciseItem?.name && (!exerciseItem.isDeleted || showDeletedExercises)) {
+                                        exerciseMap.set(exerciseItem.name, { 
+                                            name: exerciseItem.name, 
+                                            category: exerciseItem.category || 'Non catégorisé' 
+                                        });
+                                    }
+                                });
+                            }
                         });
                     }
                 });
@@ -63,17 +72,35 @@ const HistoryView = ({
         return Array.from(exerciseMap.values()).sort((exerciseA, exerciseB) => exerciseA.name.localeCompare(exerciseB.name));
     }, [safeHistoricalData, showDeletedExercises]);
 
-    // Filtrage et tri de l'historique - CORRECTION DES VARIABLES
+    // Filtrage et tri de l'historique
     const filteredAndSortedSessions = useMemo(() => {
         let sessionsList = [...safeHistoricalData];
 
         // 1. Filtrer par état de suppression
-        sessionsList = sessionsList.map(sessionRecord => ({
-            ...sessionRecord,
-            exercises: (sessionRecord?.exercises || []).filter(exerciseRecord => 
-                showDeletedExercises ? exerciseRecord?.isDeleted : !exerciseRecord?.isDeleted
-            )
-        })).filter(sessionRecord => sessionRecord.exercises.length > 0);
+        sessionsList = sessionsList.map(sessionRecord => {
+            const exercisesForSession = [];
+            // Iterate through workoutData structure
+            if (sessionRecord?.workoutData?.days) {
+                Object.values(sessionRecord.workoutData.days).forEach(day => {
+                    if (day?.categories) {
+                        Object.values(day.categories).forEach(exercises => {
+                            if (Array.isArray(exercises)) {
+                                exercises.forEach(exercise => {
+                                    if (showDeletedExercises ? exercise.isDeleted : !exercise.isDeleted) {
+                                        exercisesForSession.push(exercise);
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+            return {
+                ...sessionRecord,
+                exercises: exercisesForSession // Attach the filtered exercises to sessionRecord
+            };
+        }).filter(sessionRecord => sessionRecord.exercises.length > 0);
+
 
         // 2. Filtrer par plage temporelle
         const now = new Date();
@@ -121,10 +148,10 @@ const HistoryView = ({
                     return nameA.localeCompare(nameB);
                 case 'volume':
                     const volumeA = (sessionA.exercises || []).reduce((sessionSum, exerciseRecord) => 
-                        sessionSum + (exerciseRecord?.series || []).reduce((exerciseSum, seriesRecord) => exerciseSum + ((seriesRecord?.reps || 0) * (seriesRecord?.weight || 0)), 0), 0
+                        sessionSum + (exerciseRecord?.series || []).reduce((exerciseSum, seriesRecord) => exerciseSum + ((parseFloat(seriesRecord?.weight) || 0) * (parseInt(seriesRecord?.reps) || 0)), 0), 0
                     );
                     const volumeB = (sessionB.exercises || []).reduce((sessionSum, exerciseRecord) => 
-                        sessionSum + (exerciseRecord?.series || []).reduce((exerciseSum, seriesRecord) => exerciseSum + ((seriesRecord?.reps || 0) * (seriesRecord?.weight || 0)), 0), 0
+                        sessionSum + (exerciseRecord?.series || []).reduce((exerciseSum, seriesRecord) => exerciseSum + ((parseFloat(seriesRecord?.weight) || 0) * (parseInt(seriesRecord?.reps) || 0)), 0), 0
                     );
                     return volumeB - volumeA;
                 default:
@@ -147,50 +174,78 @@ const HistoryView = ({
         });
     };
 
-    const handleAnalyzeProgression = (exerciseName) => {
-        const exerciseHistory = safeHistoricalData.flatMap(sessionRecord =>
-            (sessionRecord?.exercises || [])
-                .filter(exerciseRecord => exerciseRecord?.name === exerciseName && !exerciseRecord?.isDeleted)
-                .map(exerciseRecord => ({
-                    timestamp: sessionRecord.timestamp,
-                    series: exerciseRecord.series || []
-                }))
-        );
+    const handleAnalyzeProgression = useCallback(async (exerciseName) => {
+        // Collect all series for this exercise from historical data to pass to AI
+        const allSeriesForExercise = [];
+        safeHistoricalData.forEach(sessionRecord => {
+            if (sessionRecord?.workoutData?.days) { 
+                Object.values(sessionRecord.workoutData.days).forEach(day => {
+                    if (day?.categories) {
+                        Object.values(day.categories).forEach(exercises => {
+                            const foundExercise = exercises.find(ex => ex?.name === exerciseName && !ex?.isDeleted);
+                            if (foundExercise && Array.isArray(foundExercise.series)) {
+                                foundExercise.series.forEach(s => {
+                                    allSeriesForExercise.push({
+                                        weight: parseFloat(s.weight),
+                                        reps: parseInt(s.reps),
+                                        timestamp: sessionRecord.timestamp // Include session timestamp for context
+                                    });
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        });
 
-        if (exerciseHistory.length > 0 && analyzeProgressionWithAI) {
-            analyzeProgressionWithAI(exerciseName, exerciseHistory);
+        // Construct the exerciseData object as expected by analyzeProgressionWithAI in App.jsx
+        const exerciseDataForAI = {
+            name: exerciseName,
+            series: allSeriesForExercise 
+        };
+
+        if (analyzeProgressionWithAI) {
+            analyzeProgressionWithAI(exerciseDataForAI); // Pass the correctly formatted object
         }
-    };
+    }, [safeHistoricalData, analyzeProgressionWithAI]);
+
 
     const getProgressionGraphData = (exerciseName) => {
         const progressionData = [];
         safeHistoricalData.forEach(sessionRecord => {
-            if (sessionRecord?.exercises && Array.isArray(sessionRecord.exercises)) {
-                const exerciseRecord = sessionRecord.exercises.find(exerciseItem => exerciseItem?.name === exerciseName && !exerciseItem?.isDeleted);
-                if (exerciseRecord?.series && Array.isArray(exerciseRecord.series) && exerciseRecord.series.length > 0) {
-                    let maxWeight = 0;
-                    let maxReps = 0;
-                    let maxVolume = 0;
+            // Access workoutData from sessionRecord
+            if (sessionRecord?.workoutData?.days) {
+                Object.values(sessionRecord.workoutData.days).forEach(day => {
+                    if (day?.categories) {
+                        Object.values(day.categories).forEach(exercisesArray => {
+                            const exerciseRecord = exercisesArray.find(exerciseItem => exerciseItem?.name === exerciseName && !exerciseItem?.isDeleted);
+                            if (exerciseRecord?.series && Array.isArray(exerciseRecord.series) && exerciseRecord.series.length > 0) {
+                                let maxWeight = 0;
+                                let maxReps = 0;
+                                let maxVolume = 0;
 
-                    exerciseRecord.series.forEach(seriesRecord => {
-                        if (seriesRecord && typeof seriesRecord === 'object') {
-                            const currentWeight = seriesRecord.weight || 0;
-                            const currentReps = seriesRecord.reps || 0;
-                            const currentVolume = currentWeight * currentReps;
+                                exerciseRecord.series.forEach(seriesRecord => {
+                                    if (seriesRecord && typeof seriesRecord === 'object') {
+                                        const currentWeight = parseFloat(seriesRecord.weight) || 0;
+                                        const currentReps = parseInt(seriesRecord.reps) || 0;
+                                        const currentVolume = currentWeight * currentReps;
 
-                            if (currentWeight > maxWeight) maxWeight = currentWeight;
-                            if (currentReps > maxReps) maxReps = currentReps;
-                            if (currentVolume > maxVolume) maxVolume = currentVolume;
-                        }
-                    });
-                    
-                    progressionData.push({
-                        date: sessionRecord.timestamp?.toDate ? sessionRecord.timestamp.toDate() : new Date(sessionRecord.timestamp || 0),
-                        maxWeight,
-                        maxReps,
-                        maxVolume
-                    });
-                }
+                                        if (currentWeight > maxWeight) maxWeight = currentWeight;
+                                        if (currentReps > maxReps) maxReps = currentReps;
+                                        if (currentVolume > maxVolume) maxVolume = currentVolume;
+                                    }
+                                });
+                                
+                                progressionData.push({
+                                    date: sessionRecord.timestamp?.toDate ? sessionRecord.timestamp.toDate() : new Date(sessionRecord.timestamp || 0),
+                                    maxWeight,
+                                    maxReps,
+                                    maxVolume
+                                });
+                            }
+                        });
+                    }
+                });
             }
         });
         return progressionData.sort((dataA, dataB) => dataA.date.getTime() - dataB.date.getTime());
@@ -226,7 +281,7 @@ const HistoryView = ({
                             {sessionData.exercises.map((exerciseData, exerciseIndex) => {
                                 if (!exerciseData) return null;
                                 
-                                const personalBest = personalBests[exerciseData.name?.toLowerCase()];
+                                const personalBest = personalBests[exerciseData.name]; // Use exercise name for lookup
                                 const hasPb = personalBest && (personalBest.maxWeight > 0 || personalBest.maxReps > 0 || personalBest.maxVolume > 0);
                                 const isDeletedIndicator = exerciseData.isDeleted ? 
                                     <span className="text-red-500 text-xs font-semibold ml-2">(Supprimé)</span> : null;
@@ -249,7 +304,7 @@ const HistoryView = ({
                                                 )}
                                                 {!exerciseData.isDeleted && (
                                                     <button
-                                                        onClick={() => showProgressionGraphForExercise && showProgressionGraphForExercise(exerciseData.name, exerciseData.id)}
+                                                        onClick={() => showProgressionGraphForExercise && showProgressionGraphForExercise(exerciseData)} // Pass exerciseData object
                                                         className="p-1 bg-blue-600 rounded-full text-white hover:bg-blue-700 transition-colors"
                                                         title="Voir le graphique de progression"
                                                     >
@@ -279,10 +334,12 @@ const HistoryView = ({
                                                 <p className="font-semibold text-yellow-400 flex items-center gap-1">
                                                     <Award className="h-3 w-3" />Records Personnels :
                                                 </p>
-                                                {personalBest.bestWeightSeries && <p>Max Poids: {personalBest.bestWeightSeries.weight}kg x {personalBest.bestWeightSeries.reps} reps</p>}
-                                                {personalBest.bestRepsSeries && <p>Max Reps: {personalBest.bestRepsSeries.reps} reps @ {personalBest.bestRepsSeries.weight}kg</p>}
-                                                {personalBest.maxVolume > 0 && <p>Max Volume: {personalBest.maxVolume} kg</p>}
-                                                {personalBest.lastAchieved && <p>Dernier record: {formatDate(personalBest.lastAchieved)}</p>}
+                                                {personalBest.bestWeightSeries && personalBest.bestWeightSeries.weight > 0 && 
+                                                    <p>Max Poids: {personalBest.bestWeightSeries.weight}kg x {personalBest.bestWeightSeries.reps} reps</p>}
+                                                {personalBest.bestRepsSeries && personalBest.bestRepsSeries.reps > 0 && 
+                                                    <p>Max Reps: {personalBest.bestRepsSeries.reps} reps @ {personalBest.bestRepsSeries.weight}kg</p>}
+                                                {personalBest.maxVolume > 0 && <p>Max Volume: {Math.round(personalBest.maxVolume)} kg</p>}
+                                                {personalBest.lastAchieved && <p>Dernier record: {formatDate(personalBest.lastAchieved?.toDate ? personalBest.lastAchieved.toDate() : personalBest.lastAchieved)}</p>}
                                             </div>
                                         )}
                                     </li>
@@ -415,7 +472,7 @@ const HistoryView = ({
                                                 )}
                                                 {exerciseDataForGraph.length > 0 && showProgressionGraphForExercise && (
                                                     <button
-                                                        onClick={() => showProgressionGraphForExercise(exerciseName, exerciseDataForGraph)}
+                                                        onClick={() => showProgressionGraphForExercise({name: exerciseName, series: exerciseDataForGraph.map(d => ({weight: d.maxWeight, reps: d.maxReps}))})} // Pass exerciseData object
                                                         className="p-1 bg-blue-600 rounded-full text-white hover:bg-blue-700 transition-colors"
                                                         title="Voir le graphique de progression"
                                                     >
@@ -425,13 +482,13 @@ const HistoryView = ({
                                             </div>
                                         </h4>
                                         <ul className="text-sm text-gray-300">
-                                            {personalBest.maxWeight > 0 && <li>Poids Max: {personalBest.bestWeightSeries?.weight || personalBest.maxWeight}kg x {personalBest.bestWeightSeries?.reps || '?'} reps</li>}
-                                            {personalBest.maxReps > 0 && <li>Reps Max: {personalBest.bestRepsSeries?.reps || personalBest.maxReps} reps @ {personalBest.bestRepsSeries?.weight || '?'}kg</li>}
-                                            {personalBest.maxVolume > 0 && <li>Volume Max: {personalBest.maxVolume} kg</li>}
+                                            {personalBest.bestWeightSeries && personalBest.bestWeightSeries.weight > 0 && <li>Poids Max: {personalBest.bestWeightSeries.weight}kg x {personalBest.bestWeightSeries.reps} reps</li>}
+                                            {personalBest.bestRepsSeries && personalBest.bestRepsSeries.reps > 0 && <li>Reps Max: {personalBest.bestRepsSeries.reps} reps @ {personalBest.bestRepsSeries.weight}kg</li>}
+                                            {personalBest.maxVolume > 0 && <li>Volume Max: {Math.round(personalBest.maxVolume)} kg</li>}
                                         </ul>
                                     </div>
                                     <p className="text-xs text-gray-500 mt-2">
-                                        Dernier record: {personalBest.lastAchieved ? formatDate(personalBest.lastAchieved.toDate ? personalBest.lastAchieved.toDate() : personalBest.lastAchieved) : 'N/A'}.
+                                        Dernier record: {personalBest.lastAchieved ? formatDate(personalBest.lastAchieved?.toDate ? personalBest.lastAchieved.toDate() : personalBest.lastAchieved) : 'N/A'}.
                                     </p>
                                 </div>
                             );

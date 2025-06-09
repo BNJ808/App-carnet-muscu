@@ -151,14 +151,14 @@ const baseInitialData = {
         'Lundi + Jeudi': {
             categories: {
                 PECS: [
-                    { id: generateUUID(), name: 'D.Couché léger', series: [{ weight: '10', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() },
-                    { id: generateUUID(), name: 'D.Couché lourd', series: [{ weight: '14', reps: '8' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'D.Couché léger', series: [{ weight: '10', reps: '12', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() },
+                    { id: generateUUID(), name: 'D.Couché lourd', series: [{ weight: '14', reps: '8', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 EPAULES: [
-                    { id: generateUUID(), name: 'D.Epaules léger', series: [{ weight: '8', reps: '15' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'D.Epaules léger', series: [{ weight: '8', reps: '15', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 TRICEPS: [
-                    { id: generateUUID(), name: 'Haltere Front léger', series: [{ weight: '4', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'Haltere Front léger', series: [{ weight: '4', reps: '12', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ]
             },
             categoryOrder: ['PECS', 'EPAULES', 'TRICEPS']
@@ -166,10 +166,10 @@ const baseInitialData = {
         'Mardi + Vendredi': {
             categories: {
                 DOS: [
-                    { id: generateUUID(), name: 'R. Haltères Léger', series: [{ weight: '10', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'R. Haltères Léger', series: [{ weight: '10', reps: '12', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 BICEPS: [
-                    { id: generateUUID(), name: 'Curl Léger', series: [{ weight: '8', reps: '15' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'Curl Léger', series: [{ weight: '8', reps: '15', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ]
             },
             categoryOrder: ['DOS', 'BICEPS']
@@ -204,6 +204,9 @@ const ImprovedWorkoutApp = () => {
     const [selectedDayFilter, setSelectedDayFilter] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [sortBy, setSortBy] = useState('date');
+    // New states for MainWorkoutView filtering
+    const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
+    const [showOnlyCompleted, setShowOnlyCompleted] = useState(false);
     
     // États des modales
     const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
@@ -418,9 +421,10 @@ const ImprovedWorkoutApp = () => {
                             series: Array.isArray(exercise.series) 
                                 ? exercise.series.map(s => ({
                                     weight: String(s.weight || ''),
-                                    reps: String(s.reps || '')
+                                    reps: String(s.reps || ''),
+                                    isCompleted: Boolean(s.isCompleted) // Ensure isCompleted is boolean
                                 }))
-                                : [{ weight: '', reps: '' }],
+                                : [{ weight: '', reps: '', isCompleted: false }],
                             isDeleted: Boolean(exercise.isDeleted),
                             notes: String(exercise.notes || ''),
                             createdAt: exercise.createdAt || new Date().toISOString()
@@ -452,7 +456,7 @@ const ImprovedWorkoutApp = () => {
                     if (docData.timestamp instanceof Timestamp) {
                         timestamp = docData.timestamp.toDate();
                     } else if (docData.timestamp) {
-                        timestamp = new Date(docData.timestamp);
+                        timestamp = new Date(docData.timestamp.seconds * 1000 + docData.timestamp.nanoseconds / 1000000); // Convert Firestore Timestamp to Date
                     } else {
                         timestamp = new Date();
                     }
@@ -504,17 +508,33 @@ const ImprovedWorkoutApp = () => {
                                     bests[exercise.name] = {
                                         name: exercise.name,
                                         maxWeight: weight,
+                                        bestWeightSeries: { weight, reps }, // Store the series that achieved max weight
                                         maxReps: reps,
+                                        bestRepsSeries: { weight, reps },   // Store the series that achieved max reps
                                         maxVolume: volume,
                                         totalVolume: volume,
                                         sessions: 1,
-                                        lastPerformed: session.timestamp
+                                        lastPerformed: session.timestamp,
+                                        lastAchieved: session.timestamp // Same as lastPerformed for simplicity
                                     };
                                 } else {
                                     const best = bests[exercise.name];
-                                    best.maxWeight = Math.max(best.maxWeight, weight);
-                                    best.maxReps = Math.max(best.maxReps, reps);
-                                    best.maxVolume = Math.max(best.maxVolume, volume);
+                                    if (weight > best.maxWeight) {
+                                        best.maxWeight = weight;
+                                        best.bestWeightSeries = { weight, reps };
+                                        best.lastAchieved = session.timestamp;
+                                    }
+                                    if (reps > best.maxReps) { 
+                                        best.maxReps = reps;
+                                        best.bestRepsSeries = { weight, reps };
+                                        if (weight >= best.maxWeight) { // Only update lastAchieved if also a new weight PB or same weight
+                                           best.lastAchieved = session.timestamp;
+                                        }
+                                    }
+                                    if (volume > best.maxVolume) {
+                                        best.maxVolume = volume;
+                                        best.lastAchieved = session.timestamp;
+                                    }
                                     best.totalVolume += volume;
                                     best.sessions++;
                                     if (session.timestamp > best.lastPerformed) {
@@ -619,7 +639,8 @@ const ImprovedWorkoutApp = () => {
             name: newExerciseName.trim(),
             series: Array(setsNum).fill(null).map(() => ({
                 weight: newWeight.toString(),
-                reps: newReps.toString()
+                reps: newReps.toString(),
+                isCompleted: false // Default to not completed
             })),
             isDeleted: false,
             notes: '',
@@ -640,7 +661,7 @@ const ImprovedWorkoutApp = () => {
     }, [newExerciseName, selectedDayForAdd, selectedCategoryForAdd, newSets, newWeight, newReps, workouts, applyChanges]);
 
     const handleEditClick = useCallback((day, category, exerciseId, exercise) => {
-        setEditingExercise({ day, category, exerciseId });
+        setEditingExercise({ day, category, exerciseId, name: exercise.name }); // Store exercise name for proper context
         setEditingExerciseName(exercise.name);
         
         if (exercise.series && exercise.series.length > 0) {
@@ -705,10 +726,12 @@ const ImprovedWorkoutApp = () => {
             return;
         }
         
-        // Créer les nouvelles séries
-        const newSeriesArray = Array(setsNum || 1).fill(null).map(() => ({
+        // Créer les nouvelles séries, preserving isCompleted if available
+        const currentSeries = exercises[exerciseIndex].series;
+        const newSeriesArray = Array(setsNum || 1).fill(null).map((_, idx) => ({
             weight: newWeight,
-            reps: newReps
+            reps: newReps,
+            isCompleted: currentSeries[idx]?.isCompleted || false // Preserve completion status if exists
         }));
         
         exercises[exerciseIndex] = {
@@ -752,7 +775,7 @@ const ImprovedWorkoutApp = () => {
     }, [workouts, applyChanges]);
 
     // Fonctions de gestion des séries (utilisées dans MainWorkoutView)
-    const onToggleSerieCompleted = useCallback((day, category, exerciseId, serieIndex, isCompleted) => {
+    const onToggleSerieCompleted = useCallback((day, category, exerciseId, serieIndex) => {
         const updatedWorkouts = { ...workouts };
         const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
         if (!exercises) return;
@@ -761,7 +784,7 @@ const ImprovedWorkoutApp = () => {
         if (exerciseIndex === -1) return;
 
         const updatedSeries = [...exercises[exerciseIndex].series];
-        updatedSeries[serieIndex] = { ...updatedSeries[serieIndex], isCompleted };
+        updatedSeries[serieIndex] = { ...updatedSeries[serieIndex], isCompleted: !updatedSeries[serieIndex].isCompleted };
         exercises[exerciseIndex] = { ...exercises[exerciseIndex], series: updatedSeries };
 
         applyChanges(updatedWorkouts, "Série mise à jour !");
@@ -853,13 +876,13 @@ const ImprovedWorkoutApp = () => {
         setShowAddDayModal(false);
     }, [newDayName, workouts, applyChanges]);
 
-    const handleEditDay = useCallback((dayName) => { // Added dayName parameter
-        if (!editingDayName.trim() || !editingDayOriginalName) {
+    const handleEditDay = useCallback((originalDayName) => { 
+        if (!editingDayName.trim()) { // Check current input state
             setToast({ message: "Le nom du jour est requis", type: 'error' });
             return;
         }
         
-        if (editingDayName.trim() !== editingDayOriginalName && workouts.days[editingDayName.trim()]) {
+        if (editingDayName.trim() !== originalDayName && workouts.days[editingDayName.trim()]) {
             setToast({ message: "Ce nom de jour existe déjà", type: 'error' });
             return;
         }
@@ -867,22 +890,22 @@ const ImprovedWorkoutApp = () => {
         const updatedWorkouts = { ...workouts };
         
         // Renommer le jour
-        if (editingDayName.trim() !== editingDayOriginalName) {
-            updatedWorkouts.days[editingDayName.trim()] = updatedWorkouts.days[editingDayOriginalName];
-            delete updatedWorkouts.days[editingDayOriginalName];
+        if (editingDayName.trim() !== originalDayName) {
+            updatedWorkouts.days[editingDayName.trim()] = updatedWorkouts.days[originalDayName];
+            delete updatedWorkouts.days[originalDayName];
             
             // Mettre à jour dayOrder
-            const dayIndex = updatedWorkouts.dayOrder.indexOf(editingDayOriginalName);
+            const dayIndex = updatedWorkouts.dayOrder.indexOf(originalDayName);
             if (dayIndex !== -1) {
                 updatedWorkouts.dayOrder[dayIndex] = editingDayName.trim();
             }
         }
         
-        applyChanges(updatedWorkouts, `Jour "${editingDayOriginalName}" modifié !`);
+        applyChanges(updatedWorkouts, `Jour "${originalDayName}" modifié en "${editingDayName}" !`);
         setEditingDayName('');
-        setEditingDayOriginalName('');
+        setEditingDayOriginalName(''); // Reset original name
         setShowEditDayModal(false);
-    }, [editingDayName, editingDayOriginalName, workouts, applyChanges]);
+    }, [editingDayName, editingDayOriginalName, workouts, applyChanges]); // Depend on editingDayOriginalName
 
     const handleDeleteDay = useCallback((dayName) => {
         const updatedWorkouts = { ...workouts };
@@ -927,36 +950,36 @@ const ImprovedWorkoutApp = () => {
         setShowAddCategoryModal(false);
     }, [newCategoryName, selectedDayForCategory, workouts, applyChanges]);
 
-    const handleEditCategory = useCallback((dayName, categoryName) => { // Added dayName, categoryName
-        if (!editingCategoryName.trim() || !editingCategoryOriginalName || !dayName) {
-            setToast({ message: "Informations manquantes", type: 'error' });
+    const handleEditCategory = useCallback((dayName, originalCategoryName) => { 
+        if (!editingCategoryName.trim() || !originalCategoryName || !dayName) {
+            setToast({ message: "Informations manquantes pour la modification de catégorie", type: 'error' });
             return;
         }
         
         const updatedWorkouts = { ...workouts };
         
-        if (editingCategoryName.trim() !== editingCategoryOriginalName && 
+        if (editingCategoryName.trim() !== originalCategoryName && 
             updatedWorkouts.days[dayName].categories[editingCategoryName.trim()]) {
-            setToast({ message: "Ce nom de catégorie existe déjà", type: 'error' });
+            setToast({ message: "Ce nom de catégorie existe déjà pour ce jour", type: 'error' });
             return;
         }
         
         // Renommer la catégorie
-        if (editingCategoryName.trim() !== editingCategoryOriginalName) {
+        if (editingCategoryName.trim() !== originalCategoryName) {
             updatedWorkouts.days[dayName].categories[editingCategoryName.trim()] = 
-                updatedWorkouts.days[dayName].categories[editingCategoryOriginalName];
-            delete updatedWorkouts.days[dayName].categories[editingCategoryOriginalName];
+                updatedWorkouts.days[dayName].categories[originalCategoryName];
+            delete updatedWorkouts.days[dayName].categories[originalCategoryName];
             
             // Mettre à jour categoryOrder
             if (updatedWorkouts.days[dayName].categoryOrder) {
-                const categoryIndex = updatedWorkouts.days[dayName].categoryOrder.indexOf(editingCategoryOriginalName);
+                const categoryIndex = updatedWorkouts.days[dayName].categoryOrder.indexOf(originalCategoryName);
                 if (categoryIndex !== -1) {
                     updatedWorkouts.days[dayName].categoryOrder[categoryIndex] = editingCategoryName.trim();
                 }
             }
         }
         
-        applyChanges(updatedWorkouts, `Catégorie "${editingCategoryOriginalName}" modifiée !`);
+        applyChanges(updatedWorkouts, `Catégorie "${originalCategoryName}" modifiée en "${editingCategoryName}" !`);
         setEditingCategoryName('');
         setEditingCategoryOriginalName('');
         setShowEditCategoryModal(false);
@@ -1004,35 +1027,44 @@ const ImprovedWorkoutApp = () => {
    // Fonction pour réactiver un exercice (passée à HistoryView)
    const handleReactivateExercise = useCallback((exerciseId, dayName, categoryName) => {
         const updatedWorkouts = { ...workouts };
-        const exercises = updatedWorkouts.days?.[dayName]?.categories?.[categoryName];
+        // Find the exercise by iterating through all days and categories
+        let found = false;
+        for (const dayKey in updatedWorkouts.days) {
+            const dayData = updatedWorkouts.days[dayKey];
+            for (const categoryKey in dayData.categories) {
+                const exercises = dayData.categories[categoryKey];
+                const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+                if (exerciseIndex !== -1) {
+                    exercises[exerciseIndex].isDeleted = false;
+                    delete exercises[exerciseIndex].deletedAt;
+                    found = true;
+                    setToast({ message: `Exercice "${exercises[exerciseIndex].name}" réactivé !`, type: 'success' });
+                    break;
+                }
+            }
+            if (found) break;
+        }
 
-        if (!exercises) {
+        if (!found) {
             setToast({ message: "Exercice non trouvé pour réactivation", type: 'error' });
             return;
         }
-
-        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) {
-            setToast({ message: "Exercice non trouvé pour réactivation", type: 'error' });
-            return;
-        }
-
-        exercises[exerciseIndex].isDeleted = false;
-        delete exercises[exerciseIndex].deletedAt;
-
-        applyChanges(updatedWorkouts, `Exercice "${exercises[exerciseIndex].name}" réactivé !`);
+        applyChanges(updatedWorkouts, `Exercice réactivé !`);
     }, [workouts, applyChanges]);
 
    // Analyse IA améliorée
-   const analyzeProgressionWithAI = useCallback(async (exerciseData) => {
-       if (!exerciseData) return;
+   const analyzeProgressionWithAI = useCallback(async (exerciseData) => { // Now expects exerciseData object
+       if (!exerciseData || !exerciseData.name || !exerciseData.series) {
+           setToast({ message: "Données d'exercice invalides pour l'analyse IA.", type: 'error' });
+           return;
+       }
        
        setAiAnalysisLoading(true);
        
        try {
            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
            
-           const recentSeries = exerciseData.series?.slice(-20) || [];
+           const recentSeries = exerciseData.series?.slice(-20) || []; // Use series from passed exerciseData
            const prompt = `Analyse cette progression d'exercice de musculation et donne des conseils personnalisés en français:
                
                Nom de l'exercice: ${exerciseData.name}
@@ -1064,6 +1096,15 @@ const ImprovedWorkoutApp = () => {
            setAiAnalysisLoading(false);
        }
    }, [personalBests]);
+
+   // Function to show progression graph (now triggers AI analysis)
+   const showProgressionGraphForExercise = useCallback((exerciseData) => { // Expects full exerciseData
+        if (exerciseData && analyzeProgressionWithAI) {
+            analyzeProgressionWithAI(exerciseData);
+        } else {
+            setToast({ message: "Données d'exercice insuffisantes pour afficher la progression.", type: 'error' });
+        }
+   }, [analyzeProgressionWithAI]);
 
    // Fonctions d'export/import optimisées
    const exportData = useCallback(() => {
@@ -1198,7 +1239,9 @@ const ImprovedWorkoutApp = () => {
             Object.values(resetWorkouts.days).forEach(day => {
                 Object.values(day.categories).forEach(exercises => {
                     exercises.forEach(exercise => {
-                        serie.isCompleted = false; 
+                        exercise.series.forEach(serie => { // Iterate over series in each exercise
+                            serie.isCompleted = false; 
+                        });
                     });
                 });
             });
@@ -1313,6 +1356,7 @@ const ImprovedWorkoutApp = () => {
                    setShowAddCategoryModal(false); 
                    setShowEditDayModal(false); 
                    setShowEditCategoryModal(false); 
+                   setProgressionAnalysisContent(''); // Close AI analysis modal on escape
                    break;
                case ' ':
                    if (currentView === 'timer' && !e.target.tagName.match(/INPUT|TEXTAREA|SELECT/)) {
@@ -1329,7 +1373,7 @@ const ImprovedWorkoutApp = () => {
 
        document.addEventListener('keydown', handleKeyPress);
        return () => document.removeEventListener('keydown', handleKeyPress);
-   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer, setShowAddDayModal, setShowAddCategoryModal, setShowEditDayModal, setShowEditCategoryModal]); // Re-added modale setters to deps
+   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer, setShowAddDayModal, setShowAddCategoryModal, setShowEditDayModal, setShowEditCategoryModal, setProgressionAnalysisContent]); // Re-added modale setters to deps
 
    // Demande de permission pour les notifications au démarrage
    useEffect(() => {
@@ -1532,24 +1576,32 @@ const ImprovedWorkoutApp = () => {
                {currentView === 'workout' && (
                    <MainWorkoutView
                        workouts={workouts}
-                       onToggleSerieCompleted={() => {}}
-                       onUpdateSerie={() => {}}
-                       onAddSerie={() => {}}
-                       onRemoveSerie={() => {}}
-                       onUpdateExerciseNotes={() => {}}
-                       onEditClick={() => {}}
-                       onDeleteExercise={() => {}}
-                       onAnalyzeProgression={() => {}}
+                       onToggleSerieCompleted={onToggleSerieCompleted}
+                       onUpdateSerie={onUpdateSerie}
+                       onAddSerie={onAddSerie}
+                       onRemoveSerie={onRemoveSerie}
+                       onUpdateExerciseNotes={onUpdateExerciseNotes}
+                       onEditClick={handleEditClick}
+                       onDeleteExercise={handleDeleteExercise}
+                       onAnalyzeProgression={analyzeProgressionWithAI} // Pass the correct function
                        searchTerm={searchTerm} 
                        setSearchTerm={setSearchTerm}
                        selectedDayFilter={selectedDayFilter}
                        setSelectedDayFilter={setSelectedDayFilter}
-                       selectedCategoryFilter={selectedCategoryForAdd}
-                       onCategoryFilterChange={() => {}}
-                       showOnlyCompleted={false}
-                       onToggleCompletedFilter={() => {}}
-                       onAddExercise={() => {}}
-                       onSaveToHistory={() => {}}
+                       selectedCategoryFilter={selectedCategoryFilter} // Use new state
+                       onCategoryFilterChange={(e) => setSelectedCategoryFilter(e.target.value)} // Use new setter
+                       showOnlyCompleted={showOnlyCompleted} // Use new state
+                       onToggleCompletedFilter={() => setShowOnlyCompleted(prev => !prev)} // Use new setter
+                       onAddExercise={() => { // Correctly trigger modal and pre-set day
+                           setShowAddExerciseModal(true); 
+                           setSelectedDayForAdd(selectedDayFilter); 
+                           setSelectedCategoryForAdd(''); // Clear category selection for new exercise
+                           setNewExerciseName(''); // Reset new exercise form fields
+                           setNewWeight('');
+                           setNewReps('');
+                           setNewSets('3');
+                       }}
+                       onSaveToHistory={onSaveToHistory}
                        isCompactView={isCompactView}
                        historicalData={historicalData}
                        personalBests={personalBests}
@@ -1562,12 +1614,12 @@ const ImprovedWorkoutApp = () => {
                        isAdvancedMode={isAdvancedMode}
                        days={workouts?.dayOrder || []}
                        categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
-                       handleAddDay={() => {}}
-                       handleEditDay={() => {}}
-                       handleDeleteDay={() => {}}
-                       handleAddCategory={() => {}}
-                       handleEditCategory={() => {}}
-                       handleDeleteCategory={() => {}}
+                       handleAddDay={() => { setShowAddDayModal(true); setNewDayName(''); }} // Trigger modal and reset input
+                       handleEditDay={(dayName) => { setShowEditDayModal(true); setEditingDayName(dayName); setEditingDayOriginalName(dayName); }} // Trigger modal and set states
+                       handleDeleteDay={handleDeleteDay}
+                       handleAddCategory={(dayName) => { setShowAddCategoryModal(true); setSelectedDayForCategory(dayName); setNewCategoryName(''); }} // Trigger modal and reset input
+                       handleEditCategory={(dayName, categoryName) => { setShowEditCategoryModal(true); setSelectedDayForCategory(dayName); setEditingCategoryName(categoryName); setEditingCategoryOriginalName(categoryName); }} // Trigger modal and set states
+                       handleDeleteCategory={handleDeleteCategory}
                    />
                )}
 
@@ -1603,6 +1655,7 @@ const ImprovedWorkoutApp = () => {
                        personalBests={personalBests}
                        handleReactivateExercise={handleReactivateExercise}
                        analyzeProgressionWithAI={analyzeProgressionWithAI}
+                       showProgressionGraphForExercise={showProgressionGraphForExercise} // Pass the new handler
                        formatDate={formatDate}
                        getSeriesDisplay={getSeriesDisplay}
                        isAdvancedMode={isAdvancedMode}
@@ -1794,7 +1847,7 @@ const ImprovedWorkoutApp = () => {
                                    <input
                                        type="text"
                                        value={editingExerciseName}
-                                       onChange={(e) => setNewExerciseName(e.target.value)}
+                                       onChange={(e) => setEditingExerciseName(e.target.value)} // Correctly set editingExerciseName
                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                        placeholder="Nom de l'exercice"
                                    />
@@ -1845,7 +1898,8 @@ const ImprovedWorkoutApp = () => {
                                    />
                                </div>
 
-                               {personalBests[editingExercise.name] && (
+                               {/* Display personal best for the editing exercise */}
+                               {editingExercise?.name && personalBests[editingExercise.name] && (
                                    <div className="text-sm text-gray-400 bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg">
                                        <p className="font-medium mb-1 text-blue-400">🏆 Record personnel:</p>
                                        <p>Poids max: {personalBests[editingExercise.name].maxWeight}kg</p>
@@ -2095,7 +2149,7 @@ const ImprovedWorkoutApp = () => {
                                         value={selectedDayForCategory}
                                         onChange={(e) => setSelectedDayForCategory(e.target.value)}
                                         className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        disabled
+                                        disabled // Should be disabled as category is tied to a specific day
                                     >
                                         {(workouts?.dayOrder || []).map(day => (
                                             <option key={day} value={day}>{day}</option>
