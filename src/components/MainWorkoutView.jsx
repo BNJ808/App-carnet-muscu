@@ -435,7 +435,7 @@ function MainWorkoutView({
                 )}
                 {isAdvancedMode && (
                     <button
-                        onClick={handleAddDay?.}
+                        onClick={handleAddDay}
                         className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all flex items-center gap-2"
                         title="Ajouter un nouveau jour d'entraînement"
                     >
