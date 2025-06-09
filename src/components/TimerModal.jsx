@@ -14,7 +14,7 @@ const TimerModal = ({
     pauseTimer,
     resetTimer,
     setTimerSeconds,
-    formatTime
+    formatTime // Ensure formatTime is destructured from props
 }) => {
     const [customMinutes, setCustomMinutes] = useState(1);
     const [customSeconds, setCustomSeconds] = useState(30);
@@ -86,7 +86,7 @@ const TimerModal = ({
                     {/* Affichage du temps restant */}
                     <div className="text-center mb-6">
                         <p className={`font-mono text-7xl sm:text-8xl font-extrabold transition-colors duration-300 ${timerIsFinished ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
-                            {formatTime(timerSeconds)}
+                            {formatTime ? formatTime(timerSeconds) : '00:00'}
                         </p>
                         {timerIsFinished && (
                             <p className="text-red-400 text-sm mt-2 animate-bounce">Temps écoulé !</p>

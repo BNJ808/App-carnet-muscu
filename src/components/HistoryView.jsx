@@ -16,15 +16,15 @@ const HistoryView = ({
     formatDate,
     getSeriesDisplay,
     isAdvancedMode,
-    searchTerm = '',
-    setSearchTerm,
-    sortBy = 'date-desc',
-    setSortBy
+    deleteHistoricalSession, // Nouvelle prop pour la suppression
+    isLoadingAI = false
 }) => {
     const [showDeletedExercises, setShowDeletedExercises] = useState(false);
     const [selectedTimeRange, setSelectedTimeRange] = useState('all');
     const [expandedSessions, setExpandedSessions] = useState(new Set());
     const [selectedExerciseFilter, setSelectedExerciseFilter] = useState('all');
+    const [searchTerm, setSearchTerm] = useState(''); // État local pour le terme de recherche
+    const [sortBy, setSortBy] = useState('date-desc'); // État local pour le tri
 
     // Assurer que historicalData est toujours un tableau
     const safeHistoricalData = Array.isArray(historicalData) ? historicalData : [];
@@ -33,80 +33,92 @@ const HistoryView = ({
     const sortOptions = [
         { value: 'date-desc', label: 'Plus récent' },
         { value: 'date-asc', label: 'Plus ancien' },
-        { value: 'volume-desc', label: 'Volume (Décroissant)' },
-        { value: 'volume-asc', label: 'Volume (Croissant)' },
-        { value: 'duration-desc', label: 'Durée (Décroissant)' },
-        { value: 'duration-asc', label: 'Durée (Croissant)' },
+        { value: 'name-asc', label: 'Nom exercice (A-Z)' },
+        { value: 'name-desc', label: 'Nom exercice (Z-A)' },
     ];
 
-    // Extraction de tous les noms d'exercices uniques pour le filtre
-    const allExerciseNames = useMemo(() => {
-        const names = new Set();
+    // Calculer les exercices uniques pour le filtre
+    const uniqueExercises = useMemo(() => {
+        const exercises = new Set();
         safeHistoricalData.forEach(session => {
-            session.exercises.forEach(exercise => {
-                names.add(exercise.name);
+            session.exercises.forEach(ex => {
+                exercises.add(ex.name);
             });
         });
-        return Array.from(names).sort();
+        return ['all', ...Array.from(exercises).sort()];
     }, [safeHistoricalData]);
 
-    // Filtrage et tri (Assurez-vous que cette logique est robuste et mémorisée)
     const filteredAndSortedSessions = useMemo(() => {
-        let sessions = safeHistoricalData.filter(session => showDeletedExercises || !session.isDeleted);
+        let filtered = safeHistoricalData;
 
-        // Filtrage par terme de recherche
+        // Filtrer par exercices supprimés (uniquement en mode avancé)
+        if (!showDeletedExercises && isAdvancedMode) {
+            filtered = filtered.filter(session => !session.isDeleted);
+        } else if (!isAdvancedMode) {
+            // Toujours masquer les supprimés si pas en mode avancé
+            filtered = filtered.filter(session => !session.isDeleted);
+        }
+
+        // Filtrer par terme de recherche
         if (searchTerm) {
             const lowerCaseSearchTerm = searchTerm.toLowerCase();
-            sessions = sessions.filter(session =>
-                session.exercises.some(exercise =>
-                    exercise.name.toLowerCase().includes(lowerCaseSearchTerm) ||
-                    (exercise.notes && exercise.notes.toLowerCase().includes(lowerCaseSearchTerm))
-                ) ||
-                (session.notes && session.notes.toLowerCase().includes(lowerCaseSearchTerm))
+            filtered = filtered.filter(session =>
+                session.dayName.toLowerCase().includes(lowerCaseSearchTerm) ||
+                session.exercises.some(ex => ex.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+                    ex.notes?.toLowerCase().includes(lowerCaseSearchTerm)
+                )
             );
         }
 
-        // Filtrage par exercice sélectionné
+        // Filtrer par exercice sélectionné
         if (selectedExerciseFilter !== 'all') {
-            sessions = sessions.filter(session =>
-                session.exercises.some(exercise => exercise.name === selectedExerciseFilter)
+            filtered = filtered.filter(session =>
+                session.exercises.some(ex => ex.name === selectedExerciseFilter)
             );
         }
 
-        // Filtrage par période (à implémenter si ce n'est pas déjà fait)
-        // ex: filter by date range
-
-        // Tri
-        return sessions.sort((a, b) => {
-            switch (sortBy) {
-                case 'date-asc':
-                    // Convert Firestore Timestamps to Date objects for comparison
-                    const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                    const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-                    return dateA - dateB;
-                case 'date-desc':
-                    const dateA_desc = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                    const dateB_desc = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-                    return dateB_desc - dateA_desc;
-                case 'volume-desc':
-                    // Calculate total volume for session if not already present
-                    const volumeA_desc = a.exercises.reduce((sum, exercise) => sum + exercise.series.reduce((exSum, serie) => exSum + (serie.weight * serie.reps || 0), 0), 0);
-                    const volumeB_desc = b.exercises.reduce((sum, exercise) => sum + exercise.series.reduce((exSum, serie) => exSum + (serie.weight * serie.reps || 0), 0), 0);
-                    return volumeB_desc - volumeA_desc;
-                case 'volume-asc':
-                    const volumeA_asc = a.exercises.reduce((sum, exercise) => sum + exercise.series.reduce((exSum, serie) => exSum + (serie.weight * serie.reps || 0), 0), 0);
-                    const volumeB_asc = b.exercises.reduce((sum, exercise) => sum + exercise.series.reduce((exSum, serie) => exSum + (serie.weight * serie.reps || 0), 0), 0);
-                    return volumeA_asc - volumeB_asc;
-                case 'duration-desc':
-                    return (b.durationInSeconds || 0) - (a.durationInSeconds || 0);
-                case 'duration-asc':
-                    return (a.durationInSeconds || 0) - (b.durationInSeconds || 0);
+        // Filtrer par plage de temps
+        const now = new Date();
+        filtered = filtered.filter(session => {
+            const sessionDate = session.date instanceof Date ? session.date : new Date(session.date);
+            switch (selectedTimeRange) {
+                case 'last7days':
+                    return (now.getTime() - sessionDate.getTime()) < 7 * 24 * 60 * 60 * 1000;
+                case 'last30days':
+                    return (now.getTime() - sessionDate.getTime()) < 30 * 24 * 60 * 60 * 1000;
+                case 'last90days':
+                    return (now.getTime() - sessionDate.getTime()) < 90 * 24 * 60 * 60 * 1000;
+                case 'thisYear':
+                    return sessionDate.getFullYear() === now.getFullYear();
                 default:
-                    return 0;
+                    return true;
             }
         });
-    }, [safeHistoricalData, showDeletedExercises, searchTerm, selectedExerciseFilter, sortBy, selectedTimeRange]);
 
+        // Trier les sessions
+        return [...filtered].sort((a, b) => {
+            const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+            const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+
+            switch (sortBy) {
+                case 'date-asc':
+                    return dateA - dateB;
+                case 'date-desc':
+                    return dateB - dateA;
+                case 'name-asc':
+                    // Pour le tri par nom, il faut considérer le nom du premier exercice ou du jour
+                    const nameA = a.dayName || (a.exercises[0] ? a.exercises[0].name : '');
+                    const nameB = b.dayName || (b.exercises[0] ? b.exercises[0].name : '');
+                    return nameA.localeCompare(nameB);
+                case 'name-desc':
+                    const nameA_desc = a.dayName || (a.exercises[0] ? a.exercises[0].name : '');
+                    const nameB_desc = b.dayName || (b.exercises[0] ? b.exercises[0].name : '');
+                    return nameB_desc.localeCompare(nameA_desc);
+                default:
+                    return dateB - dateA; // Par défaut, tri par date décroissante
+            }
+        });
+    }, [safeHistoricalData, showDeletedExercises, searchTerm, selectedExerciseFilter, selectedTimeRange, sortBy, isAdvancedMode]);
 
     const toggleSessionExpansion = useCallback((sessionId) => {
         setExpandedSessions(prev => {
@@ -120,232 +132,210 @@ const HistoryView = ({
         });
     }, []);
 
-    const formatTime = useCallback((totalSeconds) => {
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }, []);
-
-
-    const renderSessionCard = useCallback((sessionItem) => {
-        const isExpanded = expandedSessions.has(sessionItem.id);
-        // Calculez le volume total pour la session
-        const totalSessionVolume = sessionItem.exercises.reduce((sum, exercise) =>
-            sum + exercise.series.reduce((exSum, serie) => exSum + (serie.weight * serie.reps || 0), 0)
-        , 0);
-
-        return (
-            <div key={sessionItem.id} className="bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden">
-                <div
-                    className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center cursor-pointer transition-all duration-200 hover:bg-gray-700/50"
-                    onClick={() => toggleSessionExpansion(sessionItem.id)}
-                >
-                    <div className="flex-1 mb-2 sm:mb-0">
-                        <h4 className="text-white font-semibold text-base mb-1">{sessionItem.name || `Séance du ${formatDate(sessionItem.date)}`}</h4>
-                        <p className="text-gray-400 text-sm flex items-center gap-1">
-                            <Calendar className="h-4 w-4" />
-                            {formatDate(sessionItem.date)}
-                            {sessionItem.durationInSeconds > 0 && (
-                                <span className="ml-2 flex items-center gap-1">
-                                    <Clock className="h-4 w-4" />
-                                    {formatTime(sessionItem.durationInSeconds)}
-                                </span>
-                            )}
-                        </p>
-                        <p className="text-gray-400 text-xs mt-1">
-                            Volume Total: {totalSessionVolume.toLocaleString()} kg
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {isExpanded ? (
-                            <ChevronUp className="h-5 w-5 text-gray-400" />
-                        ) : (
-                            <ChevronDown className="h-5 w-5 text-gray-400" />
-                        )}
-                    </div>
+    const renderSessionCard = (sessionItem) => (
+        <div key={sessionItem.id} className={`bg-gray-800 rounded-lg shadow-md overflow-hidden transition-all duration-300 ease-in-out ${sessionItem.isDeleted ? 'opacity-50 border-red-700 border-2' : 'border border-gray-700 hover:border-blue-500'}`}>
+            <div
+                className="flex items-center justify-between p-4 cursor-pointer bg-gray-700/50 hover:bg-gray-700 transition-colors"
+                onClick={() => toggleSessionExpansion(sessionItem.id)}
+            >
+                <div className="flex flex-col">
+                    <span className="text-sm text-gray-400 flex items-center gap-1">
+                        <Calendar className="h-4 w-4 text-gray-500" /> {formatDate(sessionItem.date)}
+                    </span>
+                    <h4 className="text-lg font-semibold text-white mt-1 flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-blue-400" />
+                        {sessionItem.dayName || 'Séance sans nom'}
+                        {sessionItem.isDeleted && <span className="text-red-400 text-xs font-normal ml-2">(Supprimé)</span>}
+                    </h4>
                 </div>
-
-                {isExpanded && (
-                    <div className="p-4 border-t border-gray-700 bg-gray-850">
-                        {sessionItem.notes && (
-                            <div className="mb-4 bg-gray-700/50 p-3 rounded-md border border-gray-600">
-                                <h5 className="font-medium text-gray-300 mb-1 flex items-center gap-1"><NotebookText className="h-4 w-4" /> Notes de séance:</h5>
-                                <p className="text-gray-400 text-sm whitespace-pre-wrap">{sessionItem.notes}</p>
-                            </div>
+                {sessionItem.isDeleted && isAdvancedMode ? (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); handleReactivateExercise(sessionItem.id, sessionItem.exercises[0]?.name); }}
+                        className="p-2 rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors text-sm flex items-center gap-1"
+                        aria-label="Réactiver l'exercice"
+                    >
+                        <RotateCcw className="h-4 w-4" /> Réactiver
+                    </button>
+                ) : (
+                    <>
+                        {expandedSessions.has(sessionItem.id) ? (
+                            <ChevronUp className="h-6 w-6 text-gray-400" />
+                        ) : (
+                            <ChevronDown className="h-6 w-6 text-gray-400" />
                         )}
-
-                        <div className="space-y-4">
-                            {sessionItem.exercises.map((exercise, exIndex) => (
-                                <div key={exIndex} className="bg-gray-700 rounded-lg p-3 border border-gray-600">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <h5 className="font-semibold text-white text-base flex items-center gap-1">
-                                            <Dumbbell className="h-4 w-4 text-blue-400" /> {exercise.name}
-                                            {exercise.isDeleted && <span className="text-red-400 text-xs ml-2">(Supprimé)</span>}
-                                        </h5>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); analyzeProgressionWithAI(exercise.id); }}
-                                                className="p-1 rounded-md bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors flex items-center gap-1 text-xs"
-                                                title="Analyser la progression IA"
-                                            >
-                                                <Sparkles className="h-4 w-4" />
-                                                <span className="hidden sm:inline">IA Analyse</span>
-                                            </button>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); showProgressionGraphForExercise(exercise); }}
-                                                className="p-1 rounded-md bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 transition-colors flex items-center gap-1 text-xs"
-                                                title="Voir progression"
-                                            >
-                                                <LineChartIcon className="h-4 w-4" />
-                                                <span className="hidden sm:inline">Progression</span>
-                                            </button>
-                                            {exercise.isDeleted && (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleReactivateExercise(exercise.id); }}
-                                                    className="p-1 rounded-md bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors flex items-center gap-1 text-xs"
-                                                    title="Réactiver"
-                                                >
-                                                    <RotateCcw className="h-4 w-4" />
-                                                    <span className="hidden sm:inline">Réactiver</span>
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {exercise.notes && (
-                                        <p className="text-gray-400 text-sm mb-2 whitespace-pre-wrap flex items-start gap-1">
-                                            <NotebookText className="h-4 w-4 flex-shrink-0" /> {exercise.notes}
-                                        </p>
-                                    )}
-
-                                    <ul className="space-y-1">
-                                        {exercise.series.map((serie, serieIndex) => (
-                                            <li key={serieIndex} className="text-gray-300 text-sm flex items-center gap-2">
-                                                <span className="bg-gray-600 px-2 py-0.5 rounded-full text-xs font-mono">{serieIndex + 1}</span>
-                                                {getSeriesDisplay(serie)}
-                                                {serie.isPersonalBest && (
-                                                    <Award className="h-4 w-4 text-yellow-400" title="Record Personnel" />
-                                                )}
-                                                {serie.isWarmUp && (
-                                                    <Zap className="h-4 w-4 text-purple-400" title="Échauffement" />
-                                                )}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    </>
                 )}
             </div>
-        );
-    }, [expandedSessions, toggleSessionExpansion, formatDate, formatTime, getSeriesDisplay, handleReactivateExercise, showProgressionGraphForExercise, analyzeProgressionWithAI]);
 
+            {expandedSessions.has(sessionItem.id) && (
+                <div className="p-4 border-t border-gray-700 bg-gray-800">
+                    {sessionItem.exercises.map((exercise, exIndex) => (
+                        <div key={`${sessionItem.id}-${exIndex}`} className="mb-4 last:mb-0 bg-gray-700/40 rounded-lg p-3 border border-gray-600">
+                            <h5 className="font-medium text-white text-md mb-2 flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                    <Dumbbell className="h-4 w-4 text-purple-400" /> {exercise.name}
+                                    <span className="text-sm text-gray-400">({exercise.category})</span>
+                                </span>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => analyzeProgressionWithAI(exercise.name, safeHistoricalData)}
+                                        className="p-1 rounded-full text-yellow-400 hover:bg-gray-600 transition-colors"
+                                        title="Analyser la progression avec l'IA"
+                                        disabled={isLoadingAI}
+                                    >
+                                        <Sparkles className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => showProgressionGraphForExercise(exercise)}
+                                        className="p-1 rounded-full text-green-400 hover:bg-gray-600 transition-colors"
+                                        title="Voir le graphique de progression"
+                                    >
+                                        <LineChartIcon className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </h5>
+                            {exercise.notes && (
+                                <p className="text-gray-400 text-xs mb-2 flex items-center gap-1">
+                                    <NotebookText className="h-3 w-3" /> {exercise.notes}
+                                </p>
+                            )}
+                            <ul className="space-y-1 text-gray-300 text-sm">
+                                {exercise.series.map((serie, sIndex) => (
+                                    <li key={serie.id || sIndex} className={`flex items-center gap-2 ${serie.completed ? 'text-green-300' : 'text-gray-400'}`}>
+                                        {serie.completed ? <CheckCircle className="h-4 w-4 text-green-400" /> : <XCircle className="h-4 w-4 text-red-400" />}
+                                        Série {sIndex + 1}: {getSeriesDisplay(serie)}
+                                    </li>
+                                ))}
+                            </ul>
 
-    // Styles pour les filtres et la recherche
-    const filterInputClasses = "w-full bg-gray-700 text-white rounded-lg border border-gray-600 focus:ring-blue-500 focus:border-blue-500 p-2 text-sm";
-    const selectClasses = "w-full bg-gray-700 text-white rounded-lg border border-gray-600 focus:ring-blue-500 focus:border-blue-500 p-2 text-sm appearance-none pr-8";
-
+                            {personalBests[exercise.name] && (
+                                <div className="mt-3 p-2 bg-gray-600/30 rounded-md text-xs text-gray-300 border border-gray-600">
+                                    <h6 className="font-semibold text-white mb-1 flex items-center gap-1">
+                                        <Award className="h-4 w-4 text-yellow-300" /> Records personnels:
+                                    </h6>
+                                    {personalBests[exercise.name].maxWeight > 0 && (
+                                        <p>Max Poids: <span className="text-blue-300 font-bold">{personalBests[exercise.name].maxWeight} kg</span></p>
+                                    )}
+                                    {personalBests[exercise.name].oneRepMax > 0 && (
+                                        <p>Max 1 Rép (estimé): <span className="text-purple-300 font-bold">{personalBests[exercise.name].oneRepMax.toFixed(1)} kg</span></p>
+                                    )}
+                                    {personalBests[exercise.name].volume > 0 && (
+                                        <p>Meilleur Volume: <span className="text-green-300 font-bold">{personalBests[exercise.name].volume} kg</span></p>
+                                    )}
+                                    {Object.keys(personalBests[exercise.name].maxRepsAtWeight).length > 0 && (
+                                        <p>Meilleures Rép. par Poids:
+                                            {Object.entries(personalBests[exercise.name].maxRepsAtWeight)
+                                                .map(([weight, reps]) => ` ${reps} reps @ ${weight}kg`)
+                                                .join(', ')
+                                            }
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                            {isAdvancedMode && !sessionItem.isDeleted && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); deleteHistoricalSession(sessionItem.id); }}
+                                    className="mt-3 px-3 py-1 bg-red-600 text-white rounded-md text-xs hover:bg-red-700 transition-colors flex items-center gap-1"
+                                >
+                                    <Trash2 className="h-3 w-3" /> Supprimer la séance
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 
     return (
-        <div className="p-4 sm:p-6 pb-20 max-w-2xl mx-auto"> {/* MODIFIED: Added pb-20 for mobile padding */}
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <History className="h-7 w-7 text-yellow-400" />
+        <div className="container mx-auto p-4 animate-fade-in-up">
+            <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+                <History className="h-8 w-8 text-yellow-400" />
                 Historique des entraînements
             </h2>
 
-            {/* Barre de recherche et filtres */}
-            <div className="bg-gray-800 rounded-lg p-4 mb-6 border border-gray-700">
-                <div className="flex items-center gap-2 mb-4">
-                    <Search className="h-5 w-5 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Rechercher une séance ou un exercice..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className={filterInputClasses}
-                    />
+            {/* Filtres et recherche */}
+            <div className="bg-gray-800 rounded-lg p-4 mb-6 shadow-md border border-gray-700">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* Recherche par nom */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+                        <input
+                            type="text"
+                            placeholder="Rechercher exercice ou jour..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                        />
+                    </div>
+
+                    {/* Filtre par exercice */}
+                    <div className="relative">
+                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+                        <select
+                            value={selectedExerciseFilter}
+                            onChange={(e) => setSelectedExerciseFilter(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white appearance-none focus:ring-blue-500 focus:border-blue-500 transition-all"
+                        >
+                            <option value="all">Tous les exercices</option>
+                            {uniqueExercises.map(ex => (
+                                <option key={ex} value={ex}>{ex}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+
+                    {/* Filtre par plage de temps */}
+                    <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+                        <select
+                            value={selectedTimeRange}
+                            onChange={(e) => setSelectedTimeRange(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white appearance-none focus:ring-blue-500 focus:border-blue-500 transition-all"
+                        >
+                            <option value="all">Toutes les dates</option>
+                            <option value="last7days">7 derniers jours</option>
+                            <option value="last30days">30 derniers jours</option>
+                            <option value="last90days">90 derniers jours</option>
+                            <option value="thisYear">Cette année</option>
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+
+                    {/* Tri */}
+                    <div className="relative md:col-span-2 lg:col-span-1">
+                        <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white appearance-none focus:ring-blue-500 focus:border-blue-500 transition-all"
+                        >
+                            {sortOptions.map(option => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label htmlFor="sort-by" className="block text-gray-300 text-sm font-medium mb-1">Trier par :</label>
-                        <div className="relative">
-                            <select
-                                id="sort-by"
-                                value={sortBy}
-                                onChange={(e) => setSortBy(e.target.value)}
-                                className={selectClasses}
-                            >
-                                {sortOptions.map(option => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                        </div>
+                {isAdvancedMode && (
+                    <div className="mt-4 flex items-center justify-end">
+                        <label htmlFor="show-deleted" className="flex items-center text-gray-400 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                id="show-deleted"
+                                checked={showDeletedExercises}
+                                onChange={() => setShowDeletedExercises(!showDeletedExercises)}
+                                className="mr-2 h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                            />
+                            <EyeOff className="h-4 w-4 mr-1" /> Afficher les séances supprimées
+                        </label>
+                        {/* Potentiel emplacement pour d'autres fonctionnalités avancées si pertinent et si ça rentre bien */}
                     </div>
-                    <div>
-                        <label htmlFor="exercise-filter" className="block text-gray-300 text-sm font-medium mb-1">Filtrer par exercice :</label>
-                        <div className="relative">
-                            <select
-                                id="exercise-filter"
-                                value={selectedExerciseFilter}
-                                onChange={(e) => setSelectedExerciseFilter(e.target.value)}
-                                className={selectClasses}
-                            >
-                                <option value="all">Tous les exercices</option>
-                                {allExerciseNames.map(name => (
-                                    <option key={name} value={name}>{name}</option>
-                                ))}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                        </div>
-                    </div>
-                </div>
+                )}
 
-                {/* Option d'affichage des exercices supprimés */}
-                <div className="flex items-center mt-4">
-                    <input
-                        type="checkbox"
-                        id="show-deleted"
-                        checked={showDeletedExercises}
-                        onChange={(e) => setShowDeletedExercises(e.target.checked)}
-                        className="form-checkbox h-4 w-4 text-blue-500 rounded border-gray-600 bg-gray-700"
-                    />
-                    <label htmlFor="show-deleted" className="ml-2 text-gray-300 text-sm flex items-center gap-1">
-                        <Eye className="h-4 w-4" /> Afficher les exercices supprimés
-                    </label>
-                </div>
+
             </div>
-
-            {/* Statistiques rapides (déjà existantes, bien pour mobile) */}
-            {filteredAndSortedSessions.length > 0 && (
-                <div className="mb-6">
-                    <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-                        <BarChart3 className="h-5 w-5 text-blue-400" />
-                        Aperçu Rapide
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        {/* Adapté pour mobile, utilisez des classes comme col-span-1 */}
-                        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 text-center">
-                            <p className="text-xl font-bold text-blue-400">{filteredAndSortedSessions.length}</p>
-                            <p className="text-gray-400 text-sm">Séances</p>
-                        </div>
-                        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 text-center">
-                            <p className="text-xl font-bold text-green-400">
-                                {/* Calculer le total des records personnels */}
-                                {safeHistoricalData.reduce((count, session) =>
-                                    count + session.exercises.reduce((exCount, ex) =>
-                                        exCount + ex.series.filter(s => s.isPersonalBest).length, 0
-                                    ), 0
-                                )}
-                            </p>
-                            <p className="text-gray-400 text-sm">Records Personnels</p>
-                        </div>
-                        {/* Ajoutez d'autres stats rapides si pertinent et si ça rentre bien */}
-                    </div>
-                </div>
-            )}
 
 
             {/* Liste des sessions */}

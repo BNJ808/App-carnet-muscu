@@ -12,7 +12,7 @@ const StatsView = ({
     workouts = { days: {}, dayOrder: [] },
     historicalData = [],
     personalBests = {},
-    formatDate,
+    formatDate, // Ensure formatDate is destructured from props
     globalNotes = '',
     setGlobalNotes,
     analyzeGlobalStatsWithAI,
@@ -29,94 +29,189 @@ const StatsView = ({
     const safePersonalBests = personalBests || {};
 
     // Couleurs pour les graphiques
-    const COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A855F7'];
+    const COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4', '#EAB308', '#6D28D9'];
 
-    // Calcul des statistiques principales (utiliser useMemo pour optimiser)
-    const mainStats = useMemo(() => {
-        // Use the passed getWorkoutStats function
-        return getWorkoutStats(safeHistoricalData);
-    }, [safeHistoricalData, getWorkoutStats]);
+    // Calcul des statistiques globales
+    const { totalWorkouts, totalExercises, totalSeries, mostFrequentExercise, mostWeightLiftedExercise, totalWorkoutDuration } = useMemo(() => {
+        let totalWorkouts = Object.keys(safeWorkouts.days).length;
+        let totalExercises = 0;
+        let totalSeries = 0;
+        const exerciseCounts = {}; // { exerciseName: count }
+        const exerciseTotalWeight = {}; // { exerciseName: totalWeight }
+        let totalDuration = 0;
 
-
-    // Données pour le graphique de volume par jour (exemple)
-    const volumePerDayData = useMemo(() => {
-        const dataMap = new Map();
         safeHistoricalData.forEach(session => {
-            const date = formatDate(session.date); // Assurez-vous que formatDate renvoie un format de date comparable (ex: YYYY-MM-DD)
-            const sessionVolume = session.exercises.reduce((sum, exercise) =>
-                sum + exercise.series.reduce((exSum, serie) => exSum + (serie.weight * serie.reps || 0), 0)
-                , 0);
-            dataMap.set(date, (dataMap.get(date) || 0) + sessionVolume);
+            if (session.duration) {
+                totalDuration += session.duration; // Supposons que la durée est en secondes
+            }
+            session.exercises.forEach(exercise => {
+                if (!exercise.isDeleted) {
+                    totalExercises++;
+                    exerciseCounts[exercise.name] = (exerciseCounts[exercise.name] || 0) + 1;
+                    exercise.series.forEach(serie => {
+                        totalSeries++;
+                        const weight = parseFloat(serie.weight) || 0;
+                        const reps = parseInt(serie.reps) || 0;
+                        exerciseTotalWeight[exercise.name] = (exerciseTotalWeight[exercise.name] || 0) + (weight * reps);
+                    });
+                }
+            });
         });
 
-        // Convertir la map en tableau et trier par date
-        return Array.from(dataMap.entries())
-            .map(([date, volume]) => ({ date, volume }))
-            .sort((a, b) => new Date(a.date) - new Date(b.date));
-    }, [safeHistoricalData, formatDate]);
+        const mostFrequentExercise = Object.keys(exerciseCounts).reduce((a, b) => exerciseCounts[a] > exerciseCounts[b] ? a : b, '');
+        const mostWeightLiftedExercise = Object.keys(exerciseTotalWeight).reduce((a, b) => exerciseTotalWeight[a] > exerciseTotalWeight[b] ? a : b, '');
+
+        return {
+            totalWorkouts,
+            totalExercises,
+            totalSeries,
+            mostFrequentExercise,
+            mostWeightLiftedExercise,
+            totalWorkoutDuration: totalDuration
+        };
+    }, [safeWorkouts, safeHistoricalData]);
+
+    const formatDuration = (seconds) => {
+        if (isNaN(seconds) || seconds < 0) return "N/A";
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainingSeconds = seconds % 60;
+        let result = '';
+        if (hours > 0) result += `${hours}h `;
+        if (minutes > 0 || hours > 0) result += `${minutes}min `;
+        result += `${remainingSeconds}s`;
+        return result.trim();
+    };
+
+    // Préparation des données pour les graphiques (si nécessaire, réutiliser le formatage de date)
+    const chartData = useMemo(() => {
+        // Exemple de données pour un graphique de progression de poids (vous devrez l'adapter à vos données réelles)
+        // Ici, nous allons simplement simuler ou utiliser des données simplifiées si non fournies
+        const exerciseProgressionData = {}; // { exerciseName: [{ date: '...', weight: ..., reps: ... }] }
+
+        safeHistoricalData.forEach(session => {
+            session.exercises.forEach(exercise => {
+                if (!exercise.isDeleted) {
+                    if (!exerciseProgressionData[exercise.name]) {
+                        exerciseProgressionData[exercise.name] = [];
+                    }
+                    exercise.series.forEach(serie => {
+                        if (serie.weight > 0) {
+                            exerciseProgressionData[exercise.name].push({
+                                date: session.date ? formatDate(session.date) : 'N/A', // Use formatDate here
+                                weight: serie.weight,
+                                reps: serie.reps
+                            });
+                        }
+                    });
+                }
+            });
+        });
+
+        // Pour chaque exercice, trier par date et prendre le max de poids/reps pour chaque date
+        const processedChartData = Object.entries(exerciseProgressionData).map(([exerciseName, data]) => {
+            const aggregatedData = {};
+            data.forEach(item => {
+                if (!aggregatedData[item.date] || aggregatedData[item.date].weight < item.weight) {
+                    aggregatedData[item.date] = item;
+                }
+            });
+            return {
+                name: exerciseName,
+                data: Object.values(aggregatedData).sort((a, b) => new Date(a.date) - new Date(b.date))
+            };
+        });
+
+        return processedChartData;
+    }, [safeHistoricalData, formatDate]); // Added formatDate to dependencies
 
 
-    // Effet pour déclencher l'analyse IA si nécessaire
+    // Fonction pour générer le contenu du tooltip pour les graphiques
+    const customTooltip = ({ active, payload, label }) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
+            return (
+                <div className="bg-gray-800 p-3 rounded-lg shadow-xl border border-gray-700 text-gray-100 text-sm">
+                    <p className="font-semibold mb-1">{`Date: ${label}`}</p>
+                    <p className="text-blue-300">{`Poids: ${data.weight} kg`}</p>
+                    <p className="text-green-300">{`Reps: ${data.reps}`}</p>
+                </div>
+            );
+        }
+        return null;
+    };
+
+
     useEffect(() => {
-        // Logique pour déclencher analyzeGlobalStatsWithAI
-        // ...
-    }, []);
-
+        // Placeholder for any effects needed on mount or data change
+        // For example, if you need to fetch more detailed stats based on initial data
+    }, [workouts, historicalData, personalBests]);
 
     return (
-        <div className="p-4 sm:p-6 pb-20 max-w-2xl mx-auto"> {/* MODIFIED: Added pb-20 for mobile padding */}
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <BarChart3 className="h-7 w-7 text-purple-400" />
-                Vos Statistiques
-            </h2>
+        <div className="flex-1 overflow-y-auto p-4 pb-20 custom-scrollbar space-y-6">
+            {/* Carte de résumé des statistiques */}
+            <div className="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-700">
+                <h2 className="text-2xl font-bold text-white mb-5 flex items-center gap-3">
+                    <BarChart3 className="h-7 w-7 text-blue-400" />
+                    Vue d'ensemble des statistiques
+                </h2>
 
-            {/* Statistiques principales */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-                    <BarChart3 className="h-8 w-8 text-blue-400 mx-auto mb-2" />
-                    <p className="text-3xl font-bold text-white">{mainStats.totalSessions}</p>
-                    <p className="text-gray-400">Séances complétées</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
+                    <div className="bg-gray-700/50 p-4 rounded-lg border border-gray-600 flex flex-col items-center justify-center">
+                        <Calendar className="h-8 w-8 text-orange-400 mb-2" />
+                        <p className="text-gray-300 text-sm">Séances terminées</p>
+                        <p className="text-white text-3xl font-bold">{totalWorkouts}</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-4 rounded-lg border border-gray-600 flex flex-col items-center justify-center">
+                        <Activity className="h-8 w-8 text-pink-400 mb-2" />
+                        <p className="text-gray-300 text-sm">Exercices réalisés</p>
+                        <p className="text-white text-3xl font-bold">{totalExercises}</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-4 rounded-lg border border-gray-600 flex flex-col items-center justify-center">
+                        <Target className="h-8 w-8 text-green-400 mb-2" />
+                        <p className="text-gray-300 text-sm">Séries complétées</p>
+                        <p className="text-white text-3xl font-bold">{totalSeries}</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-4 rounded-lg border border-gray-600 flex flex-col items-center justify-center">
+                        <Clock className="h-8 w-8 text-indigo-400 mb-2" />
+                        <p className="text-gray-300 text-sm">Temps total entraînement</p>
+                        <p className="text-white text-3xl font-bold">{formatDuration(totalWorkoutDuration)}</p>
+                    </div>
                 </div>
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-                    <Activity className="h-8 w-8 text-green-400 mx-auto mb-2" />
-                    <p className="text-3xl font-bold text-white">{mainStats.totalExercises}</p>
-                    <p className="text-gray-400">Exercices réalisés</p>
-                </div>
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-                    <Target className="h-8 w-8 text-yellow-400 mx-auto mb-2" />
-                    <p className="text-3xl font-bold text-white">{mainStats.totalSeries}</p>
-                    <p className="text-gray-400">Séries effectuées</p>
-                </div>
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-                    <TrendingUp className="h-8 w-8 text-red-400 mx-auto mb-2" />
-                    <p className="text-3xl font-bold text-white">
-                        {mainStats.totalVolume.toLocaleString()}
-                        <span className="text-xl">kg</span>
-                    </p>
-                    <p className="text-gray-400">Volume Total</p>
+
+                <div className="mt-6 space-y-4">
+                    <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-600 flex items-center">
+                        <TrendingUp className="h-5 w-5 text-purple-400 mr-2" />
+                        <p className="text-gray-300 text-sm">Exercice le plus fréquent:</p>
+                        <p className="text-white ml-2 font-medium">{mostFrequentExercise || 'N/A'}</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-600 flex items-center">
+                        <Award className="h-5 w-5 text-yellow-400 mr-2" />
+                        <p className="text-gray-300 text-sm">Exercice avec le plus de poids soulevé:</p>
+                        <p className="text-white ml-2 font-medium">{mostWeightLiftedExercise || 'N/A'}</p>
+                    </div>
                 </div>
             </div>
 
-            {/* Records personnels (déjà bien stylisé) */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    <Award className="h-5 w-5 text-yellow-400" />
-                    Vos Records Personnels
+            {/* Section des meilleurs personnels */}
+            <div className="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-700">
+                <h3 className="text-xl font-bold text-white mb-5 flex items-center gap-2">
+                    <Award className="h-6 w-6 text-yellow-400" /> Meilleurs Personnels
                 </h3>
                 {Object.keys(safePersonalBests).length === 0 ? (
-                    <p className="text-gray-400 text-sm">
-                        Aucun record personnel enregistré. Commencez à enregistrer vos séries pour les voir ici !
+                    <p className="text-gray-400 text-center py-4">
+                        Aucun record personnel enregistré. Continuez à vous entraîner !
                     </p>
                 ) : (
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {Object.entries(safePersonalBests).map(([exerciseName, pb]) => (
-                            <div key={exerciseName} className="bg-gray-700/50 rounded-lg p-3 border border-gray-600 flex justify-between items-center">
-                                <div>
-                                    <p className="text-white font-medium">{exerciseName}</p>
-                                    <p className="text-gray-300 text-sm">{pb.weight} kg x {pb.reps} reps</p>
-                                </div>
-                                <p className="text-gray-400 text-xs">
-                                    {formatDate(pb.date)}
+                            <div key={exerciseName} className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+                                <h4 className="font-semibold text-blue-300 mb-2">{exerciseName}</h4>
+                                <p className="text-white text-lg font-bold">
+                                    {pb.weight} kg x {pb.reps} reps
+                                </p>
+                                <p className="text-gray-400 text-sm mt-1">
+                                    Date: {formatDate(pb.date)} {/* Use formatDate here */}
                                 </p>
                             </div>
                         ))}
@@ -124,152 +219,68 @@ const StatsView = ({
                 )}
             </div>
 
-            {/* Graphique de Volume par Jour */}
-            {volumePerDayData.length > 1 && ( // Afficher seulement s'il y a plus d'un point
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <LineChartIcon className="h-5 w-5 text-blue-400" />
-                        Volume par Jour
-                    </h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                        <LineChart data={volumePerDayData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#4B5563" />
-                            <XAxis
-                                dataKey="date"
-                                stroke="#9CA3AF"
-                                tick={{ fontSize: 10 }}
-                                interval="preserveStartEnd"
-                                angle={-30}
-                                textAnchor="end"
-                                height={60} // Augmente la hauteur pour éviter le chevauchement
-                            />
-                            <YAxis stroke="#9CA3AF" tick={{ fontSize: 10 }} />
-                            <Tooltip
-                                contentStyle={{ backgroundColor: '#374151', border: 'none', borderRadius: '8px' }}
-                                itemStyle={{ color: '#E5E7EB' }}
-                                labelStyle={{ color: '#D1D5DB' }}
-                                formatter={(value) => `${value.toLocaleString()} kg`}
-                            />
-                            <Line type="monotone" dataKey="volume" stroke="#3B82F6" strokeWidth={2} dot={false} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                    <p className="text-gray-500 text-center mt-2 text-sm">Volume total en kilogrammes par jour.</p>
-                </div>
-            )}
-
-            {/* Graphique des exercices les plus fréquents */}
-            {mainStats.topExercises.length > 0 && (
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <BarChart3 className="h-5 w-5 text-green-400" />
-                        Exercices les plus Fréquents
-                    </h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                        <BarChart data={mainStats.topExercises} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#4B5563" />
-                            <XAxis
-                                dataKey="name"
-                                stroke="#9CA3AF"
-                                tick={{ fontSize: 10 }}
-                                interval={0} // Important pour afficher toutes les barres sur mobile
-                                angle={-30}
-                                textAnchor="end"
-                                height={60}
-                            />
-                            <YAxis stroke="#9CA3AF" tick={{ fontSize: 10 }} />
-                            <Tooltip
-                                contentStyle={{ backgroundColor: '#374151', border: 'none', borderRadius: '8px' }}
-                                itemStyle={{ color: '#E5E7EB' }}
-                                labelStyle={{ color: '#D1D5DB' }}
-                                formatter={(value) => `${value} sessions`}
-                            />
-                            <Bar dataKey="count" fill="#10B981" />
-                        </BarChart>
-                    </ResponsiveContainer>
-                    <p className="text-gray-500 text-center mt-2 text-sm">Fréquence de réalisation des exercices.</p>
-                </div>
-            )}
-
-            {/* Graphique de répartition des groupes musculaires (si données disponibles) */}
-            {mainStats.topMuscleGroups.length > 0 && (
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <PieChartIcon className="h-5 w-5 text-purple-400" />
-                        Volume par Groupe Musculaire
-                    </h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                        <PieChart>
-                            <Pie
-                                data={mainStats.topMuscleGroups}
-                                cx="50%"
-                                cy="50%"
-                                labelLine={false}
-                                outerRadius={80}
-                                fill="#8884d8"
-                                dataKey="value"
-                                nameKey="name"
-                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            >
-                                {mainStats.topMuscleGroups.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                            </Pie>
-                            <Tooltip
-                                contentStyle={{ backgroundColor: '#374151', border: 'none', borderRadius: '8px' }}
-                                itemStyle={{ color: '#E5E7EB' }}
-                                labelStyle={{ color: '#D1D5DB' }}
-                                formatter={(value) => `${value.toLocaleString()} kg`}
-                            />
-                            <Legend layout="horizontal" align="center" verticalAlign="bottom" wrapperStyle={{ paddingTop: '20px' }} />
-                        </PieChart>
-                    </ResponsiveContainer>
-                    <p className="text-gray-500 text-center mt-2 text-sm">Répartition du volume d'entraînement par groupe musculaire.</p>
-                </div>
-            )}
-
-
-            {/* Notes globales (si vous en avez) */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    <NotebookText className="h-5 w-5 text-indigo-400" />
-                    Notes Générales sur la Progression
+            {/* Graphiques de progression (simplifié pour l'exemple) */}
+            <div className="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-700">
+                <h3 className="text-xl font-bold text-white mb-5 flex items-center gap-2">
+                    <LineChartIcon className="h-6 w-6 text-green-400" /> Progression par exercice
                 </h3>
-                <textarea
-                    value={globalNotes}
-                    onChange={(e) => setGlobalNotes(e.target.value)}
-                    placeholder="Ajoutez ici vos observations générales sur votre progression, vos objectifs futurs, etc."
-                    className="w-full h-32 bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:ring-blue-500 focus:border-blue-500 text-sm resize-y"
-                ></textarea>
-                <div className="mt-4 flex flex-col sm:flex-row gap-3">
-                    <button
-                        onClick={analyzeGlobalStatsWithAI}
-                        disabled={aiAnalysisLoading}
-                        className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
-                    >
-                        {aiAnalysisLoading ? (
-                            <span className="flex items-center gap-2">
-                                <Sparkles className="h-4 w-4 animate-pulse" /> Analyse en cours...
-                            </span>
-                        ) : (
-                            <span className="flex items-center gap-2">
-                                <Sparkles className="h-4 w-4" /> Analyser avec IA
-                            </span>
-                        )}
-                    </button>
-                    {/* Bouton pour générer des suggestions IA */}
+                {chartData.length === 0 ? (
+                    <p className="text-gray-400 text-center py-4">
+                        Pas assez de données pour afficher les graphiques de progression.
+                    </p>
+                ) : (
+                    <div className="space-y-6">
+                        {chartData.map((exerciseData, index) => (
+                            <div key={exerciseData.name} className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+                                <h4 className="font-semibold text-blue-300 mb-3">{exerciseData.name}</h4>
+                                <ResponsiveContainer width="100%" height={200}>
+                                    <LineChart data={exerciseData.data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#4B5563" />
+                                        <XAxis dataKey="date" stroke="#9CA3AF" tick={{ fill: '#9CA3AF', fontSize: 10 }} />
+                                        <YAxis stroke="#9CA3AF" tick={{ fill: '#9CA3AF', fontSize: 10 }} />
+                                        <Tooltip content={customTooltip} />
+                                        <Line type="monotone" dataKey="weight" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} name="Poids (kg)" />
+                                        <Line type="monotone" dataKey="reps" stroke="#10B981" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} name="Reps" />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Notes globales et Analyse IA */}
+            <div className="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-700">
+                <h3 className="text-xl font-bold text-white mb-5 flex items-center gap-2">
+                    <NotebookText className="h-6 w-6 text-indigo-400" /> Notes et Analyse
+                </h3>
+                <div className="mb-4">
+                    <label htmlFor="globalNotes" className="block text-gray-300 text-sm font-medium mb-2">Notes globales :</label>
+                    <textarea
+                        id="globalNotes"
+                        className="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all custom-scrollbar-light"
+                        rows="5"
+                        placeholder="Écrivez vos pensées générales sur votre entraînement, vos objectifs, etc."
+                        value={globalNotes}
+                        onChange={(e) => setGlobalNotes(e.target.value)}
+                    ></textarea>
+                </div>
+                <div className="flex justify-end">
                     <button
                         onClick={onGenerateAISuggestions}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled={isLoadingAI}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
                     >
                         {isLoadingAI ? (
-                            <span className="flex items-center gap-2">
-                                <Sparkles className="h-4 w-4 animate-pulse" /> Génération...
-                            </span>
+                            <>
+                                <Activity className="h-5 w-5 animate-spin" />
+                                Analyse en cours...
+                            </>
                         ) : (
-                            <span className="flex items-center gap-2">
-                                <Sparkles className="h-4 w-4" /> Suggestions IA
-                            </span>
+                            <>
+                                <Sparkles className="h-5 w-5" />
+                                Générer des suggestions IA
+                            </>
                         )}
                     </button>
                 </div>
