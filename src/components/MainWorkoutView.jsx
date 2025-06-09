@@ -66,7 +66,8 @@ function MainWorkoutView({
     handleDeleteDay,
     handleAddCategory, // Now directly opens modal in App.jsx
     handleEditCategory, // Now directly opens modal in App.jsx
-    handleDeleteCategory
+    handleDeleteCategory,
+    isAdvancedMode = false // Explicitly define with a default value
 }) {
     const [expandedCategories, setExpandedCategories] = useState(new Set());
     const [expandedExercises, setExpandedExercises] = useState(new Set());
@@ -178,7 +179,7 @@ function MainWorkoutView({
         return (
             <div key={exercise.id} className="bg-gray-800 rounded-lg shadow-md border border-gray-700">
                 <div className="flex items-center justify-between p-4 cursor-pointer" onClick={() => toggleExercise(exercise.id)}>
-                    <div className="flex-1 flex flex-col">
+                    <div className="flex-1 flex col">
                         <h4 className="font-semibold text-white text-base sm:text-lg">
                             {exercise.name}
                             {exercise.isDeleted && <span className="ml-2 text-red-500 text-xs">(Supprimé)</span>}
