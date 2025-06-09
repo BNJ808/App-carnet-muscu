@@ -137,6 +137,7 @@ const TimerModal = ({
                         <div className="flex items-center justify-center gap-4">
                             <div className="flex flex-col items-center">
                                 <button onClick={increaseMinute} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronUp className="h-5 w-5" /></button>
+                                {/* MODIFIED: Moved comment to a new line */}
                                 <input
                                     type="number"
                                     min="0"
@@ -145,7 +146,7 @@ const TimerModal = ({
                                     onChange={(e) => setCustomMinutes(parseInt(e.target.value) || 0)}
                                     className="bg-gray-700 text-white text-center rounded-lg px-2 py-1 w-12 text-sm"
                                     disabled={timerIsRunning}
-                                    inputMode="numeric" {/* MODIFIED: Added inputMode */}
+                                    inputMode="numeric"
                                 />
                                 <button onClick={decreaseMinute} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronDown className="h-5 w-5" /></button>
                                 <span className="text-gray-400 text-xs mt-1">min</span>
@@ -153,6 +154,7 @@ const TimerModal = ({
                             <span className="text-gray-400 text-lg">:</span>
                             <div className="flex flex-col items-center">
                                 <button onClick={increaseSecond} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronUp className="h-5 w-5" /></button>
+                                {/* MODIFIED: Moved comment to a new line */}
                                 <input
                                     type="number"
                                     min="0"
@@ -161,7 +163,7 @@ const TimerModal = ({
                                     onChange={(e) => setCustomSeconds(parseInt(e.target.value) || 0)}
                                     className="bg-gray-700 text-white text-center rounded-lg px-2 py-1 w-12 text-sm"
                                     disabled={timerIsRunning}
-                                    inputMode="numeric" {/* MODIFIED: Added inputMode */}
+                                    inputMode="numeric"
                                 />
                                 <button onClick={decreaseSecond} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronDown className="h-5 w-5" /></button>
                                 <span className="text-gray-400 text-xs mt-1">s</span>
