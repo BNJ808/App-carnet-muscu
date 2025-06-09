@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, query, limit, addDoc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore'; // Removed orderBy as per past instructions for performance
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth'; // Added signInWithCustomToken
+import { getFirestore, doc, setDoc, onSnapshot, collection, query, limit, addDoc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore'; 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ChevronUp, Pencil, Sparkles, ArrowUp, ArrowDown,
@@ -228,7 +228,7 @@ const ImprovedWorkoutApp = () => {
     const [editingExercise, setEditingExercise] = useState(null);
     const [editingExerciseName, setEditingExerciseName] = useState('');
     const [newWeight, setNewWeight] = useState('');
-    const [newSets, setNewSets] = useState('3'); // CORRECTION: Ajout de ']' manquant
+    const [newSets, setNewSets] = useState('3'); 
     const [newReps, setNewReps] = useState('');
     const [selectedDayForAdd, setSelectedDayForAdd] = useState('');
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState('');
@@ -1437,11 +1437,11 @@ const ImprovedWorkoutApp = () => {
                        setSearchTerm={setSearchTerm}
                        days={workouts?.dayOrder || []}
                        categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
-                       handleAddDay={handleAddDay} 
-                       handleEditDay={handleEditDay}
+                       handleAddDay={() => setShowAddDayModal(true)} // Modified to open modal
+                       handleEditDay={(dayName) => {setEditingDayOriginalName(dayName); setEditingDayName(dayName); setShowEditDayModal(true)}} // Modified
                        handleDeleteDay={handleDeleteDay}
-                       handleAddCategory={handleAddCategory}
-                       handleEditCategory={handleEditCategory}
+                       handleAddCategory={(dayName) => {setSelectedDayForCategory(dayName); setShowAddCategoryModal(true)}} // Modified
+                       handleEditCategory={(dayName, categoryName) => {setSelectedDayForCategory(dayName); setEditingCategoryOriginalName(categoryName); setEditingCategoryName(categoryName); setShowEditCategoryModal(true)}} // Modified
                        handleDeleteCategory={handleDeleteCategory}
                    />
                )}
@@ -1468,7 +1468,7 @@ const ImprovedWorkoutApp = () => {
                        historicalData={historicalData}
                        personalBests={personalBests}
                        formatDate={formatDate}
-                       getWorkoutStats={getWorkoutStats} // Assurez-vous que cette prop est bien passée
+                       getWorkoutStats={getWorkoutStats} 
                    />
                )}
 
@@ -1984,7 +1984,7 @@ const ImprovedWorkoutApp = () => {
                                     <input
                                         type="text"
                                         value={editingCategoryName}
-                                        onChange={(e) => setNewCategoryName(e.target.value)}
+                                        onChange={(e) => setEditingCategoryName(e.target.value)}
                                         className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         placeholder="Nom de la catégorie"
                                         autoFocus
@@ -2120,9 +2120,9 @@ const ImprovedWorkoutApp = () => {
                                    </h4>
                                    <div className="text-sm text-gray-400 space-y-2">
                                        <p>Version: 2.0 Pro</p>
-                                       <p>Dernière sync: {lastSaveTime ? formatDate(lastSaveTime) : 'Jamais'}</p>
                                        <p>Utilisateur: {userId?.substring(0, 8)}...</p>
                                        <p>Notifications: {Notification?.permission || 'Non supportées'}</p>
+                                       <p>Dernière sync: {lastSaveTime ? formatDate(lastSaveTime) : 'Jamais'}</p>
                                    </div>
                                </div>
                            </div>

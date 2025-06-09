@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'; // Added useCallback import
+import React, { useState, useMemo, useCallback } from 'react'; 
 import { 
     Search, 
     Filter, 
@@ -18,9 +18,9 @@ import {
     Copy,
     History,
     TrendingUp,
-    Dumbbell, // Added for Day/Category buttons
-    BarChart3, // Added for Day/Category buttons
-    Layers // Added for categories
+    Dumbbell, 
+    BarChart3, 
+    Layers 
 } from 'lucide-react';
 
 const stableSort = (array, compareFunction) => {
@@ -43,7 +43,7 @@ function MainWorkoutView({
     searchTerm,
     setSearchTerm,
     selectedDayFilter,
-    setSelectedDayFilter, // Changed from onDayFilterChange
+    setSelectedDayFilter, 
     selectedCategoryFilter,
     onCategoryFilterChange,
     showOnlyCompleted,
@@ -52,26 +52,26 @@ function MainWorkoutView({
     onSaveToHistory,
     isCompactView = false,
     historicalData = [],
-    personalBests = {}, // Added for analysis
-    getDayButtonColors, // Added for styling
-    formatDate, // Added for display
-    getSeriesDisplay, // Added for display
-    isSavingExercise, // Added for loading states
-    isDeletingExercise, // Added for loading states
-    isAddingExercise, // Added for loading states
-    days, // Passed from App.jsx for CRUD
-    categories, // Passed from App.jsx for CRUD
-    handleAddDay,
-    handleEditDay,
+    personalBests = {}, 
+    getDayButtonColors, 
+    formatDate, 
+    getSeriesDisplay, 
+    isSavingExercise, 
+    isDeletingExercise, 
+    isAddingExercise, 
+    days, 
+    categories, 
+    handleAddDay, // Now directly opens modal in App.jsx
+    handleEditDay, // Now directly opens modal in App.jsx
     handleDeleteDay,
-    handleAddCategory,
-    handleEditCategory,
+    handleAddCategory, // Now directly opens modal in App.jsx
+    handleEditCategory, // Now directly opens modal in App.jsx
     handleDeleteCategory
 }) {
     const [expandedCategories, setExpandedCategories] = useState(new Set());
     const [expandedExercises, setExpandedExercises] = useState(new Set());
-    const [showDayMenu, setShowDayMenu] = useState(null); // State for dropdown menu for day
-    const [showCategoryMenu, setShowCategoryMenu] = useState(null); // State for dropdown menu for category
+    const [showDayMenu, setShowDayMenu] = useState(null); 
+    const [showCategoryMenu, setShowCategoryMenu] = useState(null); 
 
     // Toggle expansion for a category
     const toggleCategory = useCallback((categoryName) => {
@@ -173,7 +173,7 @@ function MainWorkoutView({
 
     const renderExercise = useCallback((exercise, dayName, categoryName) => {
         const isExpanded = expandedExercises.has(exercise.id);
-        const exerciseBests = personalBests[exercise.name]; // Use exercise name for PB lookup
+        const exerciseBests = personalBests[exercise.name]; 
 
         return (
             <div key={exercise.id} className="bg-gray-800 rounded-lg shadow-md border border-gray-700">
@@ -249,6 +249,7 @@ function MainWorkoutView({
                                     Supprimer
                                 </button>
                             </div>
+                            {/* isAdvancedMode est accessible ici car c'est une prop du composant MainWorkoutView */}
                             {isAdvancedMode && (
                                 <button
                                     onClick={() => onAnalyzeProgression(exercise)}
@@ -269,7 +270,7 @@ function MainWorkoutView({
         const filteredExercises = getFilteredAndSortedExercises(dayName, categoryName);
 
         if (filteredExercises.length === 0 && searchTerm) {
-            return null; // Don't render category if no matching exercises are found with a search term
+            return null; 
         }
 
         return (
@@ -283,6 +284,7 @@ function MainWorkoutView({
                         {categoryName} ({filteredExercises.length})
                     </h3>
                     <div className="flex items-center gap-2">
+                         {/* isAdvancedMode est accessible ici car c'est une prop du composant MainWorkoutView */}
                          {isAdvancedMode && (
                             <div className="relative">
                                 <button
@@ -301,9 +303,15 @@ function MainWorkoutView({
                                         </button>
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); handleDeleteCategory(dayName, categoryName); setShowCategoryMenu(null); }}
-                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600 rounded-b-lg"
+                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
                                         >
                                             <Trash2 className="h-4 w-4" /> Supprimer
+                                        </button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleAddCategory(dayName); setShowCategoryMenu(null); }}
+                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
+                                        >
+                                            <Plus className="h-4 w-4" /> Ajouter Catégorie
                                         </button>
                                     </div>
                                 )}
@@ -336,7 +344,7 @@ function MainWorkoutView({
                 )}
             </div>
         );
-    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, isAdvancedMode, showCategoryMenu, handleEditCategory, handleDeleteCategory, onAddExercise]);
+    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, isAdvancedMode, showCategoryMenu, handleEditCategory, handleDeleteCategory, handleAddCategory]); // handleAddCategory was missing in dependencies
 
     return (
         <div className="space-y-6">
@@ -385,6 +393,7 @@ function MainWorkoutView({
                                 <Calendar className="h-5 w-5" />
                                 {dayName}
                             </button>
+                            {/* isAdvancedMode est accessible ici car c'est une prop du composant MainWorkoutView */}
                             {isAdvancedMode && (
                                 <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 z-10">
                                     <button
@@ -457,7 +466,7 @@ function MainWorkoutView({
                     });
 
                     if (visibleCategoriesForDay.length === 0 && (searchTerm || selectedCategoryFilter)) {
-                        return null; // Don't render day if no categories/exercises match filters
+                        return null; 
                     }
 
                     return (
