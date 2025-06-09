@@ -1684,41 +1684,7 @@ function App() {
                 </div>
             )}
 
-            {/* Bouton minuteur flottant */}
-            <button
-                onClick={() => setShowTimerModal(true)}
-                className={`fixed bottom-20 right-4 w-14 h-14 rounded-full shadow-lg transition-all z-40 flex items-center justify-center ${
-                    timerIsRunning 
-                        ? 'bg-green-500 hover:bg-green-600 animate-pulse' 
-                        : timerSeconds > 0 
-                            ? 'bg-yellow-500 hover:bg-yellow-600' 
-                            : 'bg-blue-500 hover:bg-blue-600'
-                }`}
-                title={timerIsRunning ? 'Minuteur en cours' : 'Ouvrir le minuteur'}
-            >
-                <Clock className="h-6 w-6 text-white" />
-                {timerSeconds > 0 && (
-                    <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center font-mono">
-                        {Math.floor(timerSeconds / 60)}
-                    </div>
-                )}
-            </button>
-
-            {/* Modal Timer */}
-            <TimerModal
-                isOpen={showTimerModal}
-                onClose={() => setShowTimerModal(false)}
-                timerSeconds={timerSeconds}
-                timerIsRunning={timerIsRunning}
-                timerIsFinished={timerIsFinished}
-                startTimer={startTimer}
-                pauseTimer={pauseTimer}
-                resetTimer={resetTimer}
-                setTimerSeconds={setTimerSeconds}
-                formatTime={formatTime}
-            />
-
-            {/* Toast de notification */}
+               {/* Toast de notification */}
             {toast && (
                 <Toast
                     message={toast.message}
