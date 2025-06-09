@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, query, limit, addDoc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore'; 
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, limit, addDoc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ChevronUp, Pencil, Sparkles, ArrowUp, ArrowDown,
@@ -9,15 +9,15 @@ import {
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
     Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
 } from 'lucide-react';
-import * as GenerativeAIModule from '@google/generative-ai'; // Corrected import syntax
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Import des composants
-import Toast from './components/Toast.jsx';
-import MainWorkoutView from './components/MainWorkoutView.jsx';
-import HistoryView from './components/HistoryView.jsx';
-import TimerView from './components/TimerView.jsx';
-import StatsView from './components/StatsView.jsx'; 
-import BottomNavigationBar from './components/BottomNavigationBar.jsx';
+import Toast from './Toast.jsx';
+import MainWorkoutView from './MainWorkoutView.jsx';
+import HistoryView from './HistoryView.jsx';
+import TimerView from './TimerView.jsx';
+import StatsView from './StatsView.jsx';
+import BottomNavigationBar from './BottomNavigationBar.jsx';
 
 // Configuration Firebase sécurisée
 const firebaseConfig = {
@@ -29,8 +29,13 @@ const firebaseConfig = {
     appId: import.meta.env?.VITE_FIREBASE_APP_ID || "demo-app",
 };
 
+// Initialisation
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
 // Configuration Gemini AI
-const genAI = new GenerativeAIModule.GoogleGenerativeAI(import.meta.env?.VITE_GEMINI_API_KEY || "demo-key");
+const genAI = new GoogleGenerativeAI(import.meta.env?.VITE_GEMINI_API_KEY || "demo-key");
 
 // Constantes
 const MAX_UNDO_STATES = 20;
@@ -151,14 +156,14 @@ const baseInitialData = {
         'Lundi + Jeudi': {
             categories: {
                 PECS: [
-                    { id: generateUUID(), name: 'D.Couché léger', series: [{ weight: '10', reps: '12', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() },
-                    { id: generateUUID(), name: 'D.Couché lourd', series: [{ weight: '14', reps: '8', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'D.Couché léger', series: [{ weight: '10', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() },
+                    { id: generateUUID(), name: 'D.Couché lourd', series: [{ weight: '14', reps: '8' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 EPAULES: [
-                    { id: generateUUID(), name: 'D.Epaules léger', series: [{ weight: '8', reps: '15', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'D.Epaules léger', series: [{ weight: '8', reps: '15' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 TRICEPS: [
-                    { id: generateUUID(), name: 'Haltere Front léger', series: [{ weight: '4', reps: '12', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'Haltere Front léger', series: [{ weight: '4', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ]
             },
             categoryOrder: ['PECS', 'EPAULES', 'TRICEPS']
@@ -166,10 +171,10 @@ const baseInitialData = {
         'Mardi + Vendredi': {
             categories: {
                 DOS: [
-                    { id: generateUUID(), name: 'R. Haltères Léger', series: [{ weight: '10', reps: '12', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'R. Haltères Léger', series: [{ weight: '10', reps: '12' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ],
                 BICEPS: [
-                    { id: generateUUID(), name: 'Curl Léger', series: [{ weight: '8', reps: '15', isCompleted: false }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
+                    { id: generateUUID(), name: 'Curl Léger', series: [{ weight: '8', reps: '15' }], isDeleted: false, notes: '', createdAt: new Date().toISOString() }
                 ]
             },
             categoryOrder: ['DOS', 'BICEPS']
@@ -193,20 +198,12 @@ const ImprovedWorkoutApp = () => {
     const [workouts, setWorkouts] = useState(baseInitialData); // Initialisation avec données de base
     const [historicalData, setHistoricalData] = useState([]);
     const [personalBests, setPersonalBests] = useState({});
-
-    // Firebase instances (déclarées ici pour être accessibles)
-    const [app, setApp] = useState(null);
-    const [db, setDb] = useState(null);
-    const [auth, setAuth] = useState(null);
     
     // États de l'interface
     const [toast, setToast] = useState(null);
     const [selectedDayFilter, setSelectedDayFilter] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [sortBy, setSortBy] = useState('date');
-    // New states for MainWorkoutView filtering
-    const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
-    const [showOnlyCompleted, setShowOnlyCompleted] = useState(false);
     
     // États des modales
     const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
@@ -214,24 +211,12 @@ const ImprovedWorkoutApp = () => {
     const [showStatsModal, setShowStatsModal] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
-
-    const [showAddDayModal, setShowAddDayModal] = useState(false);
-    const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
-    const [showEditDayModal, setShowEditDayModal] = useState(false);
-    const [showEditCategoryModal, setShowEditCategoryModal] = useState(false); // Added this state
-    const [editingDayName, setEditingDayName] = useState('');
-    const [editingCategoryName, setEditingCategoryName] = useState('');
-    const [editingDayOriginalName, setEditingDayOriginalName] = useState('');
-    const [editingCategoryOriginalName, setEditingCategoryOriginalName] = useState('');
-    const [selectedDayForCategory, setSelectedDayForCategory] = useState('');
-    const [newDayName, setNewDayName] = useState(''); 
-    const [newCategoryName, setNewCategoryName] = useState(''); 
     
     // États d'édition
     const [editingExercise, setEditingExercise] = useState(null);
     const [editingExerciseName, setEditingExerciseName] = useState('');
     const [newWeight, setNewWeight] = useState('');
-    const [newSets, setNewSets] = useState('3'); 
+    const [newSets, setNewSets] = useState('3');
     const [newReps, setNewReps] = useState('');
     const [selectedDayForAdd, setSelectedDayForAdd] = useState('');
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState('');
@@ -270,7 +255,7 @@ const ImprovedWorkoutApp = () => {
     const getDayButtonColors = useCallback((index, isSelected) => {
         const colors = [
             { default: 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700', selected: 'bg-gradient-to-r from-blue-700 to-blue-800 ring-2 ring-blue-400' },
-            { default: 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700', selected: 'bg-gradient-to-r from-green-700 to-green-800 ring-2 ring-400' },
+            { default: 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700', selected: 'bg-gradient-to-r from-green-700 to-green-800 ring-2 ring-green-400' },
             { default: 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700', selected: 'bg-gradient-to-r from-purple-700 to-purple-800 ring-2 ring-purple-400' },
             { default: 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700', selected: 'bg-gradient-to-r from-red-700 to-red-800 ring-2 ring-red-400' },
             { default: 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700', selected: 'bg-gradient-to-r from-yellow-700 to-yellow-800 ring-2 ring-yellow-400' },
@@ -279,38 +264,15 @@ const ImprovedWorkoutApp = () => {
         return isSelected ? colorSet.selected : colorSet.default;
     }, []);
     
-    // Effet pour initialiser Firebase (exécuté une seule fois)
+    // Effets d'initialisation optimisés
     useEffect(() => {
-        if (!app) { // Initialiser seulement si 'app' n'est pas déjà défini
-            const firebaseApp = initializeApp(firebaseConfig);
-            const firestoreDb = getFirestore(firebaseApp);
-            const firebaseAuth = getAuth(firebaseApp);
-
-            setApp(firebaseApp);
-            setDb(firestoreDb);
-            setAuth(firebaseAuth);
-        }
-    }, [app]); // Dépendance sur `app` pour s'assurer qu'il n'est initialisé qu'une fois.
-
-    // Effet pour l'authentification Firebase et le chargement initial des données
-    useEffect(() => {
-        if (!auth || !db) return; // S'assurer que Firebase est initialisé
-
-        const initAuthAndLoadData = async () => {
+        const initAuth = async () => {
             try {
-                // IMPORTANT: Use the __initial_auth_token provided by the Canvas environment.
-                // If not defined, sign in anonymously.
-                if (typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
+                await signInAnonymously(auth);
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         setUserId(user.uid);
                         setIsAuthReady(true);
-                        // Les données seront chargées par l'autre useEffect qui dépend de userId et isAuthReady
                     } else {
                         setLoading(false);
                         setToast({ 
@@ -326,12 +288,12 @@ const ImprovedWorkoutApp = () => {
                 setToast({ message: "Erreur de connexion", type: 'error' });
             }
         };
-        initAuthAndLoadData();
-    }, [auth, db]); // Dépend de auth et db pour s'assurer qu'ils sont prêts
+        initAuth();
+    }, []);
     
-    // Effet pour charger les données avec cache (dépend de userId et isAuthReady)
+    // Effet pour charger les données avec cache
     useEffect(() => {
-        if (!userId || !isAuthReady || !db) return; // S'assurer que db est prêt
+        if (!userId || !isAuthReady) return;
 
         const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
         const unsubscribe = onSnapshot(workoutDocRef, (doc) => {
@@ -347,6 +309,7 @@ const ImprovedWorkoutApp = () => {
             } catch (error) {
                 console.error("Erreur traitement données:", error);
                 setToast({ message: "Erreur lors du chargement des données", type: 'error' });
+                // S'assurer qu'on a toujours des données valides même en cas d'erreur
                 setWorkouts(baseInitialData);
             } finally {
                 setLoading(false);
@@ -355,12 +318,13 @@ const ImprovedWorkoutApp = () => {
             console.error("Erreur Firestore:", error);
             setToast({ message: `Erreur Firestore: ${error.message}`, type: 'error' });
             setLoading(false);
+            // S'assurer qu'on a toujours des données valides même en cas d'erreur
             setWorkouts(baseInitialData);
         });
 
         loadHistoricalData();
         return () => unsubscribe();
-    }, [userId, isAuthReady, db]); // Ajout de db comme dépendance
+    }, [userId, isAuthReady]);
 
     // Effet pour le minuteur avec optimisations
     useEffect(() => {
@@ -411,7 +375,7 @@ const ImprovedWorkoutApp = () => {
                     ? dayData.categoryOrder 
                     : Object.keys(dayData.categories || {});
                 
-                if (dayData.categories && typeof dayData.categories === 'object') { // Corrected: dayData.categories should be checked for object type
+                if (dayData.categories && typeof dayData.categories === 'object') {
                     Object.entries(dayData.categories).forEach(([categoryKey, exercises]) => {
                         if (!Array.isArray(exercises)) return;
                         
@@ -421,10 +385,9 @@ const ImprovedWorkoutApp = () => {
                             series: Array.isArray(exercise.series) 
                                 ? exercise.series.map(s => ({
                                     weight: String(s.weight || ''),
-                                    reps: String(s.reps || ''),
-                                    isCompleted: Boolean(s.isCompleted) // Ensure isCompleted is boolean
+                                    reps: String(s.reps || '')
                                 }))
-                                : [{ weight: '', reps: '', isCompleted: false }],
+                                : [{ weight: '', reps: '' }],
                             isDeleted: Boolean(exercise.isDeleted),
                             notes: String(exercise.notes || ''),
                             createdAt: exercise.createdAt || new Date().toISOString()
@@ -443,11 +406,11 @@ const ImprovedWorkoutApp = () => {
     }, []);
 
     const loadHistoricalData = useCallback(async () => {
-        if (!userId || !db) return; // S'assurer que db est prêt
+        if (!userId) return;
         
         try {
             const sessionsRef = collection(db, 'users', userId, 'sessions');
-            const q = query(sessionsRef, /* Removed orderBy as per past instructions */ limit(100));
+            const q = query(sessionsRef, orderBy('timestamp', 'desc'), limit(100));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 const data = snapshot.docs.map(doc => {
                     const docData = doc.data();
@@ -456,7 +419,7 @@ const ImprovedWorkoutApp = () => {
                     if (docData.timestamp instanceof Timestamp) {
                         timestamp = docData.timestamp.toDate();
                     } else if (docData.timestamp) {
-                        timestamp = new Date(docData.timestamp.seconds * 1000 + docData.timestamp.nanoseconds / 1000000); // Convert Firestore Timestamp to Date
+                        timestamp = new Date(docData.timestamp);
                     } else {
                         timestamp = new Date();
                     }
@@ -477,7 +440,7 @@ const ImprovedWorkoutApp = () => {
             console.error("Erreur chargement historique:", error);
             setToast({ message: "Erreur lors du chargement de l'historique", type: 'error' });
         }
-    }, [userId, db]); // Ajout de db comme dépendance
+    }, [userId]);
 
     const calculatePersonalBests = useCallback((data) => {
         const bests = {};
@@ -508,33 +471,17 @@ const ImprovedWorkoutApp = () => {
                                     bests[exercise.name] = {
                                         name: exercise.name,
                                         maxWeight: weight,
-                                        bestWeightSeries: { weight, reps }, // Store the series that achieved max weight
                                         maxReps: reps,
-                                        bestRepsSeries: { weight, reps },   // Store the series that achieved max reps
                                         maxVolume: volume,
                                         totalVolume: volume,
                                         sessions: 1,
-                                        lastPerformed: session.timestamp,
-                                        lastAchieved: session.timestamp // Same as lastPerformed for simplicity
+                                        lastPerformed: session.timestamp
                                     };
                                 } else {
                                     const best = bests[exercise.name];
-                                    if (weight > best.maxWeight) {
-                                        best.maxWeight = weight;
-                                        best.bestWeightSeries = { weight, reps };
-                                        best.lastAchieved = session.timestamp;
-                                    }
-                                    if (reps > best.maxReps) { 
-                                        best.maxReps = reps;
-                                        best.bestRepsSeries = { weight, reps };
-                                        if (weight >= best.maxWeight) { // Only update lastAchieved if also a new weight PB or same weight
-                                           best.lastAchieved = session.timestamp;
-                                        }
-                                    }
-                                    if (volume > best.maxVolume) {
-                                        best.maxVolume = volume;
-                                        best.lastAchieved = session.timestamp;
-                                    }
+                                    best.maxWeight = Math.max(best.maxWeight, weight);
+                                    best.maxReps = Math.max(best.maxReps, reps);
+                                    best.maxVolume = Math.max(best.maxVolume, volume);
                                     best.totalVolume += volume;
                                     best.sessions++;
                                     if (session.timestamp > best.lastPerformed) {
@@ -552,8 +499,8 @@ const ImprovedWorkoutApp = () => {
     }, []);
 
     const saveWorkoutsOptimized = useCallback(async (workoutsData, successMessage = "Sauvegardé !", saveOnlyModified = false) => {
-        if (!userId || !db) { // S'assurer que db est prêt
-            setToast({ message: "Utilisateur non connecté ou base de données non prête", type: 'error' });
+        if (!userId) {
+            setToast({ message: "Utilisateur non connecté", type: 'error' });
             return;
         }
         
@@ -595,7 +542,7 @@ const ImprovedWorkoutApp = () => {
                 });
             }
         }, AUTO_SAVE_DELAY);
-    }, [userId, db]); // Ajout de db comme dépendance
+    }, [userId]);
 
     const applyChanges = useCallback((newWorkoutsState, message = "Modification effectuée") => {
         setUndoStack(prev => {
@@ -639,8 +586,7 @@ const ImprovedWorkoutApp = () => {
             name: newExerciseName.trim(),
             series: Array(setsNum).fill(null).map(() => ({
                 weight: newWeight.toString(),
-                reps: newReps.toString(),
-                isCompleted: false // Default to not completed
+                reps: newReps.toString()
             })),
             isDeleted: false,
             notes: '',
@@ -661,7 +607,7 @@ const ImprovedWorkoutApp = () => {
     }, [newExerciseName, selectedDayForAdd, selectedCategoryForAdd, newSets, newWeight, newReps, workouts, applyChanges]);
 
     const handleEditClick = useCallback((day, category, exerciseId, exercise) => {
-        setEditingExercise({ day, category, exerciseId, name: exercise.name }); // Store exercise name for proper context
+        setEditingExercise({ day, category, exerciseId });
         setEditingExerciseName(exercise.name);
         
         if (exercise.series && exercise.series.length > 0) {
@@ -726,12 +672,10 @@ const ImprovedWorkoutApp = () => {
             return;
         }
         
-        // Créer les nouvelles séries, preserving isCompleted if available
-        const currentSeries = exercises[exerciseIndex].series;
-        const newSeriesArray = Array(setsNum || 1).fill(null).map((_, idx) => ({
+        // Créer les nouvelles séries
+        const newSeriesArray = Array(setsNum || 1).fill(null).map(() => ({
             weight: newWeight,
-            reps: newReps,
-            isCompleted: currentSeries[idx]?.isCompleted || false // Preserve completion status if exists
+            reps: newReps
         }));
         
         exercises[exerciseIndex] = {
@@ -774,232 +718,79 @@ const ImprovedWorkoutApp = () => {
         setIsDeletingExercise(false);
     }, [workouts, applyChanges]);
 
-    // Fonctions de gestion des séries (utilisées dans MainWorkoutView)
-    const onToggleSerieCompleted = useCallback((day, category, exerciseId, serieIndex) => {
+    // Fonctions de gestion des jours
+    const handleAddDay = useCallback((dayName) => {
         const updatedWorkouts = { ...workouts };
-        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-        if (!exercises) return;
-
-        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) return;
-
-        const updatedSeries = [...exercises[exerciseIndex].series];
-        updatedSeries[serieIndex] = { ...updatedSeries[serieIndex], isCompleted: !updatedSeries[serieIndex].isCompleted };
-        exercises[exerciseIndex] = { ...exercises[exerciseIndex], series: updatedSeries };
-
-        applyChanges(updatedWorkouts, "Série mise à jour !");
-    }, [workouts, applyChanges]);
-
-    const onUpdateSerie = useCallback((day, category, exerciseId, serieIndex, field, value) => {
-        const updatedWorkouts = { ...workouts };
-        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-        if (!exercises) return;
-
-        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) return;
-
-        const updatedSeries = [...exercises[exerciseIndex].series];
-        updatedSeries[serieIndex] = { ...updatedSeries[serieIndex], [field]: value };
-        exercises[exerciseIndex] = { ...exercises[exerciseIndex], series: updatedSeries };
-
-        applyChanges(updatedWorkouts, "Série modifiée !");
-    }, [workouts, applyChanges]);
-
-    const onAddSerie = useCallback((day, category, exerciseId) => {
-        const updatedWorkouts = { ...workouts };
-        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-        if (!exercises) return;
-
-        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) return;
-
-        const newSerie = { weight: '', reps: '', isCompleted: false };
-        exercises[exerciseIndex] = {
-            ...exercises[exerciseIndex],
-            series: [...exercises[exerciseIndex].series, newSerie]
-        };
-
-        applyChanges(updatedWorkouts, "Série ajoutée !");
-    }, [workouts, applyChanges]);
-
-    const onRemoveSerie = useCallback((day, category, exerciseId, serieIndex) => {
-        const updatedWorkouts = { ...workouts };
-        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-        if (!exercises) return;
-
-        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) return;
-
-        const updatedSeries = exercises[exerciseIndex].series.filter((_, idx) => idx !== serieIndex);
-        exercises[exerciseIndex] = { ...exercises[exerciseIndex], series: updatedSeries };
-
-        applyChanges(updatedWorkouts, "Série supprimée !");
-    }, [workouts, applyChanges]);
-
-    const onUpdateExerciseNotes = useCallback((day, category, exerciseId, notes) => {
-        const updatedWorkouts = { ...workouts };
-        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
-        if (!exercises) return;
-
-        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-        if (exerciseIndex === -1) return;
-
-        exercises[exerciseIndex] = { ...exercises[exerciseIndex], notes };
-        applyChanges(updatedWorkouts, "Notes mises à jour !");
-    }, [workouts, applyChanges]);
-
-    // Gestion des jours
-    const handleAddDay = useCallback(() => {
-        if (!newDayName.trim()) {
-            setToast({ message: "Le nom du jour est requis", type: 'error' });
-            return;
-        }
-        
-        if (workouts.days[newDayName.trim()]) {
-            setToast({ message: "Ce jour existe déjà", type: 'error' });
-            return;
-        }
-        
-        const updatedWorkouts = { ...workouts };
-        updatedWorkouts.days[newDayName.trim()] = {
+        updatedWorkouts.days[dayName] = {
             categories: {},
             categoryOrder: []
         };
+        updatedWorkouts.dayOrder = [...(updatedWorkouts.dayOrder || []), dayName];
         
-        if (!updatedWorkouts.dayOrder) {
-            updatedWorkouts.dayOrder = [];
-        }
-        updatedWorkouts.dayOrder.push(newDayName.trim());
-        
-        applyChanges(updatedWorkouts, `Jour "${newDayName}" ajouté !`);
-        setNewDayName('');
-        setShowAddDayModal(false);
-    }, [newDayName, workouts, applyChanges]);
+        applyChanges(updatedWorkouts, `Jour "${dayName}" ajouté !`);
+    }, [workouts, applyChanges]);
 
-    const handleEditDay = useCallback((originalDayName) => { 
-        if (!editingDayName.trim()) { // Check current input state
-            setToast({ message: "Le nom du jour est requis", type: 'error' });
-            return;
-        }
-        
-        if (editingDayName.trim() !== originalDayName && workouts.days[editingDayName.trim()]) {
-            setToast({ message: "Ce nom de jour existe déjà", type: 'error' });
-            return;
-        }
-        
+    const handleEditDay = useCallback((oldDayName, newDayName) => {
         const updatedWorkouts = { ...workouts };
         
         // Renommer le jour
-        if (editingDayName.trim() !== originalDayName) {
-            updatedWorkouts.days[editingDayName.trim()] = updatedWorkouts.days[originalDayName];
-            delete updatedWorkouts.days[originalDayName];
-            
-            // Mettre à jour dayOrder
-            const dayIndex = updatedWorkouts.dayOrder.indexOf(originalDayName);
-            if (dayIndex !== -1) {
-                updatedWorkouts.dayOrder[dayIndex] = editingDayName.trim();
-            }
+        updatedWorkouts.days[newDayName] = updatedWorkouts.days[oldDayName];
+        delete updatedWorkouts.days[oldDayName];
+        
+        // Mettre à jour l'ordre
+        const dayIndex = updatedWorkouts.dayOrder.indexOf(oldDayName);
+        if (dayIndex !== -1) {
+            updatedWorkouts.dayOrder[dayIndex] = newDayName;
         }
         
-        applyChanges(updatedWorkouts, `Jour "${originalDayName}" modifié en "${editingDayName}" !`);
-        setEditingDayName('');
-        setEditingDayOriginalName(''); // Reset original name
-        setShowEditDayModal(false);
-    }, [editingDayName, editingDayOriginalName, workouts, applyChanges]); // Depend on editingDayOriginalName
+        // Ajuster le filtre si nécessaire
+        if (selectedDayFilter === oldDayName) {
+            setSelectedDayFilter(newDayName);
+        }
+        
+        applyChanges(updatedWorkouts, `Jour renommé en "${newDayName}" !`);
+    }, [workouts, applyChanges, selectedDayFilter]);
 
     const handleDeleteDay = useCallback((dayName) => {
         const updatedWorkouts = { ...workouts };
-        delete updatedWorkouts.days[dayName];
         
-        if (updatedWorkouts.dayOrder) {
-            updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(day => day !== dayName);
+        // Supprimer le jour
+        delete updatedWorkouts.days[dayName];
+        updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(day => day !== dayName);
+        
+        // Réinitialiser le filtre si nécessaire
+        if (selectedDayFilter === dayName) {
+            setSelectedDayFilter('');
         }
         
         applyChanges(updatedWorkouts, `Jour "${dayName}" supprimé !`);
-    }, [workouts, applyChanges]);
+    }, [workouts, applyChanges, selectedDayFilter]);
 
-    // Gestion des catégories
-    const handleAddCategory = useCallback(() => {
-        if (!newCategoryName.trim() || !selectedDayForCategory) {
-            setToast({ message: "Le nom de la catégorie et le jour sont requis", type: 'error' });
-            return;
-        }
-        
-        const updatedWorkouts = { ...workouts };
-        
-        if (!updatedWorkouts.days[selectedDayForCategory]) {
-            setToast({ message: "Jour introuvable", type: 'error' });
-            return;
-        }
-        
-        if (updatedWorkouts.days[selectedDayForCategory].categories[newCategoryName.trim()]) {
-            setToast({ message: "Cette catégorie existe déjà pour ce jour", type: 'error' });
-            return;
-        }
-        
-        updatedWorkouts.days[selectedDayForCategory].categories[newCategoryName.trim()] = [];
-        
-        if (!updatedWorkouts.days[selectedDayForCategory].categoryOrder) {
-            updatedWorkouts.days[selectedDayForCategory].categoryOrder = [];
-        }
-        updatedWorkouts.days[selectedDayForCategory].categoryOrder.push(newCategoryName.trim());
-        
-        applyChanges(updatedWorkouts, `Catégorie "${newCategoryName}" ajoutée !`);
-        setNewCategoryName('');
-        setSelectedDayForCategory('');
-        setShowAddCategoryModal(false);
-    }, [newCategoryName, selectedDayForCategory, workouts, applyChanges]);
+    const handleReactivateExercise = useCallback((exerciseId) => {
+       const updatedWorkouts = { ...workouts };
+       let found = false;
+       
+       // Rechercher l'exercice dans toutes les catégories et jours
+       Object.values(updatedWorkouts.days).forEach(day => {
+           Object.values(day.categories).forEach(exercises => {
+               if (Array.isArray(exercises)) {
+                   const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+                   if (exerciseIndex !== -1) {
+                       exercises[exerciseIndex].isDeleted = false;
+                       delete exercises[exerciseIndex].deletedAt;
+                       found = true;
+                   }
+               }
+           });
+       });
+       
+       if (found) {
+           applyChanges(updatedWorkouts, "Exercice réactivé !");
+       } else {
+           setToast({ message: "Exercice non trouvé", type: 'error' });
+       }
+   }, [workouts, applyChanges]);
 
-    const handleEditCategory = useCallback((dayName, originalCategoryName) => { 
-        if (!editingCategoryName.trim() || !originalCategoryName || !dayName) {
-            setToast({ message: "Informations manquantes pour la modification de catégorie", type: 'error' });
-            return;
-        }
-        
-        const updatedWorkouts = { ...workouts };
-        
-        if (editingCategoryName.trim() !== originalCategoryName && 
-            updatedWorkouts.days[dayName].categories[editingCategoryName.trim()]) {
-            setToast({ message: "Ce nom de catégorie existe déjà pour ce jour", type: 'error' });
-            return;
-        }
-        
-        // Renommer la catégorie
-        if (editingCategoryName.trim() !== originalCategoryName) {
-            updatedWorkouts.days[dayName].categories[editingCategoryName.trim()] = 
-                updatedWorkouts.days[dayName].categories[originalCategoryName];
-            delete updatedWorkouts.days[dayName].categories[originalCategoryName];
-            
-            // Mettre à jour categoryOrder
-            if (updatedWorkouts.days[dayName].categoryOrder) {
-                const categoryIndex = updatedWorkouts.days[dayName].categoryOrder.indexOf(originalCategoryName);
-                if (categoryIndex !== -1) {
-                    updatedWorkouts.days[dayName].categoryOrder[categoryIndex] = editingCategoryName.trim();
-                }
-            }
-        }
-        
-        applyChanges(updatedWorkouts, `Catégorie "${originalCategoryName}" modifiée en "${editingCategoryName}" !`);
-        setEditingCategoryName('');
-        setEditingCategoryOriginalName('');
-        setShowEditCategoryModal(false);
-    }, [editingCategoryName, editingCategoryOriginalName, workouts, applyChanges]);
-
-    const handleDeleteCategory = useCallback((dayName, categoryName) => {
-        const updatedWorkouts = { ...workouts };
-        
-        if (updatedWorkouts.days[dayName]) {
-            delete updatedWorkouts.days[dayName].categories[categoryName];
-            
-            if (updatedWorkouts.days[dayName].categoryOrder) {
-                updatedWorkouts.days[dayName].categoryOrder = 
-                    updatedWorkouts.days[dayName].categoryOrder.filter(cat => cat !== categoryName);
-            }
-        }
-        
-        applyChanges(updatedWorkouts, `Catégorie "${categoryName}" supprimée !`);
-    }, [workouts, applyChanges]);
-    
    // Fonctions de minuteur optimisées
    const startTimer = useCallback(() => {
        setTimerIsRunning(true);
@@ -1024,55 +815,24 @@ const ImprovedWorkoutApp = () => {
        setTimerIsFinished(false);
    }, []);
 
-   // Fonction pour réactiver un exercice (passée à HistoryView)
-   const handleReactivateExercise = useCallback((exerciseId, dayName, categoryName) => {
-        const updatedWorkouts = { ...workouts };
-        // Find the exercise by iterating through all days and categories
-        let found = false;
-        for (const dayKey in updatedWorkouts.days) {
-            const dayData = updatedWorkouts.days[dayKey];
-            for (const categoryKey in dayData.categories) {
-                const exercises = dayData.categories[categoryKey];
-                const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-                if (exerciseIndex !== -1) {
-                    exercises[exerciseIndex].isDeleted = false;
-                    delete exercises[exerciseIndex].deletedAt;
-                    found = true;
-                    setToast({ message: `Exercice "${exercises[exerciseIndex].name}" réactivé !`, type: 'success' });
-                    break;
-                }
-            }
-            if (found) break;
-        }
-
-        if (!found) {
-            setToast({ message: "Exercice non trouvé pour réactivation", type: 'error' });
-            return;
-        }
-        applyChanges(updatedWorkouts, `Exercice réactivé !`);
-    }, [workouts, applyChanges]);
-
    // Analyse IA améliorée
-   const analyzeProgressionWithAI = useCallback(async (exerciseData) => { // Now expects exerciseData object
-       if (!exerciseData || !exerciseData.name || !exerciseData.series) {
-           setToast({ message: "Données d'exercice invalides pour l'analyse IA.", type: 'error' });
-           return;
-       }
+   const analyzeProgressionWithAI = useCallback(async (exerciseData) => {
+       if (!exerciseData) return;
        
        setAiAnalysisLoading(true);
        
        try {
            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
            
-           const recentSeries = exerciseData.series?.slice(-20) || []; // Use series from passed exerciseData
+           const recentSeries = exerciseData.series?.slice(-20) || [];
            const prompt = `Analyse cette progression d'exercice de musculation et donne des conseils personnalisés en français:
                
                Nom de l'exercice: ${exerciseData.name}
                Historique récent (20 dernières séries): ${JSON.stringify(recentSeries)}
-               Record personnel (poids): ${personalBests[exerciseData.name]?.maxWeight || 'N/A'}kg
-               Record personnel (reps): ${personalBests[exerciseData.name]?.maxReps || 'N/A'}
-               Volume total: ${personalBests[exerciseData.name]?.totalVolume || 'N/A'}kg
-               Nombre de sessions: ${personalBests[exerciseData.name]?.sessions || 'N/A'}
+               Record personnel (poids): ${personalBests[exerciseData.id]?.maxWeight || 'N/A'}kg
+               Record personnel (reps): ${personalBests[exerciseData.id]?.maxReps || 'N/A'}
+               Volume total: ${personalBests[exerciseData.id]?.totalVolume || 'N/A'}kg
+               Nombre de sessions: ${personalBests[exerciseData.id]?.sessions || 'N/A'}
                
                Fournis une analyse concise et pratique avec:
                1. 📈 Tendance de progression (positive/stagnation/régression)
@@ -1096,15 +856,6 @@ const ImprovedWorkoutApp = () => {
            setAiAnalysisLoading(false);
        }
    }, [personalBests]);
-
-   // Function to show progression graph (now triggers AI analysis)
-   const showProgressionGraphForExercise = useCallback((exerciseData) => { // Expects full exerciseData
-        if (exerciseData && analyzeProgressionWithAI) {
-            analyzeProgressionWithAI(exerciseData);
-        } else {
-            setToast({ message: "Données d'exercice insuffisantes pour afficher la progression.", type: 'error' });
-        }
-   }, [analyzeProgressionWithAI]);
 
    // Fonctions d'export/import optimisées
    const exportData = useCallback(() => {
@@ -1207,52 +958,6 @@ const ImprovedWorkoutApp = () => {
        });
    }, [workouts]);
 
-    const onSaveToHistory = useCallback(async () => {
-        if (!userId || !db) {
-            setToast({ message: "Utilisateur non connecté ou base de données non prête", type: 'error' });
-            return;
-        }
-
-        try {
-            const batch = writeBatch(db);
-            const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
-
-            // Mise à jour de la date de dernière modification des entraînements
-            batch.set(workoutDocRef, { lastModified: serverTimestamp() }, { merge: true });
-
-            // Enregistrement de la session dans l'historique
-            const sessionsRef = collection(db, 'users', userId, 'sessions');
-            const newSessionRef = doc(sessionsRef); 
-            batch.set(newSessionRef, {
-                timestamp: serverTimestamp(),
-                workoutData: workouts, 
-                version: '2.0'
-            });
-            
-            await batch.commit();
-
-            setToast({ message: "Séance sauvegardée dans l'historique !", type: 'success' });
-            setLastSaveTime(new Date());
-
-            // Réinitialiser les séries "completed"
-            const resetWorkouts = JSON.parse(JSON.stringify(workouts)); 
-            Object.values(resetWorkouts.days).forEach(day => {
-                Object.values(day.categories).forEach(exercises => {
-                    exercises.forEach(exercise => {
-                        exercise.series.forEach(serie => { // Iterate over series in each exercise
-                            serie.isCompleted = false; 
-                        });
-                    });
-                });
-            });
-            setWorkouts(resetWorkouts);
-            saveWorkoutsOptimized(resetWorkouts, "Entraînement réinitialisé", true); 
-        } catch (error) {
-            console.error("Erreur sauvegarde historique:", error);
-            setToast({ message: "Erreur lors de la sauvegarde de l'historique", type: 'error' });
-        }
-    }, [userId, db, workouts, saveWorkoutsOptimized]);
-
    // Calculs mémorisés pour les statistiques
    const getWorkoutStats = useCallback(() => {
        if (!workouts?.days || !historicalData) {
@@ -1352,11 +1057,6 @@ const ImprovedWorkoutApp = () => {
                    setShowStatsModal(false);
                    setShowExportModal(false);
                    setShowSettingsModal(false);
-                   setShowAddDayModal(false);
-                   setShowAddCategoryModal(false); 
-                   setShowEditDayModal(false); 
-                   setShowEditCategoryModal(false); 
-                   setProgressionAnalysisContent(''); // Close AI analysis modal on escape
                    break;
                case ' ':
                    if (currentView === 'timer' && !e.target.tagName.match(/INPUT|TEXTAREA|SELECT/)) {
@@ -1373,7 +1073,7 @@ const ImprovedWorkoutApp = () => {
 
        document.addEventListener('keydown', handleKeyPress);
        return () => document.removeEventListener('keydown', handleKeyPress);
-   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer, setShowAddDayModal, setShowAddCategoryModal, setShowEditDayModal, setShowEditCategoryModal, setProgressionAnalysisContent]); // Re-added modale setters to deps
+   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer]);
 
    // Demande de permission pour les notifications au démarrage
    useEffect(() => {
@@ -1576,34 +1276,18 @@ const ImprovedWorkoutApp = () => {
                {currentView === 'workout' && (
                    <MainWorkoutView
                        workouts={workouts}
-                       onToggleSerieCompleted={onToggleSerieCompleted}
-                       onUpdateSerie={onUpdateSerie}
-                       onAddSerie={onAddSerie}
-                       onRemoveSerie={onRemoveSerie}
-                       onUpdateExerciseNotes={onUpdateExerciseNotes}
-                       onEditClick={handleEditClick}
-                       onDeleteExercise={handleDeleteExercise}
-                       onAnalyzeProgression={analyzeProgressionWithAI} // Pass the correct function
-                       searchTerm={searchTerm} 
-                       setSearchTerm={setSearchTerm}
                        selectedDayFilter={selectedDayFilter}
                        setSelectedDayFilter={setSelectedDayFilter}
-                       selectedCategoryFilter={selectedCategoryFilter} // Use new state
-                       onCategoryFilterChange={(e) => setSelectedCategoryFilter(e.target.value)} // Use new setter
-                       showOnlyCompleted={showOnlyCompleted} // Use new state
-                       onToggleCompletedFilter={() => setShowOnlyCompleted(prev => !prev)} // Use new setter
-                       onAddExercise={() => { // Correctly trigger modal and pre-set day
-                           setShowAddExerciseModal(true); 
-                           setSelectedDayForAdd(selectedDayFilter); 
-                           setSelectedCategoryForAdd(''); // Clear category selection for new exercise
-                           setNewExerciseName(''); // Reset new exercise form fields
-                           setNewWeight('');
-                           setNewReps('');
-                           setNewSets('3');
-                       }}
-                       onSaveToHistory={onSaveToHistory}
+                       isAdvancedMode={isAdvancedMode}
                        isCompactView={isCompactView}
-                       historicalData={historicalData}
+                       handleEditClick={handleEditClick}
+                       handleAddExerciseClick={(day, category) => {
+                           setSelectedDayForAdd(day || (workouts?.dayOrder?.[0] || ''));
+                           setSelectedCategoryForAdd(category || 'PECS');
+                           setShowAddExerciseModal(true);
+                       }}
+                       handleDeleteExercise={handleDeleteExercise}
+                       analyzeProgressionWithAI={analyzeProgressionWithAI}
                        personalBests={personalBests}
                        getDayButtonColors={getDayButtonColors}
                        formatDate={formatDate}
@@ -1611,15 +1295,13 @@ const ImprovedWorkoutApp = () => {
                        isSavingExercise={isSavingExercise}
                        isDeletingExercise={isDeletingExercise}
                        isAddingExercise={isAddingExercise}
-                       isAdvancedMode={isAdvancedMode}
+                       searchTerm={debouncedSearchTerm}
+                       setSearchTerm={setSearchTerm}
                        days={workouts?.dayOrder || []}
                        categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
-                       handleAddDay={() => { setShowAddDayModal(true); setNewDayName(''); }} // Trigger modal and reset input
-                       handleEditDay={(dayName) => { setShowEditDayModal(true); setEditingDayName(dayName); setEditingDayOriginalName(dayName); }} // Trigger modal and set states
+                       handleAddDay={handleAddDay}
+                       handleEditDay={handleEditDay}
                        handleDeleteDay={handleDeleteDay}
-                       handleAddCategory={(dayName) => { setShowAddCategoryModal(true); setSelectedDayForCategory(dayName); setNewCategoryName(''); }} // Trigger modal and reset input
-                       handleEditCategory={(dayName, categoryName) => { setShowEditCategoryModal(true); setSelectedDayForCategory(dayName); setEditingCategoryName(categoryName); setEditingCategoryOriginalName(categoryName); }} // Trigger modal and set states
-                       handleDeleteCategory={handleDeleteCategory}
                    />
                )}
 
@@ -1645,7 +1327,6 @@ const ImprovedWorkoutApp = () => {
                        historicalData={historicalData}
                        personalBests={personalBests}
                        formatDate={formatDate}
-                       getWorkoutStats={getWorkoutStats} 
                    />
                )}
 
@@ -1655,7 +1336,6 @@ const ImprovedWorkoutApp = () => {
                        personalBests={personalBests}
                        handleReactivateExercise={handleReactivateExercise}
                        analyzeProgressionWithAI={analyzeProgressionWithAI}
-                       showProgressionGraphForExercise={showProgressionGraphForExercise} // Pass the new handler
                        formatDate={formatDate}
                        getSeriesDisplay={getSeriesDisplay}
                        isAdvancedMode={isAdvancedMode}
@@ -1847,7 +1527,7 @@ const ImprovedWorkoutApp = () => {
                                    <input
                                        type="text"
                                        value={editingExerciseName}
-                                       onChange={(e) => setEditingExerciseName(e.target.value)} // Correctly set editingExerciseName
+                                       onChange={(e) => setEditingExerciseName(e.target.value)}
                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                        placeholder="Nom de l'exercice"
                                    />
@@ -1898,13 +1578,12 @@ const ImprovedWorkoutApp = () => {
                                    />
                                </div>
 
-                               {/* Display personal best for the editing exercise */}
-                               {editingExercise?.name && personalBests[editingExercise.name] && (
+                               {personalBests[editingExercise.exerciseId] && (
                                    <div className="text-sm text-gray-400 bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg">
                                        <p className="font-medium mb-1 text-blue-400">🏆 Record personnel:</p>
-                                       <p>Poids max: {personalBests[editingExercise.name].maxWeight}kg</p>
-                                       <p>Reps max: {personalBests[editingExercise.name].maxReps}</p>
-                                       <p>Volume total: {Math.round(personalBests[editingExercise.name].totalVolume)}kg</p>
+                                       <p>Poids max: {personalBests[editingExercise.exerciseId].maxWeight}kg</p>
+                                       <p>Reps max: {personalBests[editingExercise.exerciseId].maxReps}</p>
+                                       <p>Volume total: {Math.round(personalBests[editingExercise.exerciseId].totalVolume)}kg</p>
                                    </div>
                                )}
                            </div>
@@ -1940,261 +1619,6 @@ const ImprovedWorkoutApp = () => {
                </div>
            )}
 
-           {/* Modale d'ajout de jour */}
-           {showAddDayModal && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Plus className="h-5 w-5 text-blue-400" />
-                                    Ajouter un nouveau jour
-                                </h3>
-                                <button
-                                    onClick={() => setShowAddDayModal(false)}
-                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Nom du jour *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={newDayName}
-                                        onChange={(e) => setNewDayName(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Ex: Lundi"
-                                        autoFocus
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex gap-3 mt-6">
-                                <button
-                                    onClick={() => setShowAddDayModal(false)}
-                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleAddDay}
-                                    disabled={!newDayName.trim()}
-                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                        !newDayName.trim()
-                                            ? 'bg-blue-500/50 text-white cursor-not-allowed'
-                                            : 'bg-blue-500 text-white hover:bg-blue-600'
-                                    }`}
-                                >
-                                    Ajouter
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modale d'édition de jour */}
-            {showEditDayModal && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Pencil className="h-5 w-5 text-yellow-400" />
-                                    Modifier le jour
-                                </h3>
-                                <button
-                                    onClick={() => setShowEditDayModal(false)}
-                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Nom du jour *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editingDayName}
-                                        onChange={(e) => setEditingDayName(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Nom du jour"
-                                        autoFocus
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex gap-3 mt-6">
-                                <button
-                                    onClick={() => setShowEditDayModal(false)}
-                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={() => handleEditDay(editingDayOriginalName)} // Pass original name for edit
-                                    disabled={!editingDayName.trim()}
-                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                        !editingDayName.trim()
-                                            ? 'bg-green-500/50 text-white cursor-not-allowed'
-                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                    }`}
-                                >
-                                    Sauvegarder
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modale d'ajout de catégorie */}
-            {showAddCategoryModal && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Plus className="h-5 w-5" />
-                                    Ajouter une nouvelle catégorie
-                                </h3>
-                                <button
-                                    onClick={() => setShowAddCategoryModal(false)}
-                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Jour d'entraînement *
-                                    </label>
-                                    <select
-                                        value={selectedDayForCategory}
-                                        onChange={(e) => setSelectedDayForCategory(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="">Sélectionner un jour</option>
-                                        {(workouts?.dayOrder || []).map(day => (
-                                           <option key={day} value={day}>{day}</option>
-                                       ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Nom de la catégorie *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={newCategoryName}
-                                        onChange={(e) => setNewCategoryName(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Ex: Pecs"
-                                        autoFocus
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex gap-3 mt-6">
-                                <button
-                                    onClick={() => setShowAddCategoryModal(false)}
-                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleAddCategory}
-                                    disabled={!newCategoryName.trim() || !selectedDayForCategory}
-                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                        (!newCategoryName.trim() || !selectedDayForCategory)
-                                            ? 'bg-blue-500/50 text-white cursor-not-allowed'
-                                            : 'bg-blue-500 text-white hover:bg-blue-600'
-                                    }`}
-                                >
-                                    Ajouter
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modale d'édition de catégorie */}
-            {showEditCategoryModal && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Pencil className="h-5 w-5 text-yellow-400" />
-                                    Modifier la catégorie
-                                </h3>
-                                <button
-                                    onClick={() => setShowEditCategoryModal(false)}
-                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Jour d'entraînement *
-                                    </label>
-                                    <select
-                                        value={selectedDayForCategory}
-                                        onChange={(e) => setSelectedDayForCategory(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        disabled // Should be disabled as category is tied to a specific day
-                                    >
-                                        {(workouts?.dayOrder || []).map(day => (
-                                            <option key={day} value={day}>{day}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Nom de la catégorie *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editingCategoryName}
-                                        onChange={(e) => setEditingCategoryName(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Nom de la catégorie"
-                                        autoFocus
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex gap-3 mt-6">
-                                <button
-                                    onClick={() => setShowEditCategoryModal(false)}
-                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={() => handleEditCategory(selectedDayForCategory, editingCategoryOriginalName)}
-                                    disabled={!editingCategoryName.trim()}
-                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                        !editingCategoryName.trim()
-                                            ? 'bg-green-500/50 text-white cursor-not-allowed'
-                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                    }`}
-                                >
-                                    Sauvegarder
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-
            {/* Modale de paramètres et export/import */}
            {showSettingsModal && (
                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
@@ -2202,7 +1626,7 @@ const ImprovedWorkoutApp = () => {
                        <div className="p-6">
                            <div className="flex items-center justify-between mb-6">
                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                   <Settings className="h-5 w-5" />
+                                   <Settings className="h-5 w-5 text-blue-400" />
                                    Paramètres
                                </h3>
                                <button
@@ -2300,9 +1724,9 @@ const ImprovedWorkoutApp = () => {
                                    </h4>
                                    <div className="text-sm text-gray-400 space-y-2">
                                        <p>Version: 2.0 Pro</p>
+                                       <p>Dernière sync: {lastSaveTime ? formatDate(lastSaveTime) : 'Jamais'}</p>
                                        <p>Utilisateur: {userId?.substring(0, 8)}...</p>
                                        <p>Notifications: {Notification?.permission || 'Non supportées'}</p>
-                                       <p>Dernière sync: {lastSaveTime ? formatDate(lastSaveTime) : 'Jamais'}</p>
                                    </div>
                                </div>
                            </div>
