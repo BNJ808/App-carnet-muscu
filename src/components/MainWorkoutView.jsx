@@ -464,7 +464,7 @@ function MainWorkoutView({
                                     Ajouter une série
                                 </button>
                             </>
-                        ) : (
+                        ) } (
                             <div className="text-gray-400 text-sm italic text-center py-4">
                                 Aucune série configurée
                             </div>
