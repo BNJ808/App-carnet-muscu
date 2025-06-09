@@ -32,14 +32,14 @@ const stableSort = (array, compareFunction) => {
 
 function MainWorkoutView({
     workouts,
-    onToggleSerieCompleted,
-    onUpdateSerie,
-    onAddSerie,
-    onRemoveSerie,
-    onUpdateExerciseNotes,
-    onEditClick,
-    onDeleteExercise,
-    onAnalyzeProgression,
+    // onToggleSerieCompleted, // Temporarily removed for debugging
+    // onUpdateSerie, // Temporarily removed for debugging
+    // onAddSerie, // Temporarily removed for debugging
+    // onRemoveSerie, // Temporarily removed for debugging
+    // onUpdateExerciseNotes, // Temporarily removed for debugging
+    // onEditClick, // Temporarily removed for debugging
+    // onDeleteExercise, // Temporarily removed for debugging
+    // onAnalyzeProgression, // Temporarily removed for debugging
     searchTerm,
     setSearchTerm,
     selectedDayFilter,
@@ -48,8 +48,8 @@ function MainWorkoutView({
     onCategoryFilterChange,
     showOnlyCompleted,
     onToggleCompletedFilter,
-    onAddExercise,
-    onSaveToHistory,
+    // onAddExercise, // Temporarily removed for debugging
+    // onSaveToHistory, // Temporarily removed for debugging
     isCompactView = false,
     historicalData = [],
     personalBests = {}, 
@@ -61,13 +61,13 @@ function MainWorkoutView({
     isAddingExercise, 
     days, 
     categories, 
-    handleAddDay, 
-    handleEditDay, 
-    handleDeleteDay,
-    handleAddCategory, 
-    handleEditCategory, 
-    handleDeleteCategory,
-    // isAdvancedMode removed for debugging purposes
+    // handleAddDay, // Temporarily removed for debugging
+    // handleEditDay, // Temporarily removed for debugging
+    // handleDeleteDay, // Temporarily removed for debugging
+    // handleAddCategory, // Temporarily removed for debugging
+    // handleEditCategory, // Temporarily removed for debugging
+    // handleDeleteCategory, // Temporarily removed for debugging
+    isAdvancedMode = false // Keeping the prop for now, but its usage is commented out
 }) {
     const [expandedCategories, setExpandedCategories] = useState(new Set());
     const [expandedExercises, setExpandedExercises] = useState(new Set());
@@ -139,7 +139,7 @@ function MainWorkoutView({
             <input
                 type="text"
                 value={serie.weight}
-                onChange={(e) => onUpdateSerie?.(dayName, categoryName, exerciseId, serieIndex, 'weight', e.target.value)}
+                // onChange={(e) => onUpdateSerie?.(dayName, categoryName, exerciseId, serieIndex, 'weight', e.target.value)} // Temporarily removed
                 className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 text-center"
                 placeholder="Poids"
                 inputMode="numeric"
@@ -148,20 +148,20 @@ function MainWorkoutView({
             <input
                 type="text"
                 value={serie.reps}
-                onChange={(e) => onUpdateSerie?.(dayName, categoryName, exerciseId, serieIndex, 'reps', e.target.value)}
+                // onChange={(e) => onUpdateSerie?.(dayName, categoryName, exerciseId, serieIndex, 'reps', e.target.value)} // Temporarily removed
                 className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 text-center"
                 placeholder="Reps"
                 inputMode="numeric"
             />
             <button
-                onClick={() => onRemoveSerie?.(dayName, categoryName, exerciseId, serieIndex)}
+                // onClick={() => onRemoveSerie?.(dayName, categoryName, exerciseId, serieIndex)} // Temporarily removed
                 className="p-1 rounded-full text-red-400 hover:bg-red-500/20 transition-colors"
                 title="Supprimer la série"
             >
                 <Trash2 className="h-4 w-4" />
             </button>
             <button
-                onClick={() => onToggleSerieCompleted?.(dayName, categoryName, exerciseId, serieIndex)}
+                // onClick={() => onToggleSerieCompleted?.(dayName, categoryName, exerciseId, serieIndex)} // Temporarily removed
                 className={`p-1 rounded-full transition-colors ${
                     serie.completed ? 'text-green-400 bg-green-500/20' : 'text-gray-400 hover:bg-gray-700'
                 }`}
@@ -170,7 +170,7 @@ function MainWorkoutView({
                 {serie.completed ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
             </button>
         </div>
-    ), [onRemoveSerie, onToggleSerieCompleted, onUpdateSerie]);
+    ), []); // Removed dependencies
 
     const renderExercise = useCallback((exercise, dayName, categoryName) => {
         const isExpanded = expandedExercises.has(exercise.id);
@@ -212,7 +212,7 @@ function MainWorkoutView({
                         </div>
                         <div className="flex gap-2 mt-3">
                             <button
-                                onClick={() => onAddSerie?.(dayName, categoryName, exercise.id)}
+                                // onClick={() => onAddSerie?.(dayName, categoryName, exercise.id)} // Temporarily removed
                                 className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                             >
                                 <Plus className="h-4 w-4" /> Ajouter une série
@@ -223,20 +223,20 @@ function MainWorkoutView({
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Notes</label>
                                 <textarea
                                     value={exercise.notes}
-                                    onChange={(e) => onUpdateExerciseNotes?.(dayName, categoryName, exercise.id, e.target.value)}
+                                    // onChange={(e) => onUpdateExerciseNotes?.(dayName, categoryName, exercise.id, e.target.value)} // Temporarily removed
                                     className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 min-h-[60px]"
                                     placeholder="Ajouter des notes sur cet exercice..."
                                 />
                             </div>
                             <div className="flex gap-2">
                                 <button
-                                    onClick={() => onEditClick?.(dayName, categoryName, exercise.id, exercise)}
+                                    // onClick={() => onEditClick?.(dayName, categoryName, exercise.id, exercise)} // Temporarily removed
                                     className="flex-1 py-2 px-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                                 >
                                     <Pencil className="h-4 w-4" /> Modifier
                                 </button>
                                 <button
-                                    onClick={() => onDeleteExercise?.(dayName, categoryName, exercise.id)}
+                                    // onClick={() => onDeleteExercise?.(dayName, categoryName, exercise.id)} // Temporarily removed
                                     disabled={isDeletingExercise}
                                     className={`flex-1 py-2 px-3 rounded-lg text-sm flex items-center justify-center gap-1 transition-colors ${
                                         isDeletingExercise ? 'bg-red-500/50 cursor-wait' : 'bg-red-600 hover:bg-red-700 text-white'
@@ -262,7 +262,7 @@ function MainWorkoutView({
                 )}
             </div>
         );
-    }, [expandedExercises, isDeletingExercise, personalBests, onAddSerie, onEditClick, onDeleteExercise, onUpdateExerciseNotes, onAnalyzeProgression, renderSerie, toggleExercise, getSeriesDisplay]);
+    }, [expandedExercises, isDeletingExercise, personalBests, renderSerie, toggleExercise, getSeriesDisplay]);
 
     const renderCategory = useCallback((categoryName, dayName) => {
         const isExpanded = expandedCategories.has(`${dayName}-${categoryName}`);
@@ -332,7 +332,7 @@ function MainWorkoutView({
                             </div>
                         )}
                         <button
-                            onClick={() => onAddExercise?.(dayName, categoryName)}
+                            // onClick={() => onAddExercise?.(dayName, categoryName)} // Temporarily removed
                             className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                         >
                             <Plus className="h-4 w-4" /> Ajouter un exercice
@@ -341,7 +341,7 @@ function MainWorkoutView({
                 )}
             </div>
         );
-    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, showCategoryMenu, handleEditCategory, handleDeleteCategory, handleAddCategory]); 
+    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, showCategoryMenu]); // Removed dependencies related to advanced mode functions
 
     return (
         <div className="space-y-6">
