@@ -253,7 +253,7 @@ function MainWorkoutView({
                             {/* isAdvancedMode est accessible ici car c'est une prop du composant MainWorkoutView */}
                             {isAdvancedMode && (
                                 <button
-                                    onClick={() => onAnalyzeProgression(exercise)}
+                                    onClick={() => onAnalyzeProgression && onAnalyzeProgression(exercise)}
                                     className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                                 >
                                     <Sparkles className="h-4 w-4" /> Analyser la progression (IA)
@@ -297,19 +297,19 @@ function MainWorkoutView({
                                 {showCategoryMenu === `${dayName}-${categoryName}` && (
                                     <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-10">
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); handleEditCategory(dayName, categoryName); setShowCategoryMenu(null); }}
+                                            onClick={(e) => { e.stopPropagation(); handleEditCategory && handleEditCategory(dayName, categoryName); setShowCategoryMenu(null); }}
                                             className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
                                         >
                                             <Pencil className="h-4 w-4" /> Modifier
                                         </button>
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); handleDeleteCategory(dayName, categoryName); setShowCategoryMenu(null); }}
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteCategory && handleDeleteCategory(dayName, categoryName); setShowCategoryMenu(null); }}
                                             className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
                                         >
                                             <Trash2 className="h-4 w-4" /> Supprimer
                                         </button>
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); handleAddCategory(dayName); setShowCategoryMenu(null); }}
+                                            onClick={(e) => { e.stopPropagation(); handleAddCategory && handleAddCategory(dayName); setShowCategoryMenu(null); }}
                                             className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
                                         >
                                             <Plus className="h-4 w-4" /> Ajouter Catégorie
@@ -407,19 +407,19 @@ function MainWorkoutView({
                                     {showDayMenu === dayName && (
                                         <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-20">
                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); handleEditDay(dayName); setShowDayMenu(null); }}
+                                                onClick={(e) => { e.stopPropagation(); handleEditDay && handleEditDay(dayName); setShowDayMenu(null); }}
                                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
                                             >
                                                 <Pencil className="h-4 w-4" /> Modifier
                                             </button>
                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); handleDeleteDay(dayName); setShowDayMenu(null); }}
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteDay && handleDeleteDay(dayName); setShowDayMenu(null); }}
                                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
                                             >
                                                 <Trash2 className="h-4 w-4" /> Supprimer
                                             </button>
                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); handleAddCategory(dayName); setShowDayMenu(null); }}
+                                                onClick={(e) => { e.stopPropagation(); handleAddCategory && handleAddCategory(dayName); setShowDayMenu(null); }}
                                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
                                             >
                                                 <Plus className="h-4 w-4" /> Ajouter Catégorie
@@ -438,7 +438,7 @@ function MainWorkoutView({
                 )}
                 {isAdvancedMode && (
                     <button
-                        onClick={handleAddDay}
+                        onClick={handleAddDay && handleAddDay}
                         className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all flex items-center gap-2"
                         title="Ajouter un nouveau jour d'entraînement"
                     >
