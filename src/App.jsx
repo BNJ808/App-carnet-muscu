@@ -924,13 +924,11 @@ const ImprovedWorkoutApp = () => {
                 */}
             </main>
 
-            {/* Barre de navigation inférieure (commentée pour l'instant) */}
-            {/*
+            {/* Barre de navigation inférieure - DÉCOMMENTÉE ICI */}
             <BottomNavigationBar
                 currentView={currentView}
                 setCurrentView={setCurrentView}
             />
-            */}
 
             {/* Toast notification - Décommenté car showToast est utilisé */}
             {toast && (
