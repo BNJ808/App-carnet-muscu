@@ -1,6 +1,22 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { 
+    getAuth, 
+    onAuthStateChanged, 
+    signInAnonymously 
+} from 'firebase/auth';
+import { 
+    getFirestore, 
+    doc, 
+    setDoc, 
+    onSnapshot, 
+    collection, 
+    query, 
+    limit, 
+    getDocs, 
+    addDoc, 
+    serverTimestamp,
+    orderBy 
+} from 'firebase/firestore';
 
 // Configuration Firebase avec valeurs par défaut pour éviter les erreurs
 const firebaseConfig = {
@@ -55,5 +71,21 @@ try {
 }
 
 // Exports des services Firebase
-export { auth, db };
+export { 
+    auth, 
+    db,
+    onAuthStateChanged,
+    signInAnonymously,
+    doc,
+    setDoc,
+    onSnapshot,
+    collection,
+    query,
+    limit,
+    getDocs,
+    addDoc,
+    serverTimestamp,
+    orderBy
+};
+
 export default app;
