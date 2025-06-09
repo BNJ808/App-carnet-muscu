@@ -139,7 +139,7 @@ function MainWorkoutView({
             <input
                 type="text"
                 value={serie.weight}
-                onChange={(e) => onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, 'weight', e.target.value)}
+                onChange={(e) => onUpdateSerie?.(dayName, categoryName, exerciseId, serieIndex, 'weight', e.target.value)}
                 className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 text-center"
                 placeholder="Poids"
                 inputMode="numeric"
@@ -148,20 +148,20 @@ function MainWorkoutView({
             <input
                 type="text"
                 value={serie.reps}
-                onChange={(e) => onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, 'reps', e.target.value)}
+                onChange={(e) => onUpdateSerie?.(dayName, categoryName, exerciseId, serieIndex, 'reps', e.target.value)}
                 className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 text-center"
                 placeholder="Reps"
                 inputMode="numeric"
             />
             <button
-                onClick={() => onRemoveSerie(dayName, categoryName, exerciseId, serieIndex)}
+                onClick={() => onRemoveSerie?.(dayName, categoryName, exerciseId, serieIndex)}
                 className="p-1 rounded-full text-red-400 hover:bg-red-500/20 transition-colors"
                 title="Supprimer la série"
             >
                 <Trash2 className="h-4 w-4" />
             </button>
             <button
-                onClick={() => onToggleSerieCompleted(dayName, categoryName, exerciseId, serieIndex)}
+                onClick={() => onToggleSerieCompleted?.(dayName, categoryName, exerciseId, serieIndex)}
                 className={`p-1 rounded-full transition-colors ${
                     serie.completed ? 'text-green-400 bg-green-500/20' : 'text-gray-400 hover:bg-gray-700'
                 }`}
@@ -212,7 +212,7 @@ function MainWorkoutView({
                         </div>
                         <div className="flex gap-2 mt-3">
                             <button
-                                onClick={() => onAddSerie(dayName, categoryName, exercise.id)}
+                                onClick={() => onAddSerie?.(dayName, categoryName, exercise.id)}
                                 className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                             >
                                 <Plus className="h-4 w-4" /> Ajouter une série
@@ -223,20 +223,20 @@ function MainWorkoutView({
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Notes</label>
                                 <textarea
                                     value={exercise.notes}
-                                    onChange={(e) => onUpdateExerciseNotes(dayName, categoryName, exercise.id, e.target.value)}
+                                    onChange={(e) => onUpdateExerciseNotes?.(dayName, categoryName, exercise.id, e.target.value)}
                                     className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 min-h-[60px]"
                                     placeholder="Ajouter des notes sur cet exercice..."
                                 />
                             </div>
                             <div className="flex gap-2">
                                 <button
-                                    onClick={() => onEditClick(dayName, categoryName, exercise.id, exercise)}
+                                    onClick={() => onEditClick?.(dayName, categoryName, exercise.id, exercise)}
                                     className="flex-1 py-2 px-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                                 >
                                     <Pencil className="h-4 w-4" /> Modifier
                                 </button>
                                 <button
-                                    onClick={() => onDeleteExercise(dayName, categoryName, exercise.id)}
+                                    onClick={() => onDeleteExercise?.(dayName, categoryName, exercise.id)}
                                     disabled={isDeletingExercise}
                                     className={`flex-1 py-2 px-3 rounded-lg text-sm flex items-center justify-center gap-1 transition-colors ${
                                         isDeletingExercise ? 'bg-red-500/50 cursor-wait' : 'bg-red-600 hover:bg-red-700 text-white'
@@ -252,7 +252,7 @@ function MainWorkoutView({
                             </div>
                             {isAdvancedMode && (
                                 <button
-                                    onClick={() => onAnalyzeProgression(exercise)}
+                                    onClick={() => onAnalyzeProgression?.(exercise)}
                                     className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                                 >
                                     <Sparkles className="h-4 w-4" /> Analyser la progression (IA)
@@ -295,19 +295,19 @@ function MainWorkoutView({
                                 {showCategoryMenu === `${dayName}-${categoryName}` && (
                                     <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-10">
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); handleEditCategory(dayName, categoryName); setShowCategoryMenu(null); }}
+                                            onClick={(e) => { e.stopPropagation(); handleEditCategory?.(dayName, categoryName); setShowCategoryMenu(null); }}
                                             className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
                                         >
                                             <Pencil className="h-4 w-4" /> Modifier
                                         </button>
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); handleDeleteCategory(dayName, categoryName); setShowCategoryMenu(null); }}
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteCategory?.(dayName, categoryName); setShowCategoryMenu(null); }}
                                             className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
                                         >
                                             <Trash2 className="h-4 w-4" /> Supprimer
                                         </button>
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); handleAddCategory(dayName); setShowCategoryMenu(null); }}
+                                            onClick={(e) => { e.stopPropagation(); handleAddCategory?.(dayName); setShowCategoryMenu(null); }}
                                             className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
                                         >
                                             <Plus className="h-4 w-4" /> Ajouter Catégorie
@@ -334,7 +334,7 @@ function MainWorkoutView({
                             </div>
                         )}
                         <button
-                            onClick={() => onAddExercise(dayName, categoryName)}
+                            onClick={() => onAddExercise?.(dayName, categoryName)}
                             className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                         >
                             <Plus className="h-4 w-4" /> Ajouter un exercice
@@ -404,19 +404,19 @@ function MainWorkoutView({
                                     {showDayMenu === dayName && (
                                         <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-20">
                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); handleEditDay(dayName); setShowDayMenu(null); }}
+                                                onClick={(e) => { e.stopPropagation(); handleEditDay?.(dayName); setShowDayMenu(null); }}
                                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
                                             >
                                                 <Pencil className="h-4 w-4" /> Modifier
                                             </button>
                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); handleDeleteDay(dayName); setShowDayMenu(null); }}
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteDay?.(dayName); setShowDayMenu(null); }}
                                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
                                             >
                                                 <Trash2 className="h-4 w-4" /> Supprimer
                                             </button>
                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); handleAddCategory(dayName); setShowDayMenu(null); }}
+                                                onClick={(e) => { e.stopPropagation(); handleAddCategory?.(dayName); setShowDayMenu(null); }}
                                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
                                             >
                                                 <Plus className="h-4 w-4" /> Ajouter Catégorie
@@ -435,7 +435,7 @@ function MainWorkoutView({
                 )}
                 {isAdvancedMode && (
                     <button
-                        onClick={handleAddDay}
+                        onClick={handleAddDay?.}
                         className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all flex items-center gap-2"
                         title="Ajouter un nouveau jour d'entraînement"
                     >
