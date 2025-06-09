@@ -9,7 +9,7 @@ import {
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
     Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
 } from 'lucide-react';
-import * as GenerativeAIModule from '@google/generative-ai';
+import * => GenerativeAIModule from '@google/generative-ai';
 
 // Import des composants
 import Toast from './components/Toast.jsx';
@@ -220,6 +220,8 @@ const ImprovedWorkoutApp = () => {
     const [editingDayOriginalName, setEditingDayOriginalName] = useState('');
     const [editingCategoryOriginalName, setEditingCategoryOriginalName] = useState('');
     const [selectedDayForCategory, setSelectedDayForCategory] = useState('');
+    const [newDayName, setNewDayName] = useState(''); // Added this line
+    const [newCategoryName, setNewCategoryName] = useState(''); // Added this line
     
     // États d'édition
     const [editingExercise, setEditingExercise] = useState(null);
@@ -1899,8 +1901,8 @@ const ImprovedWorkoutApp = () => {
                                     >
                                         <option value="">Sélectionner un jour</option>
                                         {(workouts?.dayOrder || []).map(day => (
-                                            <option key={day} value={day}>{day}</option>
-                                        ))}
+                                           <option key={day} value={day}>{day}</option>
+                                       ))}
                                     </select>
                                 </div>
                                 <div>
