@@ -71,12 +71,42 @@ const ImprovedWorkoutApp = () => {
     const timerIntervalRef = useRef(null);
     const isUpdatingFirestoreRef = useRef(false); // Pour éviter les boucles infinies de mise à jour Firestore
 
-    // Fonctions utilitaires (showToast est nécessaire pour l'authentification Firebase)
+    // Fonctions utilitaires
     const showToast = useCallback((message, type = 'info', action = null, duration = 3000) => {
         setToast({ message, type, action, duration });
     }, []);
 
-    // Initialisation de Firebase et gestion de l'authentification
+    const formatTime = useCallback((seconds) => {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }, []);
+
+    const formatDate = useCallback((timestamp) => {
+        if (!timestamp) return 'N/A';
+        let date;
+        // Si c'est un objet Timestamp de Firebase
+        if (timestamp.toDate) {
+            date = timestamp.toDate();
+        } else if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+            // Si c'est une chaîne ou un nombre, tentez de créer une date
+            date = new Date(timestamp);
+        } else if (timestamp instanceof Date) {
+            date = timestamp;
+        } else {
+            return 'Date invalide';
+        }
+
+        if (isNaN(date.getTime())) {
+            return 'Date invalide';
+        }
+
+        const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        return date.toLocaleDateString('fr-FR', options);
+    }, []);
+
+
+    // Effet pour l'initialisation de Firebase et la gestion de l'authentification (déjà décommenté)
     useEffect(() => {
         if (!firebaseConfig.apiKey) {
             console.error("Firebase API Key is missing. Please set VITE_FIREBASE_API_KEY in your .env file.");
@@ -89,17 +119,13 @@ const ImprovedWorkoutApp = () => {
             authRef.current = getAuth(app);
             dbRef.current = getFirestore(app);
 
-            // Gérer l'état d'authentification
             authUnsubscribeRef.current = onAuthStateChanged(authRef.current, async (user) => {
                 if (user) {
                     currentUserRef.current = user;
-                    // Ne pas essayer de signInAnonymously si l'utilisateur est déjà connecté ou n'est pas anonyme
-                    // (si vous avez un customToken, vous pouvez le gérer ici avant d'établir l'écouteur onSnapshot)
                     if (unsubscribeFirestoreRef.current) {
-                        unsubscribeFirestoreRef.current(); // Unsubscribe from previous user's data
+                        unsubscribeFirestoreRef.current();
                     }
 
-                    // Écouter les données de l'utilisateur Firestore
                     unsubscribeFirestoreRef.current = onSnapshot(doc(dbRef.current, "users", user.uid), (docSnap) => {
                         if (docSnap.exists()) {
                             const data = docSnap.data();
@@ -108,7 +134,6 @@ const ImprovedWorkoutApp = () => {
                             setPersonalBests(data.personalBests || {});
                             setGlobalNotes(data.globalNotes || '');
                         } else {
-                            // Initialisation de l'utilisateur Firestore si nouveau
                             setDoc(doc(dbRef.current, "users", user.uid), {
                                 workouts: { days: {}, dayOrder: [] },
                                 historicalData: [],
@@ -124,7 +149,6 @@ const ImprovedWorkoutApp = () => {
                         setIsInitialLoad(false);
                     });
                 } else {
-                    // Si l'utilisateur est déconnecté, tentez une connexion anonyme pour persistance
                     signInAnonymously(authRef.current).catch((error) => {
                         console.error("Erreur de connexion anonyme:", error);
                         showToast("Impossible de se connecter anonymement. Veuillez vérifier votre connexion.", 'error');
@@ -140,19 +164,103 @@ const ImprovedWorkoutApp = () => {
             if (authUnsubscribeRef.current) authUnsubscribeRef.current();
             if (unsubscribeFirestoreRef.current) unsubscribeFirestoreRef.current();
         };
-    }, []); // Dépendances vides pour que cela ne s'exécute qu'une seule fois au montage
+    }, []);
+
+    // Effet pour la sauvegarde des données dans Firestore et localStorage (déjà décommenté)
+    useEffect(() => {
+        if (currentUserRef.current && dbRef.current && !isInitialLoad) {
+            if (isUpdatingFirestoreRef.current) {
+                return;
+            }
+
+            const saveData = async () => {
+                isUpdatingFirestoreRef.current = true;
+                try {
+                    const userDocRef = doc(dbRef.current, "users", currentUserRef.current.uid);
+                    await setDoc(userDocRef, {
+                        workouts: workouts,
+                        historicalData: historicalData,
+                        personalBests: personalBests,
+                        globalNotes: globalNotes,
+                        lastUpdated: serverTimestamp()
+                    }, { merge: true });
+                    // showToast("Données sauvegardées sur le cloud.", 'success', null, 1500); // Désactivé temporairement pour éviter spam toast
+                } catch (error) {
+                    console.error("Erreur de sauvegarde des données Firestore:", error);
+                    showToast("Erreur de sauvegarde des données sur le cloud.", 'error');
+                } finally {
+                    isUpdatingFirestoreRef.current = false;
+                }
+            };
+
+            const saveToLocalStorage = () => {
+                localStorage.setItem('workouts', JSON.stringify(workouts));
+                localStorage.setItem('historicalData', JSON.stringify(historicalData));
+                localStorage.setItem('personalBests', JSON.stringify(personalBests));
+                localStorage.setItem('globalNotes', JSON.stringify(globalNotes));
+            };
+
+            const handler = setTimeout(() => {
+                saveData();
+                saveToLocalStorage();
+            }, 1000);
+
+            return () => {
+                clearTimeout(handler);
+            };
+        }
+    }, [workouts, historicalData, personalBests, globalNotes, isInitialLoad, showToast]);
+
+    // Effet pour la logique du minuteur
+    useEffect(() => {
+        if (timerIsRunning) {
+            timerIntervalRef.current = setInterval(() => {
+                setTimerSeconds((prevSeconds) => {
+                    if (prevSeconds <= 1) {
+                        clearInterval(timerIntervalRef.current);
+                        setTimerIsRunning(false);
+                        setTimerIsFinished(true);
+                        showToast("Le minuteur est terminé !", 'info');
+                        // Optionnel: jouer un son ou une vibration
+                        return 0;
+                    }
+                    return prevSeconds - 1;
+                });
+            }, 1000);
+        } else {
+            clearInterval(timerIntervalRef.current);
+        }
+
+        return () => clearInterval(timerIntervalRef.current);
+    }, [timerIsRunning, showToast]);
+
+    // Effet pour gérer le changement de thème
+    useEffect(() => {
+        document.documentElement.classList.remove('dark', 'light');
+        document.documentElement.classList.add(theme);
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    // Effet pour la gestion de l'historique undo/redo
+    useEffect(() => {
+        // Sauvegarder l'état actuel pour l'undo, sauf si c'est une action de redo
+        const currentState = { workouts, historicalData, personalBests, globalNotes };
+        // Vérifier si l'état actuel est différent du dernier état dans l'undoStack pour éviter les duplications
+        // Une comparaison profonde serait idéale, mais une comparaison superficielle peut suffire pour les tests
+        if (undoStack.length === 0 || JSON.stringify(undoStack[undoStack.length - 1]) !== JSON.stringify(currentState)) {
+            setUndoStack(prev => [...prev, currentState]);
+            setRedoStack([]); // Effacer le redoStack après une nouvelle action
+        }
+    }, [workouts, historicalData, personalBests, globalNotes]); // Déclenche sur les changements majeurs de l'état
 
 
-    // // Autres fonctions utilitaires (commentées pour l'instant)
-    // const formatTime = useCallback((seconds) => { /* ... */ }, []);
-    // const formatDate = useCallback((timestamp) => { /* ... */ }, []);
+    // // Fonctions de logique métier et interactions (commentées pour l'instant)
     // const getSeriesDisplay = useCallback((series) => { /* ... */ }, []);
     // const getWorkoutStats = useCallback((workoutsData, historicalData) => { /* ... */ }, []);
     // const getExerciseVolumeData = useCallback((exerciseName, history) => { /* ... */ }, []);
     // const getDailyVolumeData = useCallback((history) => { /* ... */ }, []);
     // const getExerciseFrequencyData = useCallback((history) => { /* ... */ }, []);
 
-    // // Fonctions de logique métier et interactions (commentées pour l'instant)
     // const addDay = useCallback((dayName) => { /* ... */ }, []);
     // const renameDay = useCallback((oldName, newName) => { /* ... */ }, []);
     // const deleteDay = useCallback((dayName) => { /* ... */ }, []);
@@ -176,14 +284,41 @@ const ImprovedWorkoutApp = () => {
     // const resetTimer = useCallback(() => { /* ... */ }, []);
     // const importData = useCallback(async (jsonString) => { /* ... */ }, []);
     // const exportData = useCallback(() => { /* ... */ }, []);
-    // const undo = useCallback(() => { /* ... */ }, []);
-    // const redo = useCallback(() => { /* ... */ }, []);
+    const undo = useCallback(() => {
+        if (undoStack.length > 1) { // Il faut au moins un état précédent pour annuler
+            const previousState = undoStack[undoStack.length - 2]; // Le dernier état valide
+            const currentState = undoStack[undoStack.length - 1]; // L'état actuel que nous allons annuler
 
-    // // Autres Effets (commentés pour l'instant)
-    // useEffect(() => { /* Save data to Firestore and localStorage */ }, [workouts, historicalData, personalBests, globalNotes]);
-    // useEffect(() => { /* Timer logic */ }, [timerIsRunning, timerSeconds]);
-    // useEffect(() => { /* Handle theme change */ }, [theme]);
-    // useEffect(() => { /* History management for undo/redo */ }, [workouts, historicalData, personalBests, globalNotes]);
+            setRedoStack(prev => [...prev, currentState]); // Sauvegarder l'état actuel pour le redo
+            setWorkouts(previousState.workouts);
+            setHistoricalData(previousState.historicalData);
+            setPersonalBests(previousState.personalBests);
+            setGlobalNotes(previousState.globalNotes);
+            setUndoStack(prev => prev.slice(0, prev.length - 1)); // Retirer le dernier état
+            showToast("Action annulée.", 'info', null, 1000);
+        } else {
+            showToast("Impossible d'annuler davantage.", 'warning', null, 1000);
+        }
+    }, [undoStack, showToast]);
+
+    const redo = useCallback(() => {
+        if (redoStack.length > 0) {
+            const nextState = redoStack[redoStack.length - 1]; // Le prochain état à refaire
+            
+            // Ajouter l'état actuel à l'undoStack avant de le remplacer par le nextState du redoStack
+            setUndoStack(prev => [...prev, { workouts, historicalData, personalBests, globalNotes }]);
+
+            setWorkouts(nextState.workouts);
+            setHistoricalData(nextState.historicalData);
+            setPersonalBests(nextState.personalBests);
+            setGlobalNotes(nextState.globalNotes);
+            setRedoStack(prev => prev.slice(0, prev.length - 1)); // Retirer l'état du redoStack
+            showToast("Action rétablie.", 'info', null, 1000);
+        } else {
+            showToast("Impossible de refaire davantage.", 'warning', null, 1000);
+        }
+    }, [redoStack, workouts, historicalData, personalBests, globalNotes, showToast]);
+
 
     return (
         <div className={`App ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'} min-h-screen flex flex-col transition-colors duration-300`}>
@@ -220,20 +355,42 @@ const ImprovedWorkoutApp = () => {
                     <TimerView
                         timerSeconds={timerSeconds}
                         timerIsRunning={timerIsRunning}
-                        // ... toutes les autres props
+                        timerIsFinished={timerIsFinished}
+                        startTimer={startTimer}
+                        pauseTimer={pauseTimer}
+                        resetTimer={resetTimer}
+                        setTimerSeconds={setTimerSeconds}
+                        restTimeInput={restTimeInput}
+                        setRestTimeInput={setRestTimeInput}
+                        formatTime={formatTime}
+                        setTimerPreset={() => {}} // Placeholder for now
                     />
                 )}
                 {currentView === 'stats' && (
                     <StatsView
                         workouts={workouts}
                         historicalData={historicalData}
-                        // ... toutes les autres props
+                        personalBests={personalBests}
+                        formatDate={formatDate}
+                        globalNotes={globalNotes}
+                        setGlobalNotes={setGlobalNotes}
+                        analyzeGlobalStatsWithAI={() => {}} // Placeholder
+                        aiAnalysisLoading={isLoadingAIProgression}
+                        onGenerateAISuggestions={() => {}} // Placeholder
+                        aiSuggestions={aiSuggestions}
+                        isLoadingAI={isLoadingAI}
+                        progressionAnalysisContent={progressionAnalysisContent}
+                        getWorkoutStats={() => {}} // Placeholder
+                        getExerciseVolumeData={() => []} // Placeholder
+                        getDailyVolumeData={() => []} // Placeholder
+                        getExerciseFrequencyData={() => []} // Placeholder
+                        showToast={showToast}
                     />
                 )}
                 */}
             </main>
 
-            {/* Barre de navigation inférieure (commentée) */}
+            {/* Barre de navigation inférieure (commentée pour l'instant) */}
             {/*
             <BottomNavigationBar
                 currentView={currentView}
@@ -252,7 +409,7 @@ const ImprovedWorkoutApp = () => {
                 />
             )}
 
-            {/* Timer Modal (commenté) */}
+            {/* Timer Modal (commenté pour l'instant) */}
             {/*
             <TimerModal
                 isOpen={isTimerModalOpen}
@@ -268,7 +425,7 @@ const ImprovedWorkoutApp = () => {
             />
             */}
 
-            {/* AI Analysis Modal (commenté) */}
+            {/* AI Analysis Modal (commenté pour l'instant) */}
             {/*
             {progressionAnalysisContent && (
                 <div className="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex justify-center items-center p-4 backdrop-blur-sm animate-fade-in">
