@@ -12,13 +12,13 @@ import {
 import * as GenerativeAIModule from '@google/generative-ai'; // Corrected import syntax
 
 // Import des composants
-import Toast from './Toast.jsx'; // Corrected path
-import MainWorkoutView from './MainWorkoutView.jsx'; // Corrected path
-import HistoryView from './HistoryView.jsx'; // Corrected path
-import TimerView from './TimerView.jsx'; // Corrected path
-import StatsView from './StatsView.jsx'; // Corrected path
-import BottomNavigationBar from './BottomNavigationBar.jsx'; // Corrected path
-import TimerModal from './TimerModal.jsx'; // Corrected path // Ensure TimerModal is imported
+import Toast from './components/Toast.jsx';
+import MainWorkoutView from './components/MainWorkoutView.jsx';
+import HistoryView from './components/HistoryView.jsx';
+import TimerView from './components/TimerView.jsx';
+import StatsView from './components/StatsView.jsx';
+import BottomNavigationBar from './components/BottomNavigationBar.jsx';
+import TimerModal from './components/TimerModal.jsx';
 
 const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
