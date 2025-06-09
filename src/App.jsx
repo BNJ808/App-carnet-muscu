@@ -9,7 +9,7 @@ import {
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
     Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
 } from 'lucide-react';
-import * => GenerativeAIModule from '@google/generative-ai';
+import * as GenerativeAIModule from '@google/generative-ai';
 
 // Import des composants
 import Toast from './components/Toast.jsx';
