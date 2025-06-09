@@ -1,247 +1,495 @@
-import React from 'react';
-import {
-    Plus, Pencil, Trash2, Sparkles, LineChart as LineChartIcon, NotebookText,
-    ArrowUp, ArrowDown
+import React, { useState, useMemo, useCallback } from 'react'; 
+import { 
+    Search, 
+    Filter, 
+    Plus, 
+    Pencil, 
+    Trash2, 
+    NotebookText,
+    Sparkles,
+    LineChart as LineChartIcon,
+    Calendar,
+    Target,
+    Check,
+    X,
+    ChevronDown,
+    ChevronUp,
+    MoreVertical,
+    Copy,
+    History,
+    TrendingUp,
+    Dumbbell, 
+    BarChart3, 
+    Layers 
 } from 'lucide-react';
 
-/**
- * Composant MainWorkoutView pour afficher la vue principale des entraînements.
- * Gère l'affichage des jours, catégories et exercices, ainsi que les interactions d'édition.
- * @param {object} props - Les props du composant.
- * @param {object} props.workouts - L'objet contenant toutes les données d'entraînement.
- * @param {string | null} props.selectedDayFilter - Le jour actuellement sélectionné pour l'affichage.
- * @param {boolean} props.isEditMode - Indique si le mode édition est activé.
- * @param {boolean} props.isAdvancedMode - Indique si le mode avancé est activé.
- * @param {function} props.handleEditClick - Fonction pour gérer le clic sur le bouton d'édition d'un exercice.
- * @param {function} props.handleAddExerciseClick - Fonction pour gérer le clic sur le bouton d'ajout d'exercice.
- * @param {function} props.handleDeleteExercise - Fonction pour gérer la suppression d'un exercice.
- * @param {function} props.openExerciseGraphModal - Fonction pour ouvrir la modale du graphique d'exercice.
- * @param {function} props.handleOpenNotesModal - Fonction pour ouvrir la modale des notes.
- * @param {function} props.handleAnalyzeProgressionClick - Fonction pour analyser la progression avec l'IA.
- * @param {object} props.personalBests - Les records personnels des exercices.
- * @param {object} props.progressionInsights - Les analyses de progression des exercices.
- * @param {function} props.handleReorderCategories - Fonction pour réorganiser les catégories.
- * @param {function} props.handleReorderExercises - Fonction pour réorganiser les exercices.
- * @param {function} props.openAddCategoryModalForDay - Fonction pour ouvrir la modale d'ajout de catégorie.
- * @param {function} props.handleEditCategory - Fonction pour éditer une catégorie.
- * @param {function} props.handleDeleteCategory - Fonction pour supprimer une catégorie.
- * @param {boolean} props.isSavingExercise - Indique si un exercice est en cours de sauvegarde.
- * @param {boolean} props.isDeletingExercise - Indique si un exercice est en cours d'ajout.
- * @param {boolean} props.isAddingExercise - Indique si un exercice est en cours d'ajout.
- * @param {function} props.dayButtonColors - NOUVEAU : Fonction pour obtenir les couleurs des boutons de jour.
- * @param {string[]} props.dayBorderAndTextColors - Couleurs de bordure et de texte pour les jours.
- * @param {string[]} props.dayTitleColors - NOUVEAU : Couleurs spécifiques pour les titres des jours (h2).
- * @param {function} props.formatDate - Fonction pour formater une date.
- * @param {function} props.getSeriesDisplay - Fonction pour afficher les séries d'un exercice.
- */
-const MainWorkoutView = ({
+const stableSort = (array, compareFunction) => {
+    return array
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => compareFunction(a.item, b.item) || a.index - b.index)
+        .map(({ item }) => item);
+};
+
+function MainWorkoutView({
     workouts,
+    // onToggleSerieCompleted, // Temporarily removed for debugging
+    // onUpdateSerie, // Temporarily removed for debugging
+    // onAddSerie, // Temporarily removed for debugging
+    // onRemoveSerie, // Temporarily removed for debugging
+    // onUpdateExerciseNotes, // Temporarily removed for debugging
+    // onEditClick, // Temporarily removed for debugging
+    // onDeleteExercise, // Temporarily removed for debugging
+    // onAnalyzeProgression, // Temporarily removed for debugging
+    searchTerm,
+    setSearchTerm,
     selectedDayFilter,
-    isEditMode,
-    isAdvancedMode,
-    handleEditClick,
-    handleAddExerciseClick,
-    handleDeleteExercise,
-    openExerciseGraphModal,
-    handleOpenNotesModal,
-    handleAnalyzeProgressionClick,
-    personalBests,
-    progressionInsights,
-    handleReorderCategories,
-    handleReorderExercises,
-    openAddCategoryModalForDay,
-    handleEditCategory,
-    handleDeleteCategory,
-    isSavingExercise,
-    isDeletingExercise,
-    isAddingExercise,
-    dayButtonColors, // AJOUT DE LA NOUVELLE PROP (fonction)
-    dayBorderAndTextColors,
-    dayTitleColors, // AJOUT DE LA NOUVELLE PROP
-    formatDate,
-    getSeriesDisplay,
-}) => {
-    const safeWorkoutsDays = workouts?.days || {}; // Ensure workouts.days is an object
-    const filteredWorkouts = selectedDayFilter
-        ? (safeWorkoutsDays[selectedDayFilter] ? { [selectedDayFilter]: safeWorkoutsDays[selectedDayFilter] } : {})
-        : safeWorkoutsDays;
+    setSelectedDayFilter, 
+    selectedCategoryFilter,
+    onCategoryFilterChange,
+    showOnlyCompleted,
+    onToggleCompletedFilter,
+    // onAddExercise, // Temporarily removed for debugging
+    // onSaveToHistory, // Temporarily removed for debugging
+    isCompactView = false,
+    historicalData = [],
+    personalBests = {}, 
+    getDayButtonColors, 
+    formatDate, 
+    getSeriesDisplay, 
+    isSavingExercise, 
+    isDeletingExercise, 
+    isAddingExercise, 
+    days, 
+    categories, 
+    // handleAddDay, // Temporarily removed for debugging
+    // handleEditDay, // Temporarily removed for debugging
+    // handleDeleteDay, // Temporarily removed for debugging
+    // handleAddCategory, // Temporarily removed for debugging
+    // handleEditCategory, // Temporarily removed for debugging
+    // handleDeleteCategory, // Temporarily removed for debugging
+    isAdvancedMode = false // Keeping the prop for now, but its usage is commented out
+}) {
+    const [expandedCategories, setExpandedCategories] = useState(new Set());
+    const [expandedExercises, setExpandedExercises] = useState(new Set());
+    const [showDayMenu, setShowDayMenu] = useState(null); 
+    const [showCategoryMenu, setShowCategoryMenu] = useState(null); 
 
-    const orderedDays = workouts?.dayOrder || []; // Ensure workouts.dayOrder is an array
+    // Toggle expansion for a category
+    const toggleCategory = useCallback((categoryName) => {
+        setExpandedCategories(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(categoryName)) {
+                newSet.delete(categoryName);
+            } else {
+                newSet.add(categoryName);
+            }
+            return newSet;
+        });
+    }, []);
 
-    return (
-        <>
-            {Object.keys(filteredWorkouts).length === 0 && (
-                <p className="text-gray-400 text-center mt-8 text-lg sm:text-xl">
-                    Aucun entraînement trouvé pour le jour sélectionné.
-                    {isEditMode && (
-                        <span className="block mt-2">
-                            Cliquez sur "Actions sur les jours" pour ajouter un nouveau jour.
-                        </span>
-                    )}
-                </p>
-            )}
+    // Toggle expansion for an exercise
+    const toggleExercise = useCallback((exerciseId) => {
+        setExpandedExercises(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(exerciseId)) {
+                newSet.delete(exerciseId);
+            } else {
+                newSet.add(exerciseId);
+            }
+            return newSet;
+        });
+    }, []);
 
-            <div className="space-y-8">
-                {orderedDays.filter(dayName => !selectedDayFilter || dayName === selectedDayFilter).map((dayName, dayIndex) => {
-                    const dayData = safeWorkoutsDays[dayName]; // Use safeWorkoutsDays
-                    if (!dayData || typeof dayData !== 'object' || !dayData.categories || typeof dayData.categories !== 'object') {
-                        console.warn(`Données de jour invalides ou manquantes pour: ${dayName}`, dayData);
-                        return null; // Skip rendering this day
-                    }
 
-                    const categoryOrder = Array.isArray(dayData.categoryOrder)
-                        ? dayData.categoryOrder
-                        : Object.keys(dayData.categories || {}).sort(); // Ensure Object.keys is called on an object
+    // Filter available days
+    const getAvailableDays = useMemo(() => {
+        if (!workouts || !workouts.days) return [];
+        const filteredDays = (workouts.dayOrder || Object.keys(workouts.days)).filter(dayName => {
+            const dayData = workouts.days[dayName];
+            if (!dayData || !dayData.categories) return false;
 
-                    // Utilise directement la prop dayTitleColors passée depuis App.jsx
-                    const dayTitleColorClass = dayTitleColors[dayIndex % dayTitleColors.length];
+            // Check if any category or exercise within the day matches the search term
+            const dayMatchesSearch = Object.keys(dayData.categories).some(categoryName => {
+                const exercisesInCat = dayData.categories[categoryName];
+                return categoryName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                       (Array.isArray(exercisesInCat) && exercisesInCat.some(exercise => 
+                           exercise.name.toLowerCase().includes(searchTerm.toLowerCase())
+                       ));
+            });
+            return dayMatchesSearch;
+        });
+        return filteredDays;
+    }, [workouts, searchTerm]);
 
-                    return (
-                        <div key={dayName} className={`bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg border-2 ${dayBorderAndTextColors[dayIndex % dayBorderAndTextColors.length]}`}>
-                            <h2 className={`text-xl sm:text-3xl font-extrabold mb-6 text-center ${dayTitleColorClass}`}>
-                                {dayName}
-                            </h2>
-                            {isEditMode && (
-                                <div className="flex justify-center mb-4 space-x-2">
-                                    <button
-                                        onClick={() => openAddCategoryModalForDay(dayName)}
-                                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base flex items-center"
-                                        title="Ajouter un groupe musculaire"
+
+    // Filter and sort exercises
+    const getFilteredAndSortedExercises = useCallback((dayName, categoryName) => {
+        const exercises = workouts.days[dayName]?.categories[categoryName] || [];
+        const filtered = exercises.filter(exercise => {
+            const matchesSearch = exercise.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesCompleted = showOnlyCompleted ? exercise.series.every(s => s.completed) : true;
+            return matchesSearch && matchesCompleted && !exercise.isDeleted;
+        });
+
+        return stableSort(filtered, (a, b) => a.name.localeCompare(b.name));
+    }, [workouts, searchTerm, showOnlyCompleted]);
+
+    const renderSerie = useCallback((serie, dayName, categoryName, exerciseId, serieIndex) => (
+        <div key={serieIndex} className="flex items-center gap-2 text-sm">
+            <input
+                type="text"
+                value={serie.weight}
+                // onChange={(e) => onUpdateSerie?.(dayName, categoryName, exerciseId, serieIndex, 'weight', e.target.value)} // Temporarily removed
+                className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 text-center"
+                placeholder="Poids"
+                inputMode="numeric"
+            />
+            <span className="text-gray-400">kg x</span>
+            <input
+                type="text"
+                value={serie.reps}
+                // onChange={(e) => onUpdateSerie?.(dayName, categoryName, exerciseId, serieIndex, 'reps', e.target.value)} // Temporarily removed
+                className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 text-center"
+                placeholder="Reps"
+                inputMode="numeric"
+            />
+            <button
+                // onClick={() => onRemoveSerie?.(dayName, categoryName, exerciseId, serieIndex)} // Temporarily removed
+                className="p-1 rounded-full text-red-400 hover:bg-red-500/20 transition-colors"
+                title="Supprimer la série"
+            >
+                <Trash2 className="h-4 w-4" />
+            </button>
+            <button
+                // onClick={() => onToggleSerieCompleted?.(dayName, categoryName, exerciseId, serieIndex)} // Temporarily removed
+                className={`p-1 rounded-full transition-colors ${
+                    serie.completed ? 'text-green-400 bg-green-500/20' : 'text-gray-400 hover:bg-gray-700'
+                }`}
+                title={serie.completed ? "Marquer comme non complété" : "Marquer comme complété"}
+            >
+                {serie.completed ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+            </button>
+        </div>
+    ), []); // Removed dependencies
+
+    const renderExercise = useCallback((exercise, dayName, categoryName) => {
+        const isExpanded = expandedExercises.has(exercise.id);
+        const exerciseBests = personalBests[exercise.name]; 
+
+        return (
+            <div key={exercise.id} className="bg-gray-800 rounded-lg shadow-md border border-gray-700">
+                <div className="flex items-center justify-between p-4 cursor-pointer" onClick={() => toggleExercise(exercise.id)}>
+                    <div className="flex-1 flex col">
+                        <h4 className="font-semibold text-white text-base sm:text-lg">
+                            {exercise.name}
+                            {exercise.isDeleted && <span className="ml-2 text-red-500 text-xs">(Supprimé)</span>}
+                        </h4>
+                        <p className="text-gray-400 text-sm">
+                            {getSeriesDisplay(exercise.series)}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {exerciseBests && (
+                            <span className="text-yellow-400 text-xs font-medium flex items-center gap-1" title="Record personnel">
+                                <Award className="h-4 w-4" /> {exerciseBests.maxWeight}kg x {exerciseBests.maxReps}
+                            </span>
+                        )}
+                        <button
+                            onClick={(e) => { e.stopPropagation(); toggleExercise(exercise.id); }}
+                            className="p-1 rounded-full text-gray-400 hover:bg-gray-700 transition-colors"
+                        >
+                            {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                        </button>
+                    </div>
+                </div>
+
+                {isExpanded && (
+                    <div className="p-4 border-t border-gray-700 space-y-3">
+                        <div className="space-y-2">
+                            {exercise.series.map((serie, serieIndex) => (
+                                renderSerie(serie, dayName, categoryName, exercise.id, serieIndex)
+                            ))}
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                            <button
+                                // onClick={() => onAddSerie?.(dayName, categoryName, exercise.id)} // Temporarily removed
+                                className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
+                            >
+                                <Plus className="h-4 w-4" /> Ajouter une série
+                            </button>
+                        </div>
+                        <div className="mt-4 space-y-2">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Notes</label>
+                                <textarea
+                                    value={exercise.notes}
+                                    // onChange={(e) => onUpdateExerciseNotes?.(dayName, categoryName, exercise.id, e.target.value)} // Temporarily removed
+                                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 min-h-[60px]"
+                                    placeholder="Ajouter des notes sur cet exercice..."
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    // onClick={() => onEditClick?.(dayName, categoryName, exercise.id, exercise)} // Temporarily removed
+                                    className="flex-1 py-2 px-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
+                                >
+                                    <Pencil className="h-4 w-4" /> Modifier
+                                </button>
+                                <button
+                                    // onClick={() => onDeleteExercise?.(dayName, categoryName, exercise.id)} // Temporarily removed
+                                    disabled={isDeletingExercise}
+                                    className={`flex-1 py-2 px-3 rounded-lg text-sm flex items-center justify-center gap-1 transition-colors ${
+                                        isDeletingExercise ? 'bg-red-500/50 cursor-wait' : 'bg-red-600 hover:bg-red-700 text-white'
+                                    }`}
+                                >
+                                    {isDeletingExercise ? (
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    ) : (
+                                        <Trash2 className="h-4 w-4" />
+                                    )}
+                                    Supprimer
+                                </button>
+                            </div>
+                            {/* AI analysis button removed for debugging */}
+                            {/* <button
+                                onClick={() => onAnalyzeProgression?.(exercise)}
+                                className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
+                            >
+                                <Sparkles className="h-4 w-4" /> Analyser la progression (IA)
+                            </button> */}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }, [expandedExercises, isDeletingExercise, personalBests, renderSerie, toggleExercise, getSeriesDisplay]);
+
+    const renderCategory = useCallback((categoryName, dayName) => {
+        const isExpanded = expandedCategories.has(`${dayName}-${categoryName}`);
+        const filteredExercises = getFilteredAndSortedExercises(dayName, categoryName);
+
+        if (filteredExercises.length === 0 && searchTerm) {
+            return null; 
+        }
+
+        return (
+            <div key={categoryName} className="bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden">
+                <div 
+                    className="flex items-center justify-between p-4 bg-gray-700/50 cursor-pointer"
+                    onClick={() => toggleCategory(`${dayName}-${categoryName}`)}
+                >
+                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <Layers className="h-5 w-5 text-purple-400" />
+                        {categoryName} ({filteredExercises.length})
+                    </h3>
+                    <div className="flex items-center gap-2">
+                        {/* Advanced mode controls removed for debugging */}
+                        {/* <div className="relative">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowCategoryMenu(showCategoryMenu === `${dayName}-${categoryName}` ? null : `${dayName}-${categoryName}`); }}
+                                className="p-1 rounded-full text-gray-400 hover:bg-gray-600 transition-colors"
+                            >
+                                <MoreVertical className="h-5 w-5" />
+                            </button>
+                            {showCategoryMenu === `${dayName}-${categoryName}` && (
+                                <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-10">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleEditCategory?.(dayName, categoryName); setShowCategoryMenu(null); }}
+                                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
                                     >
-                                        <Plus className="h-4 w-4 mr-2" /> Groupe Musculaire
+                                        <Pencil className="h-4 w-4" /> Modifier
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteCategory?.(dayName, categoryName); setShowCategoryMenu(null); }}
+                                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
+                                    >
+                                        <Trash2 className="h-4 w-4" /> Supprimer
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleAddCategory?.(dayName); setShowCategoryMenu(null); }}
+                                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
+                                    >
+                                        <Plus className="h-4 w-4" /> Ajouter Catégorie
                                     </button>
                                 </div>
                             )}
+                        </div> */}
+                        <button
+                            onClick={(e) => { e.stopPropagation(); toggleCategory(`${dayName}-${categoryName}`); }}
+                            className="p-1 rounded-full text-gray-400 hover:bg-gray-700 transition-colors"
+                        >
+                            {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                        </button>
+                    </div>
+                </div>
+                {isExpanded && (
+                    <div className="p-4 space-y-4">
+                        {filteredExercises.length > 0 ? (
+                            filteredExercises.map(exercise => renderExercise(exercise, dayName, categoryName))
+                        ) : (
+                            <div className="text-gray-400 text-sm italic text-center py-4">
+                                {searchTerm ? "Aucun exercice trouvé avec ce filtre." : "Aucun exercice dans cette catégorie."}
+                            </div>
+                        )}
+                        <button
+                            // onClick={() => onAddExercise?.(dayName, categoryName)} // Temporarily removed
+                            className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
+                        >
+                            <Plus className="h-4 w-4" /> Ajouter un exercice
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, showCategoryMenu]); // Removed dependencies related to advanced mode functions
 
-                            {categoryOrder.length === 0 && (
-                                <p className="text-gray-400 text-center mt-4">
-                                    Aucun groupe musculaire pour ce jour.
-                                    {isEditMode && (
-                                        <span className="block mt-1">
-                                            Cliquez sur "Ajouter Groupe Musculaire" ci-dessus.
-                                        </span>
-                                    )}
-                                </p>
+    return (
+        <div className="space-y-6">
+            {/* Barre de recherche et filtres améliorée */}
+            <div className="flex flex-col sm:flex-row gap-3 sticky top-[76px] sm:top-[80px] bg-gray-900/95 backdrop-blur-sm z-30 py-3 -mx-4 px-4 border-b border-gray-700/50">
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Rechercher un exercice..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                </div>
+                <div className="flex gap-2">
+                    <select
+                        value={selectedCategoryFilter}
+                        onChange={onCategoryFilterChange}
+                        className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">Toutes catégories</option>
+                        {categories.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
+                    <button
+                        onClick={onToggleCompletedFilter}
+                        className={`px-4 py-2 rounded-lg transition-all ${showOnlyCompleted ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        title="Filtrer par exercices complétés"
+                    >
+                        <Check className="h-5 w-5" />
+                    </button>
+                </div>
+            </div>
+
+            {/* Boutons Jours d'entraînement avec gestion CRUD */}
+            <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                {getAvailableDays.length > 0 ? (
+                    getAvailableDays.map((dayName, index) => (
+                        <div key={dayName} className="relative">
+                            <button
+                                onClick={() => setSelectedDayFilter(dayName)}
+                                className={`px-4 py-2 rounded-lg text-white font-medium flex items-center gap-2 transition-all duration-200 ${getDayButtonColors(index, selectedDayFilter === dayName)}`}
+                            >
+                                <Calendar className="h-5 w-5" />
+                                {dayName}
+                            </button>
+                            {/* Advanced mode controls removed for debugging */}
+                            {/* <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 z-10">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowDayMenu(showDayMenu === dayName ? null : dayName); }}
+                                    className="p-1 bg-gray-700 rounded-full text-gray-400 hover:bg-gray-600 transition-colors"
+                                    title="Options du jour"
+                                >
+                                    <MoreVertical className="h-4 w-4" />
+                                </button>
+                                {showDayMenu === dayName && (
+                                    <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-20">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleEditDay?.(dayName); setShowDayMenu(null); }}
+                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
+                                        >
+                                            <Pencil className="h-4 w-4" /> Modifier
+                                        </button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteDay?.(dayName); setShowDayMenu(null); }}
+                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
+                                        >
+                                            <Trash2 className="h-4 w-4" /> Supprimer
+                                        </button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleAddCategory?.(dayName); setShowDayMenu(null); }}
+                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
+                                        >
+                                            <Plus className="h-4 w-4" /> Ajouter Catégorie
+                                        </button>
+                                    </div>
+                                )}
+                            </div> */}
+                        </div>
+                    ))
+                ) : (
+                    <div className="text-gray-400 italic text-center py-4">
+                        <Dumbbell className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        Aucun jour d'entraînement trouvé. Ajoutez-en un !
+                    </div>
+                )}
+                {/* Add new day button removed for debugging */}
+                {/* <button
+                    onClick={handleAddDay}
+                    className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all flex items-center gap-2"
+                    title="Ajouter un nouveau jour d'entraînement"
+                >
+                    <Plus className="h-5 w-5" /> Nouveau Jour
+                </button> */}
+            </div>
+
+            {/* Display workouts by day and category */}
+            <div className="space-y-6 mt-4">
+                {workouts.dayOrder.filter(dayName => selectedDayFilter === '' || dayName === selectedDayFilter).map(dayName => {
+                    const dayData = workouts.days[dayName];
+                    if (!dayData) return null;
+
+                    const orderedCategories = dayData.categoryOrder || Object.keys(dayData.categories || {});
+
+                    const visibleCategoriesForDay = orderedCategories.filter(categoryName => {
+                        const exercisesInCat = dayData.categories[categoryName];
+                        if (selectedCategoryFilter && categoryName !== selectedCategoryFilter) return false;
+                        
+                        // Only show category if it has exercises matching search or if no search is active
+                        const hasMatchingExercises = Array.isArray(exercisesInCat) && exercisesInCat.some(exercise => 
+                            exercise.name.toLowerCase().includes(searchTerm.toLowerCase()) && !exercise.isDeleted
+                        );
+                        return hasMatchingExercises || !searchTerm;
+                    });
+
+                    if (visibleCategoriesForDay.length === 0 && (searchTerm || selectedCategoryFilter)) {
+                        return null; 
+                    }
+
+                    return (
+                        <div key={dayName} className="space-y-4">
+                            {visibleCategoriesForDay.length > 0 && (
+                                <h2 className="text-2xl font-bold text-blue-400 mt-6 mb-4">{dayName}</h2>
                             )}
-
-                            <div className="space-y-6">
-                                {categoryOrder.map((categoryName, categoryIndex) => {
-                                    const exercises = dayData.categories?.[categoryName]; // Use optional chaining
-                                    if (!Array.isArray(exercises)) { // Only check if it's not an array
-                                        console.warn(`Exercices pour la catégorie ${categoryName} du jour ${dayName} ne sont pas un tableau ou sont manquants.`, exercises);
-                                        return null; // Skip rendering this category
-                                    }
-
-                                    return (
-                                        <div key={categoryName} className="bg-gray-700 p-4 sm:p-5 rounded-lg shadow-md">
-                                            <h3 className="text-lg sm:text-2xl font-bold mb-4 text-white flex items-center justify-between">
-                                                {categoryName}
-                                                {isEditMode && (
-                                                    <div className="flex space-x-2 ml-auto">
-                                                        <button onClick={() => handleEditCategory(dayName, categoryName)} className="p-1 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition transform hover:scale-110" title="Renommer le groupe musculaire">
-                                                            <Pencil className="h-4 w-4" />
-                                                        </button>
-                                                        <button onClick={() => handleDeleteCategory(dayName, categoryName)} className="p-1 rounded-full bg-red-500 hover:bg-red-600 text-white transition transform hover:scale-110" title="Supprimer le groupe musculaire">
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
-                                                        <button onClick={() => handleReorderCategories(dayName, categoryName, -1)} disabled={categoryIndex === 0} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Déplacer vers le haut">
-                                                            <ArrowUp className="h-4 w-4" />
-                                                        </button>
-                                                        <button onClick={() => handleReorderCategories(dayName, categoryName, 1)} disabled={categoryIndex === categoryOrder.length - 1} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Déplacer vers le bas">
-                                                            <ArrowDown className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </h3>
-                                            {isEditMode && (
-                                                <button
-                                                    onClick={() => handleAddExerciseClick(dayName, categoryName)}
-                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full transition transform hover:scale-105 shadow-lg text-sm sm:text-base flex items-center justify-center mb-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    disabled={isAddingExercise}
-                                                >
-                                                    <Plus className="h-4 w-4 mr-2" /> Ajouter Exercice
-                                                </button>
-                                            )}
-                                            {exercises.length === 0 && (
-                                                <p className="text-gray-400 text-center mt-4">
-                                                    Aucun exercice dans ce groupe musculaire.
-                                                    {isEditMode && (
-                                                        <span className="block mt-1">
-                                                            Cliquez sur "Ajouter Exercice" ci-dessus.
-                                                        </span>
-                                                    )}
-                                                </p>
-                                            )}
-                                            <ul className="space-y-3">
-                                                {exercises.filter(ex => !ex.isDeleted).map((exercise, exerciseIndex) => (
-                                                    <li key={exercise.id} id={`exercise-item-${exercise.id}`} className={`bg-gray-800 p-3 sm:p-4 rounded-md shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center transition-all duration-200 ease-out
-                                                        ${isSavingExercise && exercise.id === exercise.id ? 'saved-animation' : ''}
-                                                    `}>
-                                                        <div className="flex-grow mb-2 sm:mb-0">
-                                                            <p className="text-lg sm:text-xl font-semibold text-blue-300">{exercise.name}</p>
-                                                            <p className="text-gray-300 text-sm sm:text-base">
-                                                                {getSeriesDisplay(exercise)}
-                                                            </p>
-                                                            {isAdvancedMode && personalBests[exercise.id] && (
-                                                                // Added 'block' class to force 1RM to a new line
-                                                                // Added 'mt-1' for a small top margin for better separation
-                                                                <span className="text-yellow-400 text-xs sm:text-sm mt-1 block">
-                                                                    Meilleur: {personalBests[exercise.id].maxWeight} kg ({personalBests[exercise.id].reps} reps) le {formatDate(personalBests[exercise.id].date)}
-                                                                </span>
-                                                            )}
-                                                            {isAdvancedMode && progressionInsights[exercise.id] && (
-                                                                <p className="text-green-400 text-xs sm:text-sm mt-1">
-                                                                    Analyse: {progressionInsights[exercise.id]}
-                                                                </p>
-                                                            )}
-                                                            {exercise.notes && (
-                                                                <p className="text-gray-400 text-xs sm:text-sm mt-1 italic">
-                                                                    Notes: {exercise.notes.substring(0, 50)}{exercise.notes.length > 50 ? '...' : ''}
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex space-x-2 mt-2 sm:mt-0">
-                                                            {isEditMode && (
-                                                                <>
-                                                                    <button onClick={() => handleEditClick(dayName, categoryName, exercise.id, exercise)} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" title="Modifier l'exercice" disabled={isSavingExercise}>
-                                                                        <Pencil className="h-4 w-4" />
-                                                                    </button>
-                                                                    <button onClick={() => handleDeleteExercise(dayName, categoryName, exercise.id)} className="p-1 rounded-full bg-red-500 hover:bg-red-600 text-white transition transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed" title="Supprimer l'exercice" disabled={isDeletingExercise}>
-                                                                        <Trash2 className="h-4 w-4" />
-                                                                    </button>
-                                                                    <button onClick={() => handleReorderExercises(dayName, categoryName, exercise.id, -1)} disabled={exerciseIndex === 0} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Déplacer vers le haut">
-                                                                        <ArrowUp className="h-4 w-4" />
-                                                                    </button>
-                                                                    <button onClick={() => handleReorderExercises(dayName, categoryName, exercise.id, 1)} disabled={exerciseIndex === exercises.filter(ex => !ex.isDeleted).length - 1} className="p-1 rounded-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Déplacer vers le bas">
-                                                                        <ArrowDown className="h-4 w-4" />
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                            {isAdvancedMode && (
-                                                                <button onClick={() => handleAnalyzeProgressionClick(exercise)} className="p-1 rounded-full bg-sky-500 hover:bg-sky-600 text-white transition transform hover:scale-110" title="Analyser la progression avec l'IA">
-                                                                    <Sparkles className="h-4 w-4" />
-                                                                </button>
-                                                            )}
-                                                            <button onClick={() => openExerciseGraphModal(exercise)} className="p-1 rounded-full bg-purple-500 hover:bg-purple-600 text-white transition transform hover:scale-110" title="Voir le graphique">
-                                                                <LineChartIcon className="h-4 w-4" />
-                                                            </button>
-                                                            <button onClick={() => handleOpenNotesModal(dayName, categoryName, exercise.id, exercise.notes)} className="p-1 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition transform hover:scale-110" title="Notes de l'exercice">
-                                                                <NotebookText className="h-4 w-4" />
-                                                            </button>
-                                                        </div>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    );
+                            <div className="space-y-4">
+                                {stableSort(visibleCategoriesForDay, (a, b) => a.localeCompare(b)).map(categoryName => {
+                                    return renderCategory(categoryName, dayName);
                                 })}
                             </div>
                         </div>
                     );
                 })}
             </div>
-        </>
+
+            {/* Message if no results */}
+            {getAvailableDays().length === 0 && (
+                <div className="text-center py-8">
+                    <div className="text-gray-400">
+                        <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <h3 className="text-lg font-medium text-gray-300 mb-2">Aucun exercice trouvé</h3>
+                        <p className="text-gray-400">Essayez de modifier vos critères de recherche</p>
+                    </div>
+                </div>
+            )}
+        </div>
     );
-};
+}
 
 export default MainWorkoutView;
