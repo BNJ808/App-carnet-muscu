@@ -1726,7 +1726,7 @@ function App() {
                     onClose={() => setToast(null)}
                 />
             )}
-
+            
             {/* BottomNavigationBar (toujours visible) */}
             <BottomNavigationBar 
                 currentView={currentView} 
