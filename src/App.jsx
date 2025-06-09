@@ -852,7 +852,6 @@ const ImprovedWorkoutApp = () => {
             </header>
 
             <main className="flex-grow p-4 overflow-y-auto pb-20">
-                {/* Contenu principal minimal pour le test (sera remplacé par MainWorkoutView si currentView est 'workout') */}
                 {currentView === 'workout' && (
                     <MainWorkoutView
                         workouts={workouts}
@@ -863,7 +862,7 @@ const ImprovedWorkoutApp = () => {
                         onRemoveSerie={onRemoveSerie}
                         onUpdateExerciseNotes={onUpdateExerciseNotes}
                         onEditClick={onEditClick}
-                        onDeleteExercise={deleteExercise} // Utilise la fonction deleteExercise de App.jsx
+                        onDeleteExercise={deleteExercise}
                         addDay={addDay}
                         renameDay={renameDay}
                         deleteDay={deleteDay}
@@ -886,8 +885,6 @@ const ImprovedWorkoutApp = () => {
                         redoStack={redoStack}
                     />
                 )}
-                {/* Les autres composants de vue sont toujours commentés pour l'instant */}
-                {/*
                 {currentView === 'history' && (
                     <HistoryView
                         historicalData={historicalData}
@@ -903,6 +900,8 @@ const ImprovedWorkoutApp = () => {
                         showToast={showToast}
                     />
                 )}
+                {/* Les autres composants de vue sont toujours commentés pour l'instant */}
+                {/*
                 {currentView === 'timer' && (
                     <TimerView
                         timerSeconds={timerSeconds}
