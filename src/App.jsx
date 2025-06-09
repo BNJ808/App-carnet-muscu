@@ -103,7 +103,7 @@ const ImprovedWorkoutApp = () => {
 
         const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
         return date.toLocaleDateString('fr-FR', options);
-    }, []);
+    }, [showToast]); // Ajout de showToast comme dépendance pour la cohérence, bien que peu d'impact ici.
 
     const getSeriesDisplay = useCallback((series) => {
         return series.map(s => `${s.reps}x${s.weight}kg`).join(' / ');
@@ -852,24 +852,42 @@ const ImprovedWorkoutApp = () => {
             </header>
 
             <main className="flex-grow p-4 overflow-y-auto pb-20">
-                {/* Contenu principal minimal pour le test */}
-                <div className="text-center p-8">
-                    <h1 className="text-2xl font-bold mb-4">Application en cours de chargement...</h1>
-                    <p className="text-gray-400">Si cette page reste affichée, vérifiez la console pour des erreurs.</p>
-                    {isInitialLoad && <p className="text-blue-400 mt-2">Chargement des données initiales...</p>}
-                    {!isInitialLoad && <p className="text-green-400 mt-2">Données chargées ou initialisées. Prêt à commencer !</p>}
-                </div>
-
-                {/* Les composants de vue et la navigation sont commentés pour l'instant */}
-                {/*
+                {/* Contenu principal minimal pour le test (sera remplacé par MainWorkoutView si currentView est 'workout') */}
                 {currentView === 'workout' && (
                     <MainWorkoutView
                         workouts={workouts}
                         setWorkouts={setWorkouts}
                         onToggleSerieCompleted={onToggleSerieCompleted}
-                        // ... toutes les autres props
+                        onUpdateSerie={onUpdateSerie}
+                        onAddSerie={onAddSerie}
+                        onRemoveSerie={onRemoveSerie}
+                        onUpdateExerciseNotes={onUpdateExerciseNotes}
+                        onEditClick={onEditClick}
+                        onDeleteExercise={deleteExercise} // Utilise la fonction deleteExercise de App.jsx
+                        addDay={addDay}
+                        renameDay={renameDay}
+                        deleteDay={deleteDay}
+                        addExercise={addExercise}
+                        updateExercise={updateExercise}
+                        saveCurrentWorkoutSession={saveCurrentWorkoutSession}
+                        showToast={showToast}
+                        formatTime={formatTime}
+                        isTimerModalOpen={isTimerModalOpen}
+                        setIsTimerModalOpen={setIsTimerModalOpen}
+                        startTimer={startTimer}
+                        restTimeInput={restTimeInput}
+                        setRestTimeInput={setRestTimeInput}
+                        timerIsRunning={timerIsRunning}
+                        timerSeconds={timerSeconds}
+                        theme={theme}
+                        undo={undo}
+                        redo={redo}
+                        undoStack={undoStack}
+                        redoStack={redoStack}
                     />
                 )}
+                {/* Les autres composants de vue sont toujours commentés pour l'instant */}
+                {/*
                 {currentView === 'history' && (
                     <HistoryView
                         historicalData={historicalData}
@@ -924,13 +942,11 @@ const ImprovedWorkoutApp = () => {
                 */}
             </main>
 
-            {/* Barre de navigation inférieure - DÉCOMMENTÉE ICI */}
             <BottomNavigationBar
                 currentView={currentView}
                 setCurrentView={setCurrentView}
             />
 
-            {/* Toast notification - Décommenté car showToast est utilisé */}
             {toast && (
                 <Toast
                     message={toast.message}
