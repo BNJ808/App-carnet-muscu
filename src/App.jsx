@@ -742,23 +742,59 @@ const ImprovedWorkoutApp = () => {
     }, [showToast]);
 
     const startTimer = useCallback((seconds) => {
+        // Clear any existing interval to prevent multiple timers running
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+        }
+
         setTimerSeconds(seconds);
         setTimerIsRunning(true);
         setTimerIsFinished(false);
+        
+        timerIntervalRef.current = setInterval(() => {
+            setTimerSeconds(prevSeconds => {
+                if (prevSeconds <= 1) { // Use 1 to ensure it hits 0 and then clears
+                    clearInterval(timerIntervalRef.current);
+                    setTimerIsRunning(false);
+                    setTimerIsFinished(true);
+                    showToast("Temps de repos terminé !", 'info', null, 5000);
+                    return 0;
+                }
+                return prevSeconds - 1;
+            });
+        }, 1000);
+
         showToast(`Minuteur démarré pour ${formatTime(seconds)}.`, 'info');
     }, [showToast, formatTime]);
 
     const pauseTimer = useCallback(() => {
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+        }
         setTimerIsRunning(false);
         showToast("Minuteur en pause.", 'info');
     }, [showToast]);
 
     const resetTimer = useCallback(() => {
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+        }
         setTimerSeconds(0);
         setTimerIsRunning(false);
         setTimerIsFinished(false);
         showToast("Minuteur réinitialisé.", 'info');
     }, [showToast]);
+
+    // Cleanup interval on component unmount
+    useEffect(() => {
+        return () => {
+            if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+            }
+        };
+    }, []);
 
     const importData = useCallback(async (jsonString) => {
         try {
@@ -900,8 +936,6 @@ const ImprovedWorkoutApp = () => {
                         showToast={showToast}
                     />
                 )}
-                {/* Les autres composants de vue sont toujours commentés pour l'instant */}
-                {/*
                 {currentView === 'timer' && (
                     <TimerView
                         timerSeconds={timerSeconds}
@@ -914,9 +948,10 @@ const ImprovedWorkoutApp = () => {
                         restTimeInput={restTimeInput}
                         setRestTimeInput={setRestTimeInput}
                         formatTime={formatTime}
-                        setTimerPreset={startTimer} // setTimerPreset va directement démarrer le minuteur
                     />
                 )}
+                {/* Les autres composants de vue sont toujours commentés pour l'instant */}
+                {/*
                 {currentView === 'stats' && (
                     <StatsView
                         workouts={workouts}
@@ -956,8 +991,7 @@ const ImprovedWorkoutApp = () => {
                 />
             )}
 
-            {/* Timer Modal (commenté pour l'instant) */}
-            {/*
+            {/* Timer Modal (décommenté car il est maintenant utilisé globalement) */}
             <TimerModal
                 isOpen={isTimerModalOpen}
                 onClose={() => setIsTimerModalOpen(false)}
@@ -970,7 +1004,6 @@ const ImprovedWorkoutApp = () => {
                 setTimerSeconds={setTimerSeconds}
                 formatTime={formatTime}
             />
-            */}
 
             {/* AI Analysis Modal (commenté pour l'instant) */}
             {/*
