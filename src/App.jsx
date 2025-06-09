@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import * as GenerativeAIModule from '@google/generative-ai';
 
-// Import des composants (gardez les imports, mais les composants ne seront pas rendus)
+// Import des composants
 import Toast from './components/Toast.jsx';
 import MainWorkoutView from './components/MainWorkoutView.jsx';
 import HistoryView from './components/HistoryView.jsx';
@@ -71,8 +71,7 @@ const ImprovedWorkoutApp = () => {
     const timerIntervalRef = useRef(null);
     const isUpdatingFirestoreRef = useRef(false); // Pour éviter les boucles infinies de mise à jour Firestore
 
-    // Fonctions utilitaires (celles qui ne dépendent pas d'autres logiques complexes)
-    // showToast est nécessaire pour l'authentification Firebase
+    // Fonctions utilitaires (showToast est nécessaire pour l'authentification Firebase)
     const showToast = useCallback((message, type = 'info', action = null, duration = 3000) => {
         setToast({ message, type, action, duration });
     }, []);
@@ -94,17 +93,8 @@ const ImprovedWorkoutApp = () => {
             authUnsubscribeRef.current = onAuthStateChanged(authRef.current, async (user) => {
                 if (user) {
                     currentUserRef.current = user;
-                    // Connectez-vous avec un jeton personnalisé si ce n'est pas anonyme (si vous en avez un)
-                    // if (!user.isAnonymous && customToken) {
-                    //     try {
-                    //         await signInWithCustomToken(authRef.current, customToken);
-                    //         console.log("Signed in with custom token.");
-                    //     } catch (error) {
-                    //         console.error("Error signing in with custom token:", error);
-                    //         showToast("Erreur de connexion avec jeton personnalisé.", 'error');
-                    //     }
-                    // }
-
+                    // Ne pas essayer de signInAnonymously si l'utilisateur est déjà connecté ou n'est pas anonyme
+                    // (si vous avez un customToken, vous pouvez le gérer ici avant d'établir l'écouteur onSnapshot)
                     if (unsubscribeFirestoreRef.current) {
                         unsubscribeFirestoreRef.current(); // Unsubscribe from previous user's data
                     }
@@ -145,7 +135,6 @@ const ImprovedWorkoutApp = () => {
             console.error("Erreur lors de l'initialisation de Firebase ou de l'authentification:", error);
             showToast("Erreur critique d'initialisation de l'application.", 'error');
         }
-
 
         return () => {
             if (authUnsubscribeRef.current) authUnsubscribeRef.current();
