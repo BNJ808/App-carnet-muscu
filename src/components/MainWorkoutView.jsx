@@ -67,7 +67,7 @@ function MainWorkoutView({
     handleAddCategory, 
     handleEditCategory, 
     handleDeleteCategory,
-    isAdvancedMode = false 
+    // isAdvancedMode removed for debugging purposes
 }) {
     const [expandedCategories, setExpandedCategories] = useState(new Set());
     const [expandedExercises, setExpandedExercises] = useState(new Set());
@@ -101,7 +101,7 @@ function MainWorkoutView({
     }, []);
 
 
-    // Filtrer les jours disponibles
+    // Filter available days
     const getAvailableDays = useMemo(() => {
         if (!workouts || !workouts.days) return [];
         const filteredDays = (workouts.dayOrder || Object.keys(workouts.days)).filter(dayName => {
@@ -122,7 +122,7 @@ function MainWorkoutView({
     }, [workouts, searchTerm]);
 
 
-    // Filtrer et trier les exercices
+    // Filter and sort exercises
     const getFilteredAndSortedExercises = useCallback((dayName, categoryName) => {
         const exercises = workouts.days[dayName]?.categories[categoryName] || [];
         const filtered = exercises.filter(exercise => {
@@ -250,20 +250,19 @@ function MainWorkoutView({
                                     Supprimer
                                 </button>
                             </div>
-                            {isAdvancedMode && (
-                                <button
-                                    onClick={() => onAnalyzeProgression?.(exercise)}
-                                    className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
-                                >
-                                    <Sparkles className="h-4 w-4" /> Analyser la progression (IA)
-                                </button>
-                            )}
+                            {/* AI analysis button removed for debugging */}
+                            {/* <button
+                                onClick={() => onAnalyzeProgression?.(exercise)}
+                                className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
+                            >
+                                <Sparkles className="h-4 w-4" /> Analyser la progression (IA)
+                            </button> */}
                         </div>
                     </div>
                 )}
             </div>
         );
-    }, [expandedExercises, isDeletingExercise, isAdvancedMode, personalBests, onAddSerie, onEditClick, onDeleteExercise, onUpdateExerciseNotes, onAnalyzeProgression, renderSerie, toggleExercise, getSeriesDisplay]);
+    }, [expandedExercises, isDeletingExercise, personalBests, onAddSerie, onEditClick, onDeleteExercise, onUpdateExerciseNotes, onAnalyzeProgression, renderSerie, toggleExercise, getSeriesDisplay]);
 
     const renderCategory = useCallback((categoryName, dayName) => {
         const isExpanded = expandedCategories.has(`${dayName}-${categoryName}`);
@@ -284,38 +283,37 @@ function MainWorkoutView({
                         {categoryName} ({filteredExercises.length})
                     </h3>
                     <div className="flex items-center gap-2">
-                         {isAdvancedMode && (
-                            <div className="relative">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setShowCategoryMenu(showCategoryMenu === `${dayName}-${categoryName}` ? null : `${dayName}-${categoryName}`); }}
-                                    className="p-1 rounded-full text-gray-400 hover:bg-gray-600 transition-colors"
-                                >
-                                    <MoreVertical className="h-5 w-5" />
-                                </button>
-                                {showCategoryMenu === `${dayName}-${categoryName}` && (
-                                    <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-10">
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleEditCategory?.(dayName, categoryName); setShowCategoryMenu(null); }}
-                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
-                                        >
-                                            <Pencil className="h-4 w-4" /> Modifier
-                                        </button>
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleDeleteCategory?.(dayName, categoryName); setShowCategoryMenu(null); }}
-                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
-                                        >
-                                            <Trash2 className="h-4 w-4" /> Supprimer
-                                        </button>
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleAddCategory?.(dayName); setShowCategoryMenu(null); }}
-                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
-                                        >
-                                            <Plus className="h-4 w-4" /> Ajouter Catégorie
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        {/* Advanced mode controls removed for debugging */}
+                        {/* <div className="relative">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowCategoryMenu(showCategoryMenu === `${dayName}-${categoryName}` ? null : `${dayName}-${categoryName}`); }}
+                                className="p-1 rounded-full text-gray-400 hover:bg-gray-600 transition-colors"
+                            >
+                                <MoreVertical className="h-5 w-5" />
+                            </button>
+                            {showCategoryMenu === `${dayName}-${categoryName}` && (
+                                <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-10">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleEditCategory?.(dayName, categoryName); setShowCategoryMenu(null); }}
+                                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
+                                    >
+                                        <Pencil className="h-4 w-4" /> Modifier
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteCategory?.(dayName, categoryName); setShowCategoryMenu(null); }}
+                                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
+                                    >
+                                        <Trash2 className="h-4 w-4" /> Supprimer
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleAddCategory?.(dayName); setShowCategoryMenu(null); }}
+                                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
+                                    >
+                                        <Plus className="h-4 w-4" /> Ajouter Catégorie
+                                    </button>
+                                </div>
+                            )}
+                        </div> */}
                         <button
                             onClick={(e) => { e.stopPropagation(); toggleCategory(`${dayName}-${categoryName}`); }}
                             className="p-1 rounded-full text-gray-400 hover:bg-gray-700 transition-colors"
@@ -343,7 +341,7 @@ function MainWorkoutView({
                 )}
             </div>
         );
-    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, isAdvancedMode, showCategoryMenu, handleEditCategory, handleDeleteCategory, handleAddCategory]); 
+    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, showCategoryMenu, handleEditCategory, handleDeleteCategory, handleAddCategory]); 
 
     return (
         <div className="space-y-6">
@@ -392,39 +390,38 @@ function MainWorkoutView({
                                 <Calendar className="h-5 w-5" />
                                 {dayName}
                             </button>
-                            {isAdvancedMode && (
-                                <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 z-10">
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); setShowDayMenu(showDayMenu === dayName ? null : dayName); }}
-                                        className="p-1 bg-gray-700 rounded-full text-gray-400 hover:bg-gray-600 transition-colors"
-                                        title="Options du jour"
-                                    >
-                                        <MoreVertical className="h-4 w-4" />
-                                    </button>
-                                    {showDayMenu === dayName && (
-                                        <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-20">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleEditDay?.(dayName); setShowDayMenu(null); }}
-                                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
-                                            >
-                                                <Pencil className="h-4 w-4" /> Modifier
-                                            </button>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleDeleteDay?.(dayName); setShowDayMenu(null); }}
-                                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
-                                            >
-                                                <Trash2 className="h-4 w-4" /> Supprimer
-                                            </button>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleAddCategory?.(dayName); setShowDayMenu(null); }}
-                                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
-                                            >
-                                                <Plus className="h-4 w-4" /> Ajouter Catégorie
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            {/* Advanced mode controls removed for debugging */}
+                            {/* <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 z-10">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowDayMenu(showDayMenu === dayName ? null : dayName); }}
+                                    className="p-1 bg-gray-700 rounded-full text-gray-400 hover:bg-gray-600 transition-colors"
+                                    title="Options du jour"
+                                >
+                                    <MoreVertical className="h-4 w-4" />
+                                </button>
+                                {showDayMenu === dayName && (
+                                    <div className="absolute right-0 mt-2 w-40 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-20">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleEditDay?.(dayName); setShowDayMenu(null); }}
+                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 rounded-t-lg"
+                                        >
+                                            <Pencil className="h-4 w-4" /> Modifier
+                                        </button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteDay?.(dayName); setShowDayMenu(null); }}
+                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600"
+                                        >
+                                            <Trash2 className="h-4 w-4" /> Supprimer
+                                        </button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleAddCategory?.(dayName); setShowDayMenu(null); }}
+                                            className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-600 rounded-b-lg"
+                                        >
+                                            <Plus className="h-4 w-4" /> Ajouter Catégorie
+                                        </button>
+                                    </div>
+                                )}
+                            </div> */}
                         </div>
                     ))
                 ) : (
@@ -433,18 +430,17 @@ function MainWorkoutView({
                         Aucun jour d'entraînement trouvé. Ajoutez-en un !
                     </div>
                 )}
-                {isAdvancedMode && (
-                    <button
-                        onClick={handleAddDay}
-                        className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all flex items-center gap-2"
-                        title="Ajouter un nouveau jour d'entraînement"
-                    >
-                        <Plus className="h-5 w-5" /> Nouveau Jour
-                    </button>
-                )}
+                {/* Add new day button removed for debugging */}
+                {/* <button
+                    onClick={handleAddDay}
+                    className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all flex items-center gap-2"
+                    title="Ajouter un nouveau jour d'entraînement"
+                >
+                    <Plus className="h-5 w-5" /> Nouveau Jour
+                </button> */}
             </div>
 
-            {/* Affichage des entraînements par jour et catégorie */}
+            {/* Display workouts by day and category */}
             <div className="space-y-6 mt-4">
                 {workouts.dayOrder.filter(dayName => selectedDayFilter === '' || dayName === selectedDayFilter).map(dayName => {
                     const dayData = workouts.days[dayName];
@@ -482,7 +478,7 @@ function MainWorkoutView({
                 })}
             </div>
 
-            {/* Message si aucun résultat */}
+            {/* Message if no results */}
             {getAvailableDays().length === 0 && (
                 <div className="text-center py-8">
                     <div className="text-gray-400">
