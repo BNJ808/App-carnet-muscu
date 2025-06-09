@@ -20,6 +20,13 @@ import {
     TrendingUp
 } from 'lucide-react';
 
+const stableSort = (array, compareFunction) => {
+    return array
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => compareFunction(a.item, b.item) || a.index - b.index)
+        .map(({ item }) => item);
+};
+
 function MainWorkoutView({
     workouts,
     onToggleSerieCompleted,
@@ -431,11 +438,22 @@ function MainWorkoutView({
                 {/* Séries de l'exercice */}
                 {isExpanded && (
                     <div className="space-y-2 mt-4">
-                        {exercise.series && exercise.series.length > 0 ? (
-                            <>
-                                {exercise.series.map((serie, serieIndex) => 
-                                    renderSerie(serie, serieIndex, exercise.id, dayName, categoryName)
-                                )}
+                        {useMemo(() => {
+    const sortedExercises = stableSort(activeExercises, (a, b) => {
+        // Tri principal par createdAt (ordre d'ajout)
+        const dateA = new Date(a.createdAt || 0);
+        const dateB = new Date(b.createdAt || 0);
+        if (dateA.getTime() !== dateB.getTime()) {
+            return dateA.getTime() - dateB.getTime();
+        }
+        // Tri secondaire par nom si même date
+        return a.name.localeCompare(b.name);
+    });
+    
+    return sortedExercises.map(exercise => 
+        renderExercise(exercise, dayName, categoryName)
+    );
+}, [activeExercises, dayName, categoryName])}
                                 
                                 {/* Bouton d'ajout de série */}
                                 <button
