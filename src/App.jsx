@@ -28,7 +28,7 @@ const firebaseConfig = {
     authDomain: "YOUR_AUTH_DOMAIN",
     projectId: "YOUR_PROJECT_ID",
     storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    messagingSenderId: "YOUR_MESSaging_SENDER_ID",
     appId: "YOUR_APP_ID"
 };
 
@@ -42,6 +42,7 @@ const genAI = GenerativeAIModule.getGenerativeContent({ apiKey: "YOUR_GEMINI_API
 
 const ImprovedWorkoutApp = () => {
     // États de l'application
+    // Initialisation robuste des états pour éviter 'undefined'
     const [currentView, setCurrentView] = useState('workout');
     const [workouts, setWorkouts] = useState({ days: {}, dayOrder: [] });
     const [historicalData, setHistoricalData] = useState([]);
@@ -140,14 +141,18 @@ const ImprovedWorkoutApp = () => {
                 const unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
                     if (docSnap.exists()) {
                         const userData = docSnap.data();
-                        // MODIFICATION CLÉ ICI: Assurez-vous que dayOrder est un tableau
-                        const fetchedWorkouts = userData.workouts || { days: {}, dayOrder: [] };
-                        fetchedWorkouts.dayOrder = Array.isArray(fetchedWorkouts.dayOrder) ? fetchedWorkouts.dayOrder : [];
+                        // Assurez-vous que workouts est un objet et dayOrder un tableau
+                        const fetchedWorkouts = userData.workouts && typeof userData.workouts === 'object'
+                            ? {
+                                days: userData.workouts.days || {},
+                                dayOrder: Array.isArray(userData.workouts.dayOrder) ? userData.workouts.dayOrder : []
+                            }
+                            : { days: {}, dayOrder: [] };
 
                         setWorkouts(fetchedWorkouts);
                         setHistoricalData(Array.isArray(userData.historicalData) ? userData.historicalData : []);
-                        setPersonalBests(userData.personalBests || {});
-                        setGlobalNotes(userData.globalNotes || '');
+                        setPersonalBests(userData.personalBests && typeof userData.personalBests === 'object' ? userData.personalBests : {});
+                        setGlobalNotes(typeof userData.globalNotes === 'string' ? userData.globalNotes : '');
                         showToast('Données chargées !', 'success');
                     } else {
                         console.log("No user document found, initializing new user data.");
@@ -317,7 +322,7 @@ const ImprovedWorkoutApp = () => {
             const day = updatedDays[dayId];
             if (day) {
                 const exercise = day.exercises.find(ex => ex.id === exerciseId);
-                if (exercise && exercise.series[serieIndex]) {
+                if (exercise && exercise.series && exercise.series[serieIndex]) { // Added check for exercise.series
                     exercise.series[serieIndex].completed = !exercise.series[serieIndex].completed;
                 }
             }
@@ -331,7 +336,7 @@ const ImprovedWorkoutApp = () => {
             const day = updatedDays[dayId];
             if (day) {
                 const exercise = day.exercises.find(ex => ex.id === exerciseId);
-                if (exercise && exercise.series[serieIndex]) {
+                if (exercise && exercise.series && exercise.series[serieIndex]) { // Added check for exercise.series
                     exercise.series[serieIndex] = { ...exercise.series[serieIndex], ...updatedSerie };
                 }
             }
@@ -346,6 +351,8 @@ const ImprovedWorkoutApp = () => {
             if (day) {
                 const exercise = day.exercises.find(ex => ex.id === exerciseId);
                 if (exercise) {
+                    // Ensure exercise.series is an array before pushing
+                    exercise.series = Array.isArray(exercise.series) ? exercise.series : [];
                     const newSerie = exercise.series.length > 0
                         ? { ...exercise.series[exercise.series.length - 1], completed: false }
                         : { reps: 8, weight: 60, completed: false };
@@ -362,7 +369,7 @@ const ImprovedWorkoutApp = () => {
             const day = updatedDays[dayId];
             if (day) {
                 const exercise = day.exercises.find(ex => ex.id === exerciseId);
-                if (exercise) {
+                if (exercise && exercise.series) { // Added check for exercise.series
                     exercise.series.splice(serieIndex, 1);
                 }
             }
@@ -417,17 +424,20 @@ const ImprovedWorkoutApp = () => {
 
     const handleCompleteWorkout = useCallback(async (dayId) => {
         const completedDay = workouts.days[dayId];
-        if (!completedDay) return;
+        if (!completedDay) {
+            showToast('Jour d\'entraînement non trouvé.', 'error');
+            return;
+        }
 
         const sessionDate = new Date().toISOString().split('T')[0];
         const newSession = {
             id: Date.now().toString(),
             date: sessionDate,
             dayName: completedDay.name,
-            exercises: completedDay.exercises.filter(ex => !ex.isDeleted).map(ex => ({
+            exercises: completedDay.exercises?.filter(ex => !ex.isDeleted)?.map(ex => ({ // Added optional chaining
                 ...ex,
-                series: ex.series.filter(s => s.completed) // N'enregistre que les séries complétées
-            })).filter(ex => ex.series.length > 0) // N'enregistre que les exercices avec au moins une série complétée
+                series: ex.series?.filter(s => s.completed) || [] // Added optional chaining and default to empty array
+            }))?.filter(ex => ex.series.length > 0) || [] // Added optional chaining and default to empty array
         };
 
         if (newSession.exercises.length === 0) {
@@ -447,7 +457,7 @@ const ImprovedWorkoutApp = () => {
             newSession.exercises.forEach(ex => {
                 ex.series.forEach(s => {
                     const currentPB = updatedBests[ex.name];
-                    if (!currentPB || s.weight * s.reps > currentPB.weight * currentPB.reps) {
+                    if (!currentPB || (s.weight * s.reps > (currentPB.weight * currentPB.reps || 0))) { // Added null/undefined check
                         updatedBests[ex.name] = {
                             weight: s.weight,
                             reps: s.reps,
@@ -463,10 +473,10 @@ const ImprovedWorkoutApp = () => {
         setWorkouts(prevWorkouts => {
             const updatedDays = { ...prevWorkouts.days };
             if (updatedDays[dayId]) {
-                updatedDays[dayId].exercises = updatedDays[dayId].exercises.map(ex => ({
+                updatedDays[dayId].exercises = updatedDays[dayId].exercises?.map(ex => ({ // Added optional chaining
                     ...ex,
-                    series: ex.series.map(s => ({ ...s, completed: false }))
-                }));
+                    series: ex.series?.map(s => ({ ...s, completed: false })) || [] // Added optional chaining and default to empty array
+                })) || []; // Default to empty array
             }
             return { ...prevWorkouts, days: updatedDays };
         });
@@ -553,13 +563,13 @@ const ImprovedWorkoutApp = () => {
 
 
     // Fonctions pour les StatsView props
-    const getWorkoutStats = useCallback((dayOrder, days) => {
+    // Ajout de vérifications défensives pour les paramètres dayOrder et days
+    const getWorkoutStats = useCallback((dayOrder = [], days = {}) => {
         let totalWorkouts = 0;
         let totalExercises = new Set();
         let totalVolume = 0;
         let volumeByExercise = {};
 
-        // Utilisation de safeWorkouts.dayOrder qui est déjà un tableau
         dayOrder.forEach(dayId => {
             const day = days[dayId];
             if (day && Array.isArray(day.exercises)) {
@@ -567,9 +577,10 @@ const ImprovedWorkoutApp = () => {
                 day.exercises.forEach(ex => {
                     if (!ex.isDeleted) {
                         totalExercises.add(ex.name);
-                        ex.series.forEach(s => {
+                        // Assurez-vous que ex.series est un tableau avant de l'itérer
+                        (ex.series || []).forEach(s => {
                             if (s.completed) {
-                                const volume = s.weight * s.reps;
+                                const volume = (s.weight || 0) * (s.reps || 0); // Defensive checks for s.weight, s.reps
                                 totalVolume += volume;
                                 volumeByExercise[ex.name] = (volumeByExercise[ex.name] || 0) + volume;
                             }
@@ -592,17 +603,16 @@ const ImprovedWorkoutApp = () => {
         };
     }, []);
 
-    const getExerciseVolumeData = useCallback((dayOrder, days) => {
+    const getExerciseVolumeData = useCallback((dayOrder = [], days = {}) => {
         const data = {};
-        // Utilisation de safeWorkouts.dayOrder qui est déjà un tableau
         dayOrder.forEach(dayId => {
             const day = days[dayId];
             if (day && Array.isArray(day.exercises)) {
                 day.exercises.forEach(ex => {
                     if (!ex.isDeleted) {
-                        ex.series.forEach(s => {
+                        (ex.series || []).forEach(s => {
                             if (s.completed) {
-                                const volume = s.weight * s.reps;
+                                const volume = (s.weight || 0) * (s.reps || 0);
                                 data[ex.name] = (data[ex.name] || 0) + volume;
                             }
                         });
@@ -613,18 +623,17 @@ const ImprovedWorkoutApp = () => {
         return Object.entries(data).map(([name, totalVolume]) => ({ exerciseName: name, totalVolume }));
     }, []);
 
-    const getDailyVolumeData = useCallback((history) => {
+    const getDailyVolumeData = useCallback((history = []) => {
         const dailyVolumes = {};
-        // Utilisation de safeHistoricalData qui est déjà un tableau
         history.forEach(session => {
-            const date = session.date; // La date est déjà au format YYYY-MM-DD
+            const date = session.date;
             let sessionVolume = 0;
             if (Array.isArray(session.exercises)) {
                 session.exercises.forEach(ex => {
                     if (!ex.isDeleted && Array.isArray(ex.series)) {
                         ex.series.forEach(s => {
                             if (s.completed) {
-                                sessionVolume += s.weight * s.reps;
+                                sessionVolume += (s.weight || 0) * (s.reps || 0);
                             }
                         });
                     }
@@ -633,15 +642,13 @@ const ImprovedWorkoutApp = () => {
             dailyVolumes[date] = (dailyVolumes[date] || 0) + sessionVolume;
         });
 
-        // Convertir en tableau d'objets pour Recharts, trié par date
         return Object.keys(dailyVolumes)
             .sort((a, b) => new Date(a) - new Date(b))
             .map(date => ({ date, totalVolume: dailyVolumes[date] }));
     }, []);
 
-    const getExerciseFrequencyData = useCallback((history) => {
+    const getExerciseFrequencyData = useCallback((history = []) => {
         const frequency = {};
-        // Utilisation de safeHistoricalData qui est déjà un tableau
         history.forEach(session => {
             if (Array.isArray(session.exercises)) {
                 session.exercises.forEach(ex => {
@@ -686,10 +693,11 @@ const ImprovedWorkoutApp = () => {
                 const importedData = JSON.parse(e.target.result);
                 // Validation simple des données importées
                 if (importedData.workouts && importedData.historicalData && importedData.personalBests) {
+                    // Ensure proper type before setting state
                     setWorkouts(importedData.workouts);
-                    setHistoricalData(importedData.historicalData);
-                    setPersonalBests(importedData.personalBests);
-                    setGlobalNotes(importedData.globalNotes || '');
+                    setHistoricalData(Array.isArray(importedData.historicalData) ? importedData.historicalData : []);
+                    setPersonalBests(importedData.personalBests && typeof importedData.personalBests === 'object' ? importedData.personalBests : {});
+                    setGlobalNotes(typeof importedData.globalNotes === 'string' ? importedData.globalNotes : '');
                     showToast('Données importées avec succès !', 'success');
                 } else {
                     throw new Error('Fichier JSON invalide ou incomplet.');
@@ -813,7 +821,7 @@ const ImprovedWorkoutApp = () => {
                         setGlobalNotes={setGlobalNotes}
                         analyzeGlobalStatsWithAI={analyzeGlobalStatsWithAI}
                         aiAnalysisLoading={isLoadingAIProgression}
-                        onGenerateAISuggestions={handleGenerateAISuggestions}
+                        onGenerateAISuggestions={onGenerateAISuggestions}
                         aiSuggestions={aiSuggestions}
                         isLoadingAI={isLoadingAIProgression}
                         progressionAnalysisContent={progressionAnalysisContent}
