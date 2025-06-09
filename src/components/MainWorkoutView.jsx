@@ -250,21 +250,20 @@ function MainWorkoutView({
                                     Supprimer
                                 </button>
                             </div>
-                            {/* Temporarily disable AI analysis button for debugging */}
-                            {/* {isAdvancedMode && (
+                            {isAdvancedMode && (
                                 <button
                                     onClick={() => onAnalyzeProgression(exercise)}
                                     className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center justify-center gap-1 transition-colors"
                                 >
                                     <Sparkles className="h-4 w-4" /> Analyser la progression (IA)
                                 </button>
-                            )} */}
+                            )}
                         </div>
                     </div>
                 )}
             </div>
         );
-    }, [expandedExercises, isDeletingExercise, /* isAdvancedMode, */ personalBests, onAddSerie, onEditClick, onDeleteExercise, onUpdateExerciseNotes, onAnalyzeProgression, renderSerie, toggleExercise, getSeriesDisplay]); // Removed isAdvancedMode from dependencies
+    }, [expandedExercises, isDeletingExercise, isAdvancedMode, personalBests, onAddSerie, onEditClick, onDeleteExercise, onUpdateExerciseNotes, onAnalyzeProgression, renderSerie, toggleExercise, getSeriesDisplay]);
 
     const renderCategory = useCallback((categoryName, dayName) => {
         const isExpanded = expandedCategories.has(`${dayName}-${categoryName}`);
@@ -285,8 +284,7 @@ function MainWorkoutView({
                         {categoryName} ({filteredExercises.length})
                     </h3>
                     <div className="flex items-center gap-2">
-                         {/* Temporarily disable advanced mode controls for debugging */}
-                         {/* {isAdvancedMode && (
+                         {isAdvancedMode && (
                             <div className="relative">
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setShowCategoryMenu(showCategoryMenu === `${dayName}-${categoryName}` ? null : `${dayName}-${categoryName}`); }}
@@ -317,7 +315,7 @@ function MainWorkoutView({
                                     </div>
                                 )}
                             </div>
-                        )} */}
+                        )}
                         <button
                             onClick={(e) => { e.stopPropagation(); toggleCategory(`${dayName}-${categoryName}`); }}
                             className="p-1 rounded-full text-gray-400 hover:bg-gray-700 transition-colors"
@@ -345,7 +343,7 @@ function MainWorkoutView({
                 )}
             </div>
         );
-    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, /* isAdvancedMode, */ showCategoryMenu, handleEditCategory, handleDeleteCategory, handleAddCategory]); // Removed isAdvancedMode from dependencies
+    }, [expandedCategories, searchTerm, getFilteredAndSortedExercises, renderExercise, toggleCategory, isAdvancedMode, showCategoryMenu, handleEditCategory, handleDeleteCategory, handleAddCategory]); 
 
     return (
         <div className="space-y-6">
@@ -394,8 +392,7 @@ function MainWorkoutView({
                                 <Calendar className="h-5 w-5" />
                                 {dayName}
                             </button>
-                            {/* Temporarily disable advanced mode controls for debugging */}
-                            {/* {isAdvancedMode && (
+                            {isAdvancedMode && (
                                 <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 z-10">
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setShowDayMenu(showDayMenu === dayName ? null : dayName); }}
@@ -436,8 +433,7 @@ function MainWorkoutView({
                         Aucun jour d'entraînement trouvé. Ajoutez-en un !
                     </div>
                 )}
-                {/* Temporarily disable advanced mode control for debugging */}
-                {/* {isAdvancedMode && (
+                {isAdvancedMode && (
                     <button
                         onClick={handleAddDay}
                         className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all flex items-center gap-2"
@@ -445,7 +441,7 @@ function MainWorkoutView({
                     >
                         <Plus className="h-5 w-5" /> Nouveau Jour
                     </button>
-                )} */}
+                )}
             </div>
 
             {/* Affichage des entraînements par jour et catégorie */}
