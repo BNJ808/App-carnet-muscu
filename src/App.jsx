@@ -1198,9 +1198,7 @@ const ImprovedWorkoutApp = () => {
             Object.values(resetWorkouts.days).forEach(day => {
                 Object.values(day.categories).forEach(exercises => {
                     exercises.forEach(exercise => {
-                        exercise.series.forEach(serie => {
-                            serie.isCompleted = false; 
-                        });
+                        serie.isCompleted = false; 
                     });
                 });
             });
@@ -1534,32 +1532,24 @@ const ImprovedWorkoutApp = () => {
                {currentView === 'workout' && (
                    <MainWorkoutView
                        workouts={workouts}
-                       onToggleSerieCompleted={onToggleSerieCompleted}
-                       onUpdateSerie={onUpdateSerie}
-                       onAddSerie={onAddSerie}
-                       onRemoveSerie={onRemoveSerie}
-                       onUpdateExerciseNotes={onUpdateExerciseNotes}
-                       onEditClick={handleEditClick}
-                       onDeleteExercise={handleDeleteExercise}
-                       onAnalyzeProgression={analyzeProgressionWithAI}
+                       onToggleSerieCompleted={() => {}}
+                       onUpdateSerie={() => {}}
+                       onAddSerie={() => {}}
+                       onRemoveSerie={() => {}}
+                       onUpdateExerciseNotes={() => {}}
+                       onEditClick={() => {}}
+                       onDeleteExercise={() => {}}
+                       onAnalyzeProgression={() => {}}
                        searchTerm={searchTerm} 
                        setSearchTerm={setSearchTerm}
                        selectedDayFilter={selectedDayFilter}
                        setSelectedDayFilter={setSelectedDayFilter}
-                       selectedCategoryFilter={selectedCategoryForAdd} // Use selectedCategoryForAdd for initial filter
-                       onCategoryFilterChange={(cat) => setSelectedCategoryForAdd(cat)} // Update selectedCategoryForAdd
-                       showOnlyCompleted={false} // Assuming this is managed elsewhere or not needed directly here now
-                       onToggleCompletedFilter={() => {}} // Placeholder, adjust if needed
-                       onAddExercise={() => { // Simplified to open modal directly
-                           setSelectedDayForAdd(workouts?.dayOrder?.[0] || ''); // Default to first day
-                           setSelectedCategoryForAdd('PECS'); // Default to PECS
-                           setNewExerciseName('');
-                           setNewWeight('');
-                           setNewReps('');
-                           setNewSets('3');
-                           setShowAddExerciseModal(true);
-                       }}
-                       onSaveToHistory={onSaveToHistory}
+                       selectedCategoryFilter={selectedCategoryForAdd}
+                       onCategoryFilterChange={() => {}}
+                       showOnlyCompleted={false}
+                       onToggleCompletedFilter={() => {}}
+                       onAddExercise={() => {}}
+                       onSaveToHistory={() => {}}
                        isCompactView={isCompactView}
                        historicalData={historicalData}
                        personalBests={personalBests}
@@ -1572,12 +1562,12 @@ const ImprovedWorkoutApp = () => {
                        isAdvancedMode={isAdvancedMode}
                        days={workouts?.dayOrder || []}
                        categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
-                       handleAddDay={() => { setNewDayName(''); setShowAddDayModal(true); }}
-                       handleEditDay={(dayName) => { setEditingDayOriginalName(dayName); setEditingDayName(dayName); setShowEditDayModal(true); }}
-                       handleDeleteDay={handleDeleteDay}
-                       handleAddCategory={(dayName) => { setSelectedDayForCategory(dayName); setNewCategoryName(''); setShowAddCategoryModal(true); }}
-                       handleEditCategory={(dayName, categoryName) => { setSelectedDayForCategory(dayName); setEditingCategoryOriginalName(categoryName); setEditingCategoryName(categoryName); setShowEditCategoryModal(true); }}
-                       handleDeleteCategory={handleDeleteCategory}
+                       handleAddDay={() => {}}
+                       handleEditDay={() => {}}
+                       handleDeleteDay={() => {}}
+                       handleAddCategory={() => {}}
+                       handleEditCategory={() => {}}
+                       handleDeleteCategory={() => {}}
                    />
                )}
 
@@ -2015,7 +2005,7 @@ const ImprovedWorkoutApp = () => {
                         <div className="p-6">
                             <div className="flex items-center justify-between mb-6">
                                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Plus className="h-5 w-5 text-blue-400" />
+                                    <Plus className="h-5 w-5" />
                                     Ajouter une nouvelle catégorie
                                 </h3>
                                 <button
