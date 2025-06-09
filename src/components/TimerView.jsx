@@ -136,8 +136,6 @@ const TimerView = ({
                     <div className="flex items-center gap-4">
                         <div className="flex flex-col items-center">
                             <button onClick={increaseMinute} className="p-2 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronUp className="h-6 w-6" /></button>
-
-                            {/* MODIFIED: Added inputMode */}
                             <input
                                 type="number"
                                 min="0"
@@ -146,7 +144,7 @@ const TimerView = ({
                                 onChange={(e) => setCustomMinutes(parseInt(e.target.value) || 0)}
                                 className="bg-gray-700 text-white text-center rounded-lg px-4 py-2 w-20 text-3xl font-bold"
                                 disabled={timerIsRunning}
-                                inputMode="numeric" 
+                                inputMode="numeric" // MODIFIED: Moved comment to a new line
                             />
                             <button onClick={decreaseMinute} className="p-2 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronDown className="h-6 w-6" /></button>
                             <span className="text-gray-400 text-sm mt-1">minutes</span>
@@ -154,8 +152,6 @@ const TimerView = ({
                         <span className="text-gray-400 text-5xl font-extrabold">:</span>
                         <div className="flex flex-col items-center">
                             <button onClick={increaseSecond} className="p-2 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronUp className="h-6 w-6" /></button>
-
-                            {/* MODIFIED: Added inputMode */}
                             <input
                                 type="number"
                                 min="0"
@@ -164,7 +160,7 @@ const TimerView = ({
                                 onChange={(e) => setCustomSeconds(parseInt(e.target.value) || 0)}
                                 className="bg-gray-700 text-white text-center rounded-lg px-4 py-2 w-20 text-3xl font-bold"
                                 disabled={timerIsRunning}
-                                inputMode="numeric" 
+                                inputMode="numeric" // MODIFIED: Moved comment to a new line
                             />
                             <button onClick={decreaseSecond} className="p-2 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronDown className="h-6 w-6" /></button>
                             <span className="text-gray-400 text-sm mt-1">secondes</span>
