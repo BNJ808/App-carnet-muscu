@@ -1870,117 +1870,117 @@ const ImprovedWorkoutApp = () => {
                                         <option value="">Sélectionner un jour</option>
                                         {(workouts?.dayOrder || []).map(day => (
                                             <option key={day} value={day}>{day}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Nom de la catégorie *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={newCategoryName}
-                                        onChange={(e) => setNewCategoryName(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Ex: Pecs"
-                                        autoFocus
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex gap-3 mt-6">
-                                <button
-                                    onClick={() => setShowAddCategoryModal(false)}
-                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleAddCategory}
-                                    disabled={!newCategoryName.trim() || !selectedDayForCategory}
-                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                        (!newCategoryName.trim() || !selectedDayForCategory)
-                                            ? 'bg-blue-500/50 text-white cursor-not-allowed'
-                                            : 'bg-blue-500 text-white hover:bg-blue-600'
-                                    }`}
-                                >
-                                    Ajouter
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                                       ))}
+                                   </select>
+                               </div>
+                               <div>
+                                   <label className="block text-sm font-medium text-gray-300 mb-2">
+                                       Nom de la catégorie *
+                                   </label>
+                                   <input
+                                       type="text"
+                                       value={newCategoryName}
+                                       onChange={(e) => setNewCategoryName(e.target.value)}
+                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       placeholder="Ex: Pecs"
+                                       autoFocus
+                                   />
+                               </div>
+                           </div>
+                           <div className="flex gap-3 mt-6">
+                               <button
+                                   onClick={() => setShowAddCategoryModal(false)}
+                                   className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                               >
+                                   Annuler
+                               </button>
+                               <button
+                                   onClick={handleAddCategory}
+                                   disabled={!newCategoryName.trim() || !selectedDayForCategory}
+                                   className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                       (!newCategoryName.trim() || !selectedDayForCategory)
+                                           ? 'bg-blue-500/50 text-white cursor-not-allowed'
+                                           : 'bg-blue-500 text-white hover:bg-blue-600'
+                                   }`}
+                               >
+                                   Ajouter
+                               </button>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           )}
 
-            {/* Modale d'édition de catégorie */}
-            {showEditCategoryModal && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Pencil className="h-5 w-5 text-yellow-400" />
-                                    Modifier la catégorie
-                                </h3>
-                                <button
-                                    onClick={() => setShowEditCategoryModal(false)}
-                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                                >
-                                    <XCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Jour d'entraînement *
-                                    </label>
-                                    <select
-                                        value={selectedDayForCategory}
-                                        onChange={(e) => setSelectedDayForCategory(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        disabled
-                                    >
-                                        {(workouts?.dayOrder || []).map(day => (
-                                            <option key={day} value={day}>{day}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Nom de la catégorie *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editingCategoryName}
-                                        onChange={(e) => setEditingCategoryName(e.target.value)}
-                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Nom de la catégorie"
-                                        autoFocus
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex gap-3 mt-6">
-                                <button
-                                    onClick={() => setShowEditCategoryModal(false)}
-                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                                >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={() => handleEditCategory(selectedDayForCategory)}
-                                    disabled={!editingCategoryName.trim()}
-                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                        !editingCategoryName.trim()
-                                            ? 'bg-green-500/50 text-white cursor-not-allowed'
-                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                    }`}
-                                >
-                                    Sauvegarder
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+           {/* Modale d'édition de catégorie */}
+           {showEditCategoryModal && (
+               <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                       <div className="p-6">
+                           <div className="flex items-center justify-between mb-6">
+                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                   <Pencil className="h-5 w-5 text-yellow-400" />
+                                   Modifier la catégorie
+                               </h3>
+                               <button
+                                   onClick={() => setShowEditCategoryModal(false)}
+                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                               >
+                                   <XCircle className="h-5 w-5" />
+                               </button>
+                           </div>
+                           <div className="space-y-4">
+                               <div>
+                                   <label className="block text-sm font-medium text-gray-300 mb-2">
+                                       Jour d'entraînement *
+                                   </label>
+                                   <select
+                                       value={selectedDayForCategory}
+                                       onChange={(e) => setSelectedDayForCategory(e.target.value)}
+                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       disabled
+                                   >
+                                       {(workouts?.dayOrder || []).map(day => (
+                                           <option key={day} value={day}>{day}</option>
+                                       ))}
+                                   </select>
+                               </div>
+                               <div>
+                                   <label className="block text-sm font-medium text-gray-300 mb-2">
+                                       Nom de la catégorie *
+                                   </label>
+                                   <input
+                                       type="text"
+                                       value={editingCategoryName}
+                                       onChange={(e) => setEditingCategoryName(e.target.value)}
+                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                       placeholder="Nom de la catégorie"
+                                       autoFocus
+                                   />
+                               </div>
+                           </div>
+                           <div className="flex gap-3 mt-6">
+                               <button
+                                   onClick={() => setShowEditCategoryModal(false)}
+                                   className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                               >
+                                   Annuler
+                               </button>
+                               <button
+                                   onClick={() => handleEditCategory(selectedDayForCategory)}
+                                   disabled={!editingCategoryName.trim()}
+                                   className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                       !editingCategoryName.trim()
+                                           ? 'bg-green-500/50 text-white cursor-not-allowed'
+                                           : 'bg-green-500 text-white hover:bg-green-600'
+                                   }`}
+                               >
+                                   Sauvegarder
+                               </button>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           )}
 
            {/* Modale de paramètres et export/import */}
            {showSettingsModal && (
