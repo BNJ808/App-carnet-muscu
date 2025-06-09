@@ -103,7 +103,7 @@ const ImprovedWorkoutApp = () => {
 
         const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
         return date.toLocaleDateString('fr-FR', options);
-    }, [showToast]); // Ajout de showToast comme dépendance pour la cohérence, bien que peu d'impact ici.
+    }, []); // Removed showToast as dependency, it's not used here
 
     const getSeriesDisplay = useCallback((series) => {
         return series.map(s => `${s.reps}x${s.weight}kg`).join(' / ');
@@ -185,7 +185,7 @@ const ImprovedWorkoutApp = () => {
         }
 
         return stats;
-    }, []);
+    }, [formatDate]); // Added formatDate as a dependency as it's used inside
 
     // Prépare les données pour le graphique de volume par exercice
     const getExerciseVolumeData = useCallback((exerciseName, history) => {
@@ -638,7 +638,7 @@ const ImprovedWorkoutApp = () => {
     }, [formatDate, showToast]);
 
     const analyzeGlobalStatsWithAI = useCallback(async (notes, workoutStats, pbData) => {
-        setIsLoadingAIProgression(true);
+        setIsLoadingAIProgression(true); // Utilisez la même variable de chargement pour la cohérence
         setProgressionAnalysisContent(''); // Clear previous analysis
 
         if (!import.meta.env.VITE_GEMINI_API_KEY) {
@@ -755,6 +755,7 @@ const ImprovedWorkoutApp = () => {
             setTimerSeconds(prevSeconds => {
                 if (prevSeconds <= 1) { // Use 1 to ensure it hits 0 and then clears
                     clearInterval(timerIntervalRef.current);
+                    timerIntervalRef.current = null; // Important to reset the ref
                     setTimerIsRunning(false);
                     setTimerIsFinished(true);
                     showToast("Temps de repos terminé !", 'info', null, 5000);
@@ -950,8 +951,6 @@ const ImprovedWorkoutApp = () => {
                         formatTime={formatTime}
                     />
                 )}
-                {/* Les autres composants de vue sont toujours commentés pour l'instant */}
-                {/*
                 {currentView === 'stats' && (
                     <StatsView
                         workouts={workouts}
@@ -965,7 +964,7 @@ const ImprovedWorkoutApp = () => {
                         onGenerateAISuggestions={onGenerateAISuggestions}
                         aiSuggestions={aiSuggestions}
                         isLoadingAI={isLoadingAI}
-                        progressionAnalysisContent={progressionAnalysisContent}
+                        progressionAnalysisContent={progressionAnalysisContent} // Now consistently passed for AI analysis display
                         getWorkoutStats={getWorkoutStats}
                         getExerciseVolumeData={getExerciseVolumeData}
                         getDailyVolumeData={getDailyVolumeData}
@@ -973,7 +972,6 @@ const ImprovedWorkoutApp = () => {
                         showToast={showToast}
                     />
                 )}
-                */}
             </main>
 
             <BottomNavigationBar
@@ -1005,7 +1003,8 @@ const ImprovedWorkoutApp = () => {
                 formatTime={formatTime}
             />
 
-            {/* AI Analysis Modal (commenté pour l'instant) */}
+            {/* AI Analysis Modal (maintenant rendu via progressionAnalysisContent dans MainWorkoutView et StatsView) */}
+            {/* Ce bloc n'est plus nécessaire ici si l'affichage de l'analyse est géré dans les vues spécifiques */}
             {/*
             {progressionAnalysisContent && (
                 <div className="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex justify-center items-center p-4 backdrop-blur-sm animate-fade-in">
