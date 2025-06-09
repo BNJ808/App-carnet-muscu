@@ -32,6 +32,8 @@ import {
 import MainWorkoutView from './components/MainWorkoutView';
 import StatsView from './components/StatsView';
 import Toast from './components/Toast';
+import BottomNavigationBar from './components/BottomNavigationBar';
+import TimerModal from './components/TimerModal';
 
 // Firebase
 import { 
@@ -81,6 +83,12 @@ const logError = (type, message, error = null) => {
         console.log(`${type.toUpperCase()}: ${message}`);
     }
 };
+
+const formatTime = useCallback((seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}, []);
 
 // Données de base pour initialisation
 const baseInitialData = {
@@ -252,6 +260,7 @@ function App() {
     const [timerIsRunning, setTimerIsRunning] = useState(false);
     const [timerIsFinished, setTimerIsFinished] = useState(false);
     const [customTimerMinutes, setCustomTimerMinutes] = useState(2);
+    const [showTimerModal, setShowTimerModal] = useState(false);
     
     // Refs
     const timerRef = useRef(null);
@@ -799,7 +808,7 @@ function App() {
         setIsLoadingAI(true);
         
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
             
             const workoutSummary = JSON.stringify({
                 days: Object.keys(workouts.days || {}),
@@ -848,7 +857,7 @@ function App() {
         setIsLoadingAI(true);
         
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
             
             // Récupérer l'historique de cet exercice
             const exerciseHistory = historicalData
@@ -1202,7 +1211,7 @@ function App() {
             </header>
 
             {/* Contenu principal */}
-            <main className="max-w-6xl mx-auto px-4 py-6">
+            <main className="max-w-6xl mx-auto px-4 py-6 pb-24">
                 {currentView === 'workout' && (
                     <MainWorkoutView
                         workouts={filteredWorkouts}
@@ -1677,6 +1686,40 @@ function App() {
                 </div>
             )}
 
+            {/* Bouton minuteur flottant */}
+            <button
+                onClick={() => setShowTimerModal(true)}
+                className={`fixed bottom-20 right-4 w-14 h-14 rounded-full shadow-lg transition-all z-40 flex items-center justify-center ${
+                    timerIsRunning 
+                        ? 'bg-green-500 hover:bg-green-600 animate-pulse' 
+                        : timerSeconds > 0 
+                            ? 'bg-yellow-500 hover:bg-yellow-600' 
+                            : 'bg-blue-500 hover:bg-blue-600'
+                }`}
+                title={timerIsRunning ? 'Minuteur en cours' : 'Ouvrir le minuteur'}
+            >
+                <Clock className="h-6 w-6 text-white" />
+                {timerSeconds > 0 && (
+                    <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center font-mono">
+                        {Math.floor(timerSeconds / 60)}
+                    </div>
+                )}
+            </button>
+
+            {/* Modal Timer */}
+            <TimerModal
+                isOpen={showTimerModal}
+                onClose={() => setShowTimerModal(false)}
+                timerSeconds={timerSeconds}
+                timerIsRunning={timerIsRunning}
+                timerIsFinished={timerIsFinished}
+                startTimer={startTimer}
+                pauseTimer={pauseTimer}
+                resetTimer={resetTimer}
+                setTimerSeconds={setTimerSeconds}
+                formatTime={formatTime}
+            />
+
             {/* Toast de notification */}
             {toast && (
                 <Toast
@@ -1685,6 +1728,12 @@ function App() {
                     onClose={() => setToast(null)}
                 />
             )}
+
+            {/* BottomNavigationBar (toujours visible) */}
+            <BottomNavigationBar 
+                currentView={currentView} 
+                setCurrentView={setCurrentView} 
+            />
         </div>
     );
 }
