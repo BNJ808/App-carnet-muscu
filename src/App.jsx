@@ -34,7 +34,6 @@ import StatsView from './components/StatsView';
 import Toast from './components/Toast';
 import BottomNavigationBar from './components/BottomNavigationBar';
 import TimerView from './components/TimerView.jsx';
-import StatsView from './components/StatsView.jsx';
 
 // Firebase
 import { 
