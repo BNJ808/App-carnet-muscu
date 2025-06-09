@@ -206,6 +206,19 @@ const ImprovedWorkoutApp = () => {
     const [showStatsModal, setShowStatsModal] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+    // PROBLÈME 6: Ajouter ces états dans App.jsx:
+    const [showAddDayModal, setShowAddDayModal] = useState(false);
+    const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+    const [showEditDayModal, setShowEditDayModal] = useState(false);
+    const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
+    const [newDayName, setNewDayName] = useState('');
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [editingDayName, setEditingDayName] = useState('');
+    const [editingCategoryName, setEditingCategoryName] = useState('');
+    const [editingDayOriginalName, setEditingDayOriginalName] = useState('');
+    const [editingCategoryOriginalName, setEditingCategoryOriginalName] = useState('');
+    const [selectedDayForCategory, setSelectedDayForCategory] = useState('');
     
     // États d'édition
     const [editingExercise, setEditingExercise] = useState(null);
@@ -405,7 +418,7 @@ const ImprovedWorkoutApp = () => {
         
         try {
             const sessionsRef = collection(db, 'users', userId, 'sessions');
-            const q = query(sessionsRef, orderBy('timestamp', 'desc'), limit(100));
+            const q = query(sessionsRef, /* Removed orderBy as per past instructions */ limit(100));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 const data = snapshot.docs.map(doc => {
                     const docData = doc.data();
@@ -713,79 +726,160 @@ const ImprovedWorkoutApp = () => {
         setIsDeletingExercise(false);
     }, [workouts, applyChanges]);
 
-    // Fonctions de gestion des jours
-    const handleAddDay = useCallback((dayName) => {
+    // PROBLÈME 6: AJOUTER ces fonctions dans App.jsx:
+
+    // Gestion des jours
+    const handleAddDay = useCallback(() => {
+        if (!newDayName.trim()) {
+            setToast({ message: "Le nom du jour est requis", type: 'error' });
+            return;
+        }
+        
+        if (workouts.days[newDayName.trim()]) {
+            setToast({ message: "Ce jour existe déjà", type: 'error' });
+            return;
+        }
+        
         const updatedWorkouts = { ...workouts };
-        updatedWorkouts.days[dayName] = {
+        updatedWorkouts.days[newDayName.trim()] = {
             categories: {},
             categoryOrder: []
         };
-        updatedWorkouts.dayOrder = [...(updatedWorkouts.dayOrder || []), dayName];
         
-        applyChanges(updatedWorkouts, `Jour "${dayName}" ajouté !`);
-    }, [workouts, applyChanges]);
+        if (!updatedWorkouts.dayOrder) {
+            updatedWorkouts.dayOrder = [];
+        }
+        updatedWorkouts.dayOrder.push(newDayName.trim());
+        
+        applyChanges(updatedWorkouts, `Jour "${newDayName}" ajouté !`);
+        setNewDayName('');
+        setShowAddDayModal(false);
+    }, [newDayName, workouts, applyChanges]);
 
-    const handleEditDay = useCallback((oldDayName, newDayName) => {
+    const handleEditDay = useCallback(() => {
+        if (!editingDayName.trim() || !editingDayOriginalName) {
+            setToast({ message: "Le nom du jour est requis", type: 'error' });
+            return;
+        }
+        
+        if (editingDayName.trim() !== editingDayOriginalName && workouts.days[editingDayName.trim()]) {
+            setToast({ message: "Ce nom de jour existe déjà", type: 'error' });
+            return;
+        }
+        
         const updatedWorkouts = { ...workouts };
         
         // Renommer le jour
-        updatedWorkouts.days[newDayName] = updatedWorkouts.days[oldDayName];
-        delete updatedWorkouts.days[oldDayName];
-        
-        // Mettre à jour l'ordre
-        const dayIndex = updatedWorkouts.dayOrder.indexOf(oldDayName);
-        if (dayIndex !== -1) {
-            updatedWorkouts.dayOrder[dayIndex] = newDayName;
+        if (editingDayName.trim() !== editingDayOriginalName) {
+            updatedWorkouts.days[editingDayName.trim()] = updatedWorkouts.days[editingDayOriginalName];
+            delete updatedWorkouts.days[editingDayOriginalName];
+            
+            // Mettre à jour dayOrder
+            const dayIndex = updatedWorkouts.dayOrder.indexOf(editingDayOriginalName);
+            if (dayIndex !== -1) {
+                updatedWorkouts.dayOrder[dayIndex] = editingDayName.trim();
+            }
         }
         
-        // Ajuster le filtre si nécessaire
-        if (selectedDayFilter === oldDayName) {
-            setSelectedDayFilter(newDayName);
-        }
-        
-        applyChanges(updatedWorkouts, `Jour renommé en "${newDayName}" !`);
-    }, [workouts, applyChanges, selectedDayFilter]);
+        applyChanges(updatedWorkouts, `Jour "${editingDayOriginalName}" modifié !`);
+        setEditingDayName('');
+        setEditingDayOriginalName('');
+        setShowEditDayModal(false);
+    }, [editingDayName, editingDayOriginalName, workouts, applyChanges]);
 
     const handleDeleteDay = useCallback((dayName) => {
         const updatedWorkouts = { ...workouts };
-        
-        // Supprimer le jour
         delete updatedWorkouts.days[dayName];
-        updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(day => day !== dayName);
         
-        // Réinitialiser le filtre si nécessaire
-        if (selectedDayFilter === dayName) {
-            setSelectedDayFilter('');
+        if (updatedWorkouts.dayOrder) {
+            updatedWorkouts.dayOrder = updatedWorkouts.dayOrder.filter(day => day !== dayName);
         }
         
         applyChanges(updatedWorkouts, `Jour "${dayName}" supprimé !`);
-    }, [workouts, applyChanges, selectedDayFilter]);
+    }, [workouts, applyChanges]);
 
-    const handleReactivateExercise = useCallback((exerciseId) => {
-       const updatedWorkouts = { ...workouts };
-       let found = false;
-       
-       // Rechercher l'exercice dans toutes les catégories et jours
-       Object.values(updatedWorkouts.days).forEach(day => {
-           Object.values(day.categories).forEach(exercises => {
-               if (Array.isArray(exercises)) {
-                   const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
-                   if (exerciseIndex !== -1) {
-                       exercises[exerciseIndex].isDeleted = false;
-                       delete exercises[exerciseIndex].deletedAt;
-                       found = true;
-                   }
-               }
-           });
-       });
-       
-       if (found) {
-           applyChanges(updatedWorkouts, "Exercice réactivé !");
-       } else {
-           setToast({ message: "Exercice non trouvé", type: 'error' });
-       }
-   }, [workouts, applyChanges]);
+    // Gestion des catégories
+    const handleAddCategory = useCallback(() => {
+        if (!newCategoryName.trim() || !selectedDayForCategory) {
+            setToast({ message: "Le nom de la catégorie et le jour sont requis", type: 'error' });
+            return;
+        }
+        
+        const updatedWorkouts = { ...workouts };
+        
+        if (!updatedWorkouts.days[selectedDayForCategory]) {
+            setToast({ message: "Jour introuvable", type: 'error' });
+            return;
+        }
+        
+        if (updatedWorkouts.days[selectedDayForCategory].categories[newCategoryName.trim()]) {
+            setToast({ message: "Cette catégorie existe déjà pour ce jour", type: 'error' });
+            return;
+        }
+        
+        updatedWorkouts.days[selectedDayForCategory].categories[newCategoryName.trim()] = [];
+        
+        if (!updatedWorkouts.days[selectedDayForCategory].categoryOrder) {
+            updatedWorkouts.days[selectedDayForCategory].categoryOrder = [];
+        }
+        updatedWorkouts.days[selectedDayForCategory].categoryOrder.push(newCategoryName.trim());
+        
+        applyChanges(updatedWorkouts, `Catégorie "${newCategoryName}" ajoutée !`);
+        setNewCategoryName('');
+        setSelectedDayForCategory('');
+        setShowAddCategoryModal(false);
+    }, [newCategoryName, selectedDayForCategory, workouts, applyChanges]);
 
+    const handleEditCategory = useCallback((dayName) => {
+        if (!editingCategoryName.trim() || !editingCategoryOriginalName || !dayName) {
+            setToast({ message: "Informations manquantes", type: 'error' });
+            return;
+        }
+        
+        const updatedWorkouts = { ...workouts };
+        
+        if (editingCategoryName.trim() !== editingCategoryOriginalName && 
+            updatedWorkouts.days[dayName].categories[editingCategoryName.trim()]) {
+            setToast({ message: "Ce nom de catégorie existe déjà", type: 'error' });
+            return;
+        }
+        
+        // Renommer la catégorie
+        if (editingCategoryName.trim() !== editingCategoryOriginalName) {
+            updatedWorkouts.days[dayName].categories[editingCategoryName.trim()] = 
+                updatedWorkouts.days[dayName].categories[editingCategoryOriginalName];
+            delete updatedWorkouts.days[dayName].categories[editingCategoryOriginalName];
+            
+            // Mettre à jour categoryOrder
+            if (updatedWorkouts.days[dayName].categoryOrder) {
+                const categoryIndex = updatedWorkouts.days[dayName].categoryOrder.indexOf(editingCategoryOriginalName);
+                if (categoryIndex !== -1) {
+                    updatedWorkouts.days[dayName].categoryOrder[categoryIndex] = editingCategoryName.trim();
+                }
+            }
+        }
+        
+        applyChanges(updatedWorkouts, `Catégorie "${editingCategoryOriginalName}" modifiée !`);
+        setEditingCategoryName('');
+        setEditingCategoryOriginalName('');
+        setShowEditCategoryModal(false);
+    }, [editingCategoryName, editingCategoryOriginalName, workouts, applyChanges]);
+
+    const handleDeleteCategory = useCallback((dayName, categoryName) => {
+        const updatedWorkouts = { ...workouts };
+        
+        if (updatedWorkouts.days[dayName]) {
+            delete updatedWorkouts.days[dayName].categories[categoryName];
+            
+            if (updatedWorkouts.days[dayName].categoryOrder) {
+                updatedWorkouts.days[dayName].categoryOrder = 
+                    updatedWorkouts.days[dayName].categoryOrder.filter(cat => cat !== categoryName);
+            }
+        }
+        
+        applyChanges(updatedWorkouts, `Catégorie "${categoryName}" supprimée !`);
+    }, [workouts, applyChanges]);
+    
    // Fonctions de minuteur optimisées
    const startTimer = useCallback(() => {
        setTimerIsRunning(true);
@@ -1052,6 +1146,10 @@ const ImprovedWorkoutApp = () => {
                    setShowStatsModal(false);
                    setShowExportModal(false);
                    setShowSettingsModal(false);
+                   setShowAddDayModal(false); // Close new day modal
+                   setShowAddCategoryModal(false); // Close new category modal
+                   setShowEditDayModal(false); // Close edit day modal
+                   setShowEditCategoryModal(false); // Close edit category modal
                    break;
                case ' ':
                    if (currentView === 'timer' && !e.target.tagName.match(/INPUT|TEXTAREA|SELECT/)) {
@@ -1068,7 +1166,7 @@ const ImprovedWorkoutApp = () => {
 
        document.addEventListener('keydown', handleKeyPress);
        return () => document.removeEventListener('keydown', handleKeyPress);
-   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer]);
+   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer, setShowAddDayModal, setShowAddCategoryModal, setShowEditDayModal, setShowEditCategoryModal]);
 
    // Demande de permission pour les notifications au démarrage
    useEffect(() => {
@@ -1294,9 +1392,25 @@ const ImprovedWorkoutApp = () => {
                        setSearchTerm={setSearchTerm}
                        days={workouts?.dayOrder || []}
                        categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
-                       handleAddDay={handleAddDay}
-                       handleEditDay={handleEditDay}
+                       // Pass new CRUD handlers for days and categories to MainWorkoutView
+                       handleAddDay={() => setShowAddDayModal(true)} // Example of how to trigger modal
+                       handleEditDay={(dayName) => {
+                           setEditingDayOriginalName(dayName);
+                           setEditingDayName(dayName);
+                           setShowEditDayModal(true);
+                       }}
                        handleDeleteDay={handleDeleteDay}
+                       handleAddCategory={(day) => {
+                           setSelectedDayForCategory(day);
+                           setShowAddCategoryModal(true);
+                       }}
+                       handleEditCategory={(day, category) => {
+                           setSelectedDayForCategory(day);
+                           setEditingCategoryOriginalName(category);
+                           setEditingCategoryName(category);
+                           setShowEditCategoryModal(true);
+                       }}
+                       handleDeleteCategory={handleDeleteCategory}
                    />
                )}
 
@@ -1613,6 +1727,260 @@ const ImprovedWorkoutApp = () => {
                    </div>
                </div>
            )}
+
+           {/* Modale d'ajout de jour */}
+           {showAddDayModal && (
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <Plus className="h-5 w-5 text-blue-400" />
+                                    Ajouter un nouveau jour
+                                </h3>
+                                <button
+                                    onClick={() => setShowAddDayModal(false)}
+                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                                >
+                                    <XCircle className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Nom du jour *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newDayName}
+                                        onChange={(e) => setNewDayName(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Ex: Lundi"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowAddDayModal(false)}
+                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={handleAddDay}
+                                    disabled={!newDayName.trim()}
+                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                        !newDayName.trim()
+                                            ? 'bg-blue-500/50 text-white cursor-not-allowed'
+                                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                                    }`}
+                                >
+                                    Ajouter
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modale d'édition de jour */}
+            {showEditDayModal && (
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <Pencil className="h-5 w-5 text-yellow-400" />
+                                    Modifier le jour
+                                </h3>
+                                <button
+                                    onClick={() => setShowEditDayModal(false)}
+                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                                >
+                                    <XCircle className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Nom du jour *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editingDayName}
+                                        onChange={(e) => setEditingDayName(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Nom du jour"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowEditDayModal(false)}
+                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={handleEditDay}
+                                    disabled={!editingDayName.trim()}
+                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                        !editingDayName.trim()
+                                            ? 'bg-green-500/50 text-white cursor-not-allowed'
+                                            : 'bg-green-500 text-white hover:bg-green-600'
+                                    }`}
+                                >
+                                    Sauvegarder
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modale d'ajout de catégorie */}
+            {showAddCategoryModal && (
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <Plus className="h-5 w-5 text-blue-400" />
+                                    Ajouter une nouvelle catégorie
+                                </h3>
+                                <button
+                                    onClick={() => setShowAddCategoryModal(false)}
+                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                                >
+                                    <XCircle className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Jour d'entraînement *
+                                    </label>
+                                    <select
+                                        value={selectedDayForCategory}
+                                        onChange={(e) => setSelectedDayForCategory(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="">Sélectionner un jour</option>
+                                        {(workouts?.dayOrder || []).map(day => (
+                                            <option key={day} value={day}>{day}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Nom de la catégorie *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newCategoryName}
+                                        onChange={(e) => setNewCategoryName(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Ex: Pecs"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowAddCategoryModal(false)}
+                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={handleAddCategory}
+                                    disabled={!newCategoryName.trim() || !selectedDayForCategory}
+                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                        (!newCategoryName.trim() || !selectedDayForCategory)
+                                            ? 'bg-blue-500/50 text-white cursor-not-allowed'
+                                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                                    }`}
+                                >
+                                    Ajouter
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modale d'édition de catégorie */}
+            {showEditCategoryModal && (
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <Pencil className="h-5 w-5 text-yellow-400" />
+                                    Modifier la catégorie
+                                </h3>
+                                <button
+                                    onClick={() => setShowEditCategoryModal(false)}
+                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                                >
+                                    <XCircle className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Jour d'entraînement *
+                                    </label>
+                                    <select
+                                        value={selectedDayForCategory}
+                                        onChange={(e) => setSelectedDayForCategory(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        disabled
+                                    >
+                                        {(workouts?.dayOrder || []).map(day => (
+                                            <option key={day} value={day}>{day}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Nom de la catégorie *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editingCategoryName}
+                                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Nom de la catégorie"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowEditCategoryModal(false)}
+                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={() => handleEditCategory(selectedDayForCategory)}
+                                    disabled={!editingCategoryName.trim()}
+                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                        !editingCategoryName.trim()
+                                            ? 'bg-green-500/50 text-white cursor-not-allowed'
+                                            : 'bg-green-500 text-white hover:bg-green-600'
+                                    }`}
+                                >
+                                    Sauvegarder
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
            {/* Modale de paramètres et export/import */}
            {showSettingsModal && (
