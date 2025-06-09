@@ -30,7 +30,7 @@ const firebaseConfig = {
 };
 
 // Configuration Gemini AI
-const genAI = new GenerativeAIModule.GoogleGenerativeAI(import.meta.env?.VITE_GEMINI_API_KEY || "demo-key"); // CORRECTION: Utilisation de GenerativeAIModule.GoogleGenerativeAI
+const genAI = new GenerativeAIModule.GoogleGenerativeAI(import.meta.env?.VITE_GEMINI_API_KEY || "demo-key");
 
 // Constantes
 const MAX_UNDO_STATES = 20;
@@ -193,6 +193,11 @@ const ImprovedWorkoutApp = () => {
     const [workouts, setWorkouts] = useState(baseInitialData); // Initialisation avec données de base
     const [historicalData, setHistoricalData] = useState([]);
     const [personalBests, setPersonalBests] = useState({});
+
+    // Firebase instances (déclarées ici pour être accessibles)
+    const [app, setApp] = useState(null);
+    const [db, setDb] = useState(null);
+    const [auth, setAuth] = useState(null);
     
     // États de l'interface
     const [toast, setToast] = useState(null);
@@ -207,7 +212,6 @@ const ImprovedWorkoutApp = () => {
     const [showExportModal, setShowExportModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-    // PROBLÈME 6: Ajouter ces états dans App.jsx:
     const [showAddDayModal, setShowAddDayModal] = useState(false);
     const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
     const [showEditDayModal, setShowEditDayModal] = useState(false);
@@ -272,15 +276,31 @@ const ImprovedWorkoutApp = () => {
         return isSelected ? colorSet.selected : colorSet.default;
     }, []);
     
-    // Effets d'initialisation optimisés
+    // Effet pour initialiser Firebase (exécuté une seule fois)
     useEffect(() => {
-        const initAuth = async () => {
+        if (!app) { // Initialiser seulement si 'app' n'est pas déjà défini
+            const firebaseApp = initializeApp(firebaseConfig);
+            const firestoreDb = getFirestore(firebaseApp);
+            const firebaseAuth = getAuth(firebaseApp);
+
+            setApp(firebaseApp);
+            setDb(firestoreDb);
+            setAuth(firebaseAuth);
+        }
+    }, [app]); // Dépendance sur `app` pour s'assurer qu'il n'est initialisé qu'une fois.
+
+    // Effet pour l'authentification Firebase et le chargement initial des données
+    useEffect(() => {
+        if (!auth || !db) return; // S'assurer que Firebase est initialisé
+
+        const initAuthAndLoadData = async () => {
             try {
                 await signInAnonymously(auth);
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         setUserId(user.uid);
                         setIsAuthReady(true);
+                        // Les données seront chargées par l'autre useEffect qui dépend de userId et isAuthReady
                     } else {
                         setLoading(false);
                         setToast({ 
@@ -296,12 +316,12 @@ const ImprovedWorkoutApp = () => {
                 setToast({ message: "Erreur de connexion", type: 'error' });
             }
         };
-        initAuth();
-    }, []);
+        initAuthAndLoadData();
+    }, [auth, db]); // Dépend de auth et db pour s'assurer qu'ils sont prêts
     
-    // Effet pour charger les données avec cache
+    // Effet pour charger les données avec cache (dépend de userId et isAuthReady)
     useEffect(() => {
-        if (!userId || !isAuthReady) return;
+        if (!userId || !isAuthReady || !db) return; // S'assurer que db est prêt
 
         const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
         const unsubscribe = onSnapshot(workoutDocRef, (doc) => {
@@ -317,7 +337,6 @@ const ImprovedWorkoutApp = () => {
             } catch (error) {
                 console.error("Erreur traitement données:", error);
                 setToast({ message: "Erreur lors du chargement des données", type: 'error' });
-                // S'assurer qu'on a toujours des données valides même en cas d'erreur
                 setWorkouts(baseInitialData);
             } finally {
                 setLoading(false);
@@ -326,13 +345,12 @@ const ImprovedWorkoutApp = () => {
             console.error("Erreur Firestore:", error);
             setToast({ message: `Erreur Firestore: ${error.message}`, type: 'error' });
             setLoading(false);
-            // S'assurer qu'on a toujours des données valides même en cas d'erreur
             setWorkouts(baseInitialData);
         });
 
         loadHistoricalData();
         return () => unsubscribe();
-    }, [userId, isAuthReady]);
+    }, [userId, isAuthReady, db]); // Ajout de db comme dépendance
 
     // Effet pour le minuteur avec optimisations
     useEffect(() => {
@@ -414,7 +432,7 @@ const ImprovedWorkoutApp = () => {
     }, []);
 
     const loadHistoricalData = useCallback(async () => {
-        if (!userId) return;
+        if (!userId || !db) return; // S'assurer que db est prêt
         
         try {
             const sessionsRef = collection(db, 'users', userId, 'sessions');
@@ -448,7 +466,7 @@ const ImprovedWorkoutApp = () => {
             console.error("Erreur chargement historique:", error);
             setToast({ message: "Erreur lors du chargement de l'historique", type: 'error' });
         }
-    }, [userId]);
+    }, [userId, db]); // Ajout de db comme dépendance
 
     const calculatePersonalBests = useCallback((data) => {
         const bests = {};
@@ -507,8 +525,8 @@ const ImprovedWorkoutApp = () => {
     }, []);
 
     const saveWorkoutsOptimized = useCallback(async (workoutsData, successMessage = "Sauvegardé !", saveOnlyModified = false) => {
-        if (!userId) {
-            setToast({ message: "Utilisateur non connecté", type: 'error' });
+        if (!userId || !db) { // S'assurer que db est prêt
+            setToast({ message: "Utilisateur non connecté ou base de données non prête", type: 'error' });
             return;
         }
         
@@ -550,7 +568,7 @@ const ImprovedWorkoutApp = () => {
                 });
             }
         }, AUTO_SAVE_DELAY);
-    }, [userId]);
+    }, [userId, db]); // Ajout de db comme dépendance
 
     const applyChanges = useCallback((newWorkoutsState, message = "Modification effectuée") => {
         setUndoStack(prev => {
@@ -725,8 +743,6 @@ const ImprovedWorkoutApp = () => {
         setShowDeleteConfirm(false);
         setIsDeletingExercise(false);
     }, [workouts, applyChanges]);
-
-    // PROBLÈME 6: AJOUTER ces fonctions dans App.jsx:
 
     // Gestion des jours
     const handleAddDay = useCallback(() => {
@@ -918,10 +934,10 @@ const ImprovedWorkoutApp = () => {
                
                Nom de l'exercice: ${exerciseData.name}
                Historique récent (20 dernières séries): ${JSON.stringify(recentSeries)}
-               Record personnel (poids): ${personalBests[exerciseData.id]?.maxWeight || 'N/A'}kg
-               Record personnel (reps): ${personalBests[exerciseData.id]?.maxReps || 'N/A'}
-               Volume total: ${personalBests[exerciseData.id]?.totalVolume || 'N/A'}kg
-               Nombre de sessions: ${personalBests[exerciseData.id]?.sessions || 'N/A'}
+               Record personnel (poids): ${personalBests[exerciseData.name]?.maxWeight || 'N/A'}kg
+               Record personnel (reps): ${personalBests[exerciseData.name]?.maxReps || 'N/A'}
+               Volume total: ${personalBests[exerciseData.name]?.totalVolume || 'N/A'}kg
+               Nombre de sessions: ${personalBests[exerciseData.name]?.sessions || 'N/A'}
                
                Fournis une analyse concise et pratique avec:
                1. 📈 Tendance de progression (positive/stagnation/régression)
@@ -1388,28 +1404,15 @@ const ImprovedWorkoutApp = () => {
                        isSavingExercise={isSavingExercise}
                        isDeletingExercise={isDeletingExercise}
                        isAddingExercise={isAddingExercise}
-                       searchTerm={debouncedSearchTerm}
+                       searchTerm={searchTerm} 
                        setSearchTerm={setSearchTerm}
                        days={workouts?.dayOrder || []}
                        categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
-                       // Pass new CRUD handlers for days and categories to MainWorkoutView
-                       handleAddDay={() => setShowAddDayModal(true)} // Example of how to trigger modal
-                       handleEditDay={(dayName) => {
-                           setEditingDayOriginalName(dayName);
-                           setEditingDayName(dayName);
-                           setShowEditDayModal(true);
-                       }}
+                       handleAddDay={handleAddDay} 
+                       handleEditDay={handleEditDay}
                        handleDeleteDay={handleDeleteDay}
-                       handleAddCategory={(day) => {
-                           setSelectedDayForCategory(day);
-                           setShowAddCategoryModal(true);
-                       }}
-                       handleEditCategory={(day, category) => {
-                           setSelectedDayForCategory(day);
-                           setEditingCategoryOriginalName(category);
-                           setEditingCategoryName(category);
-                           setShowEditCategoryModal(true);
-                       }}
+                       handleAddCategory={handleAddCategory}
+                       handleEditCategory={handleEditCategory}
                        handleDeleteCategory={handleDeleteCategory}
                    />
                )}
@@ -1687,12 +1690,12 @@ const ImprovedWorkoutApp = () => {
                                    />
                                </div>
 
-                               {personalBests[editingExercise.exerciseId] && (
+                               {personalBests[editingExercise.name] && (
                                    <div className="text-sm text-gray-400 bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg">
                                        <p className="font-medium mb-1 text-blue-400">🏆 Record personnel:</p>
-                                       <p>Poids max: {personalBests[editingExercise.exerciseId].maxWeight}kg</p>
-                                       <p>Reps max: {personalBests[editingExercise.exerciseId].maxReps}</p>
-                                       <p>Volume total: {Math.round(personalBests[editingExercise.exerciseId].totalVolume)}kg</p>
+                                       <p>Poids max: {personalBests[editingExercise.name].maxWeight}kg</p>
+                                       <p>Reps max: {personalBests[editingExercise.name].maxReps}</p>
+                                       <p>Volume total: {Math.round(personalBests[editingExercise.name].totalVolume)}kg</p>
                                    </div>
                                )}
                            </div>
@@ -1870,117 +1873,117 @@ const ImprovedWorkoutApp = () => {
                                         <option value="">Sélectionner un jour</option>
                                         {(workouts?.dayOrder || []).map(day => (
                                             <option key={day} value={day}>{day}</option>
-                                       ))}
-                                   </select>
-                               </div>
-                               <div>
-                                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                                       Nom de la catégorie *
-                                   </label>
-                                   <input
-                                       type="text"
-                                       value={newCategoryName}
-                                       onChange={(e) => setNewCategoryName(e.target.value)}
-                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                       placeholder="Ex: Pecs"
-                                       autoFocus
-                                   />
-                               </div>
-                           </div>
-                           <div className="flex gap-3 mt-6">
-                               <button
-                                   onClick={() => setShowAddCategoryModal(false)}
-                                   className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                               >
-                                   Annuler
-                               </button>
-                               <button
-                                   onClick={handleAddCategory}
-                                   disabled={!newCategoryName.trim() || !selectedDayForCategory}
-                                   className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                       (!newCategoryName.trim() || !selectedDayForCategory)
-                                           ? 'bg-blue-500/50 text-white cursor-not-allowed'
-                                           : 'bg-blue-500 text-white hover:bg-blue-600'
-                                   }`}
-                               >
-                                   Ajouter
-                               </button>
-                           </div>
-                       </div>
-                   </div>
-               </div>
-           )}
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Nom de la catégorie *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newCategoryName}
+                                        onChange={(e) => setNewCategoryName(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Ex: Pecs"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowAddCategoryModal(false)}
+                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={handleAddCategory}
+                                    disabled={!newCategoryName.trim() || !selectedDayForCategory}
+                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                        (!newCategoryName.trim() || !selectedDayForCategory)
+                                            ? 'bg-blue-500/50 text-white cursor-not-allowed'
+                                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                                    }`}
+                                >
+                                    Ajouter
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-           {/* Modale d'édition de catégorie */}
-           {showEditCategoryModal && (
-               <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                   <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
-                       <div className="p-6">
-                           <div className="flex items-center justify-between mb-6">
-                               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                   <Pencil className="h-5 w-5 text-yellow-400" />
-                                   Modifier la catégorie
-                               </h3>
-                               <button
-                                   onClick={() => setShowEditCategoryModal(false)}
-                                   className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
-                               >
-                                   <XCircle className="h-5 w-5" />
-                               </button>
-                           </div>
-                           <div className="space-y-4">
-                               <div>
-                                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                                       Jour d'entraînement *
-                                   </label>
-                                   <select
-                                       value={selectedDayForCategory}
-                                       onChange={(e) => setSelectedDayForCategory(e.target.value)}
-                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                       disabled
-                                   >
-                                       {(workouts?.dayOrder || []).map(day => (
-                                           <option key={day} value={day}>{day}</option>
-                                       ))}
-                                   </select>
-                               </div>
-                               <div>
-                                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                                       Nom de la catégorie *
-                                   </label>
-                                   <input
-                                       type="text"
-                                       value={editingCategoryName}
-                                       onChange={(e) => setEditingCategoryName(e.target.value)}
-                                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                       placeholder="Nom de la catégorie"
-                                       autoFocus
-                                   />
-                               </div>
-                           </div>
-                           <div className="flex gap-3 mt-6">
-                               <button
-                                   onClick={() => setShowEditCategoryModal(false)}
-                                   className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
-                               >
-                                   Annuler
-                               </button>
-                               <button
-                                   onClick={() => handleEditCategory(selectedDayForCategory)}
-                                   disabled={!editingCategoryName.trim()}
-                                   className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
-                                       !editingCategoryName.trim()
-                                           ? 'bg-green-500/50 text-white cursor-not-allowed'
-                                           : 'bg-green-500 text-white hover:bg-green-600'
-                                   }`}
-                               >
-                                   Sauvegarder
-                               </button>
-                           </div>
-                       </div>
-                   </div>
-               </div>
-           )}
+            {/* Modale d'édition de catégorie */}
+            {showEditCategoryModal && (
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <Pencil className="h-5 w-5 text-yellow-400" />
+                                    Modifier la catégorie
+                                </h3>
+                                <button
+                                    onClick={() => setShowEditCategoryModal(false)}
+                                    className="p-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all"
+                                >
+                                    <XCircle className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Jour d'entraînement *
+                                    </label>
+                                    <select
+                                        value={selectedDayForCategory}
+                                        onChange={(e) => setSelectedDayForCategory(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        disabled
+                                    >
+                                        {(workouts?.dayOrder || []).map(day => (
+                                            <option key={day} value={day}>{day}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                        Nom de la catégorie *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editingCategoryName}
+                                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Nom de la catégorie"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowEditCategoryModal(false)}
+                                    className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-all"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={() => handleEditCategory(selectedDayForCategory)}
+                                    disabled={!editingCategoryName.trim()}
+                                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                        !editingCategoryName.trim()
+                                            ? 'bg-green-500/50 text-white cursor-not-allowed'
+                                            : 'bg-green-500 text-white hover:bg-green-600'
+                                    }`}
+                                >
+                                    Sauvegarder
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
            {/* Modale de paramètres et export/import */}
            {showSettingsModal && (
@@ -1989,7 +1992,7 @@ const ImprovedWorkoutApp = () => {
                        <div className="p-6">
                            <div className="flex items-center justify-between mb-6">
                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                   <Settings className="h-5 w-5 text-blue-400" />
+                                   <Settings className="h-5 w-5" />
                                    Paramètres
                                </h3>
                                <button
