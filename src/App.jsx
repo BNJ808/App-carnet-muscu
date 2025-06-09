@@ -12,12 +12,12 @@ import {
 import * as GenerativeAIModule from '@google/generative-ai';
 
 // Import des composants
-import Toast from '.components/Toast.jsx';
-import MainWorkoutView from '.components/MainWorkoutView.jsx';
-import HistoryView from '.components/HistoryView.jsx';
-import TimerView from '.components/TimerView.jsx';
-import StatsView from '.components/StatsView.jsx';
-import BottomNavigationBar from '.components/BottomNavigationBar.jsx';
+import Toast from './components/Toast.jsx';
+import MainWorkoutView from './components/MainWorkoutView.jsx';
+import HistoryView from './components/HistoryView.jsx';
+import TimerView from './components/TimerView.jsx';
+import StatsView from './components/StatsView.jsx';
+import BottomNavigationBar from './components/BottomNavigationBar.jsx';
 
 // Configuration Firebase sécurisée
 const firebaseConfig = {
