@@ -71,8 +71,90 @@ const ImprovedWorkoutApp = () => {
     const timerIntervalRef = useRef(null);
     const isUpdatingFirestoreRef = useRef(false); // Pour éviter les boucles infinies de mise à jour Firestore
 
-    // // Fonctions utilitaires (commentées pour l'instant)
-    // const showToast = useCallback((message, type = 'info', action = null, duration = 3000) => { /* ... */ }, []);
+    // Fonctions utilitaires (celles qui ne dépendent pas d'autres logiques complexes)
+    // showToast est nécessaire pour l'authentification Firebase
+    const showToast = useCallback((message, type = 'info', action = null, duration = 3000) => {
+        setToast({ message, type, action, duration });
+    }, []);
+
+    // Initialisation de Firebase et gestion de l'authentification
+    useEffect(() => {
+        if (!firebaseConfig.apiKey) {
+            console.error("Firebase API Key is missing. Please set VITE_FIREBASE_API_KEY in your .env file.");
+            showToast("Erreur: Clé API Firebase manquante.", 'error');
+            return;
+        }
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            authRef.current = getAuth(app);
+            dbRef.current = getFirestore(app);
+
+            // Gérer l'état d'authentification
+            authUnsubscribeRef.current = onAuthStateChanged(authRef.current, async (user) => {
+                if (user) {
+                    currentUserRef.current = user;
+                    // Connectez-vous avec un jeton personnalisé si ce n'est pas anonyme (si vous en avez un)
+                    // if (!user.isAnonymous && customToken) {
+                    //     try {
+                    //         await signInWithCustomToken(authRef.current, customToken);
+                    //         console.log("Signed in with custom token.");
+                    //     } catch (error) {
+                    //         console.error("Error signing in with custom token:", error);
+                    //         showToast("Erreur de connexion avec jeton personnalisé.", 'error');
+                    //     }
+                    // }
+
+                    if (unsubscribeFirestoreRef.current) {
+                        unsubscribeFirestoreRef.current(); // Unsubscribe from previous user's data
+                    }
+
+                    // Écouter les données de l'utilisateur Firestore
+                    unsubscribeFirestoreRef.current = onSnapshot(doc(dbRef.current, "users", user.uid), (docSnap) => {
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            setWorkouts(data.workouts || { days: {}, dayOrder: [] });
+                            setHistoricalData(data.historicalData || []);
+                            setPersonalBests(data.personalBests || {});
+                            setGlobalNotes(data.globalNotes || '');
+                        } else {
+                            // Initialisation de l'utilisateur Firestore si nouveau
+                            setDoc(doc(dbRef.current, "users", user.uid), {
+                                workouts: { days: {}, dayOrder: [] },
+                                historicalData: [],
+                                personalBests: {},
+                                globalNotes: '',
+                                createdAt: serverTimestamp()
+                            }, { merge: true }).catch(e => console.error("Error setting initial user data:", e));
+                        }
+                        setIsInitialLoad(false);
+                    }, (error) => {
+                        console.error("Erreur de lecture Firestore:", error);
+                        showToast("Erreur de chargement des données. Veuillez recharger.", 'error');
+                        setIsInitialLoad(false);
+                    });
+                } else {
+                    // Si l'utilisateur est déconnecté, tentez une connexion anonyme pour persistance
+                    signInAnonymously(authRef.current).catch((error) => {
+                        console.error("Erreur de connexion anonyme:", error);
+                        showToast("Impossible de se connecter anonymement. Veuillez vérifier votre connexion.", 'error');
+                    });
+                }
+            });
+        } catch (error) {
+            console.error("Erreur lors de l'initialisation de Firebase ou de l'authentification:", error);
+            showToast("Erreur critique d'initialisation de l'application.", 'error');
+        }
+
+
+        return () => {
+            if (authUnsubscribeRef.current) authUnsubscribeRef.current();
+            if (unsubscribeFirestoreRef.current) unsubscribeFirestoreRef.current();
+        };
+    }, []); // Dépendances vides pour que cela ne s'exécute qu'une seule fois au montage
+
+
+    // // Autres fonctions utilitaires (commentées pour l'instant)
     // const formatTime = useCallback((seconds) => { /* ... */ }, []);
     // const formatDate = useCallback((timestamp) => { /* ... */ }, []);
     // const getSeriesDisplay = useCallback((series) => { /* ... */ }, []);
@@ -108,8 +190,7 @@ const ImprovedWorkoutApp = () => {
     // const undo = useCallback(() => { /* ... */ }, []);
     // const redo = useCallback(() => { /* ... */ }, []);
 
-    // // Effets (commentés pour l'instant)
-    // useEffect(() => { /* Firebase Init & Auth */ }, []);
+    // // Autres Effets (commentés pour l'instant)
     // useEffect(() => { /* Save data to Firestore and localStorage */ }, [workouts, historicalData, personalBests, globalNotes]);
     // useEffect(() => { /* Timer logic */ }, [timerIsRunning, timerSeconds]);
     // useEffect(() => { /* Handle theme change */ }, [theme]);
@@ -126,6 +207,8 @@ const ImprovedWorkoutApp = () => {
                 <div className="text-center p-8">
                     <h1 className="text-2xl font-bold mb-4">Application en cours de chargement...</h1>
                     <p className="text-gray-400">Si cette page reste affichée, vérifiez la console pour des erreurs.</p>
+                    {isInitialLoad && <p className="text-blue-400 mt-2">Chargement des données initiales...</p>}
+                    {!isInitialLoad && <p className="text-green-400 mt-2">Données chargées ou initialisées. Prêt à commencer !</p>}
                 </div>
 
                 {/* Les composants de vue et la navigation sont commentés pour l'instant */}
@@ -169,8 +252,7 @@ const ImprovedWorkoutApp = () => {
             />
             */}
 
-            {/* Toast notification (commenté) */}
-            {/*
+            {/* Toast notification - Décommenté car showToast est utilisé */}
             {toast && (
                 <Toast
                     message={toast.message}
@@ -180,7 +262,6 @@ const ImprovedWorkoutApp = () => {
                     duration={toast.duration}
                 />
             )}
-            */}
 
             {/* Timer Modal (commenté) */}
             {/*
