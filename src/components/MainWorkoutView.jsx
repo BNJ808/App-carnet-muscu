@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'; 
+import React, { useState, useMemo, useCallback, useEffect } from 'react'; 
 import { 
     Search, 
     Filter, 
@@ -20,7 +20,8 @@ import {
     TrendingUp,
     Dumbbell, 
     BarChart3, 
-    Layers 
+    Layers,
+    Activity 
 } from 'lucide-react';
 
 const stableSort = (array, compareFunction) => {
@@ -32,36 +33,36 @@ const stableSort = (array, compareFunction) => {
 
 function MainWorkoutView({
     workouts,
-    onToggleSerieCompleted = () => {}, // Default empty function
-    onUpdateSerie = () => {}, // Default empty function
-    onAddSerie = () => {}, // Default empty function
-    onRemoveSerie = () => {}, // Default empty function
-    onUpdateExerciseNotes = () => {}, // Default empty function
-    onEditClick = () => {}, // Default empty function
-    onDeleteExercise = () => {}, // Default empty function
-    onAnalyzeProgression = () => {}, // Default empty function
+    onToggleSerieCompleted = () => {}, 
+    onUpdateSerie = () => {}, 
+    onAddSerie = () => {}, 
+    onRemoveSerie = () => {}, 
+    onUpdateExerciseNotes = () => {}, 
+    onEditClick = () => {}, 
+    onDeleteExercise = () => {}, 
+    onAnalyzeProgression = () => {}, 
     searchTerm,
-    setSearchTerm = () => {}, // Default empty function
+    setSearchTerm = () => {}, 
     selectedDayFilter,
-    setSelectedDayFilter = () => {}, // Default empty function
+    setSelectedDayFilter = () => {}, 
     selectedCategoryFilter,
-    onCategoryFilterChange = () => {}, // Default empty function
+    onCategoryFilterChange = () => {}, 
     showOnlyCompleted,
-    onToggleCompletedFilter = () => {}, // Default empty function
-    onAddExercise = () => {}, // Default empty function
-    onSaveToHistory = () => {}, // Default empty function
+    onToggleCompletedFilter = () => {}, 
+    onAddExercise = () => {}, 
+    onSaveToHistory = () => {}, 
     isCompactView = false,
-    historicalData = [],
-    personalBests = {}, // Added for PB display in MainWorkoutView
-    getDayButtonColors = () => 'bg-gray-700', // Default color if not provided
-    formatDate = (date) => date.toLocaleString(), // Default formatting
-    getSeriesDisplay = (series) => '', // Default empty string
-    isSavingExercise = false, // Added for loading state
-    isDeletingExercise = false, // Added for loading state
-    isAddingExercise = false, // Added for loading state
-    isAdvancedMode = false, // Added for advanced features toggle
-    days = [], // Explicitly accept days array
-    categories = [], // Explicitly accept categories array
+    historicalData = [], // Not used directly for PB calculation here, but for completeness
+    personalBests = {}, 
+    getDayButtonColors = () => 'bg-gray-700', 
+    formatDate = (date) => date.toLocaleString(), 
+    getSeriesDisplay = (series) => '', 
+    isSavingExercise = false, 
+    isDeletingExercise = false, 
+    isAddingExercise = false, 
+    isAdvancedMode = false, 
+    days = [], 
+    categories = [], 
     handleAddDay = () => {},
     handleEditDay = () => {},
     handleDeleteDay = () => {},
@@ -69,13 +70,20 @@ function MainWorkoutView({
     handleEditCategory = () => {},
     handleDeleteCategory = () => {}
 }) {
-    // État local pour gérer l'expansion des jours et catégories
+    // États locaux pour l'interface
     const [expandedDays, setExpandedDays] = useState(new Set(workouts.dayOrder));
-    const [expandedCategories, setExpandedCategories] = useState(new Set());
+    const [expandedCategories, setExpandedCategories] = useState(new Set()); // This handles exercise expansion
     const [exerciseMenuOpen, setExerciseMenuOpen] = useState(null); // { dayName, categoryName, exerciseId }
 
+    // États locaux pour l'édition des notes et séries (réintroduit)
+    const [editingNotes, setEditingNotes] = useState(null); // exercise.id
+    const [tempNotes, setTempNotes] = useState('');
+    const [editingSerie, setEditingSerie] = useState(null); // `${exerciseId}-${serieIndex}`
+    const [tempWeight, setTempWeight] = useState('');
+    const [tempReps, setTempReps] = useState('');
+
     // Filtrer les exercices basés sur le terme de recherche
-    const filterExercises = useCallback((exercises, dayName, categoryName) => {
+    const filterExercises = useCallback((exercises) => { // Removed dayName, categoryName as they are not needed in filter logic
         if (!exercises) return [];
         return exercises.filter(exercise => {
             const matchesSearch = searchTerm ? exercise.name.toLowerCase().includes(searchTerm.toLowerCase()) : true;
@@ -86,7 +94,7 @@ function MainWorkoutView({
         });
     }, [searchTerm, selectedCategoryFilter, showOnlyCompleted]);
 
-    // Obtenir les jours disponibles après filtrage
+    // Obtenir les jours disponibles après filtrage (optimisé)
     const getAvailableDays = useCallback(() => {
         return (workouts?.dayOrder || []).filter(dayName => {
             if (selectedDayFilter && selectedDayFilter !== 'all' && dayName !== selectedDayFilter) {
@@ -96,7 +104,7 @@ function MainWorkoutView({
             if (!dayData || !dayData.categories) return false;
 
             const hasVisibleExercises = Object.entries(dayData.categories).some(([categoryName, exercises]) => {
-                const filteredExercises = filterExercises(exercises, dayName, categoryName);
+                const filteredExercises = filterExercises(exercises); // Pass exercises directly
                 return filteredExercises.length > 0;
             });
             return hasVisibleExercises;
@@ -116,13 +124,13 @@ function MainWorkoutView({
         });
     }, []);
 
-    const toggleCategoryExpansion = useCallback((categoryName) => {
+    const toggleCategoryExpansion = useCallback((exerciseId) => { // Renamed param to exerciseId, consistent with usage
         setExpandedCategories(prev => {
             const newSet = new Set(prev);
-            if (newSet.has(categoryName)) {
-                newSet.delete(categoryName);
+            if (newSet.has(exerciseId)) {
+                newSet.delete(exerciseId);
             } else {
-                newSet.add(categoryName);
+                newSet.add(exerciseId);
             }
             return newSet;
         });
@@ -150,10 +158,53 @@ function MainWorkoutView({
         };
     }, [handleClickOutside]);
 
+    // Démarrer l'édition des notes
+    const startEditingNotes = useCallback((exerciseId, currentNotes) => {
+        setEditingNotes(exerciseId);
+        setTempNotes(currentNotes || '');
+    }, []);
+
+    // Sauvegarder les notes
+    const saveNotes = useCallback((dayName, categoryName, exerciseId) => {
+        onUpdateExerciseNotes(dayName, categoryName, exerciseId, tempNotes);
+        setEditingNotes(null);
+        setTempNotes('');
+    }, [onUpdateExerciseNotes, tempNotes]);
+
+    // Annuler l'édition des notes
+    const cancelEditingNotes = useCallback(() => {
+        setEditingNotes(null);
+        setTempNotes('');
+    }, []);
+
+    // Démarrer l'édition d'une série
+    const startEditingSerie = useCallback((exerciseId, serieIndex, weight, reps) => {
+        setEditingSerie(`${exerciseId}-${serieIndex}`);
+        setTempWeight(weight.toString());
+        setTempReps(reps.toString());
+    }, []);
+
+    // Sauvegarder une série modifiée
+    const saveSerie = useCallback((dayName, categoryName, exerciseId, serieIndex) => {
+        onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, 'weight', tempWeight);
+        onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, 'reps', tempReps);
+        setEditingSerie(null);
+        setTempWeight('');
+        setTempReps('');
+    }, [onUpdateSerie, tempWeight, tempReps]);
+
+    // Annuler l'édition d'une série
+    const cancelEditingSerie = useCallback(() => {
+        setEditingSerie(null);
+        setTempWeight('');
+        setTempReps('');
+    }, []);
 
     const renderSerie = useCallback((dayName, categoryName, exerciseId, serie, serieIndex, exerciseName) => {
         const volume = (parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0);
         const isCompleted = serie.isCompleted;
+        const serieKey = `${exerciseId}-${serieIndex}`;
+        const isEditing = editingSerie === serieKey;
 
         // Récupérer le record personnel pour cet exercice
         const pb = personalBests[exerciseName];
@@ -171,57 +222,98 @@ function MainWorkoutView({
                 />
                 <span className="text-gray-400 text-sm w-4 text-center">{serieIndex + 1}.</span>
                 
-                <div className="flex-1 grid grid-cols-2 gap-2">
-                    <div className="flex items-center border border-gray-600 rounded-md overflow-hidden">
-                        <input
-                            type="number"
-                            value={serie.weight}
-                            onChange={(e) => onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, 'weight', e.target.value)}
-                            className={`w-full p-2 bg-gray-800 text-white text-center focus:outline-none text-sm ${isMaxWeight ? 'font-bold text-yellow-300' : ''}`}
-                            placeholder="Poids"
-                            step="0.5"
-                            min="0"
-                        />
-                        <span className="bg-gray-600 text-gray-300 p-2 text-xs">kg</span>
-                    </div>
-                    <div className="flex items-center border border-gray-600 rounded-md overflow-hidden">
-                        <input
-                            type="number"
-                            value={serie.reps}
-                            onChange={(e) => onUpdateSerie(dayName, categoryName, exerciseId, serieIndex, 'reps', e.target.value)}
-                            className={`w-full p-2 bg-gray-800 text-white text-center focus:outline-none text-sm ${isMaxReps ? 'font-bold text-yellow-300' : ''}`}
-                            placeholder="Reps"
-                            min="0"
-                        />
-                        <span className="bg-gray-600 text-gray-300 p-2 text-xs">reps</span>
-                    </div>
-                </div>
+                {isEditing ? (
+                    <>
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                            <div className="flex items-center border border-gray-600 rounded-md overflow-hidden">
+                                <input
+                                    type="number"
+                                    value={tempWeight}
+                                    onChange={(e) => setTempWeight(e.target.value)}
+                                    className={`w-full p-2 bg-gray-800 text-white text-center focus:outline-none text-sm`}
+                                    placeholder="Poids"
+                                    step="0.5"
+                                    min="0"
+                                />
+                                <span className="bg-gray-600 text-gray-300 p-2 text-xs">kg</span>
+                            </div>
+                            <div className="flex items-center border border-gray-600 rounded-md overflow-hidden">
+                                <input
+                                    type="number"
+                                    value={tempReps}
+                                    onChange={(e) => setTempReps(e.target.value)}
+                                    className={`w-full p-2 bg-gray-800 text-white text-center focus:outline-none text-sm`}
+                                    placeholder="Reps"
+                                    min="0"
+                                />
+                                <span className="bg-gray-600 text-gray-300 p-2 text-xs">reps</span>
+                            </div>
+                        </div>
+                        <div className="flex gap-1">
+                            <button
+                                onClick={() => saveSerie(dayName, categoryName, exerciseId, serieIndex)}
+                                className="p-1 text-green-400 hover:text-green-300 transition-colors"
+                                title="Sauvegarder"
+                            >
+                                <Check className="h-4 w-4" />
+                            </button>
+                            <button
+                                onClick={cancelEditingSerie}
+                                className="p-1 text-red-400 hover:text-red-300 transition-colors"
+                                title="Annuler"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div 
+                            className="flex-1 grid grid-cols-2 gap-2 cursor-pointer"
+                            onClick={() => startEditingSerie(exerciseId, serieIndex, serie.weight, serie.reps)}
+                        >
+                            <div className="flex items-center border border-gray-600 rounded-md overflow-hidden">
+                                <span className={`w-full p-2 bg-gray-800 text-white text-center text-sm ${isMaxWeight ? 'font-bold text-yellow-300' : ''}`}>
+                                    {serie.weight}
+                                </span>
+                                <span className="bg-gray-600 text-gray-300 p-2 text-xs">kg</span>
+                            </div>
+                            <div className="flex items-center border border-gray-600 rounded-md overflow-hidden">
+                                <span className={`w-full p-2 bg-gray-800 text-white text-center text-sm ${isMaxReps ? 'font-bold text-yellow-300' : ''}`}>
+                                    {serie.reps}
+                                </span>
+                                <span className="bg-gray-600 text-gray-300 p-2 text-xs">reps</span>
+                            </div>
+                        </div>
 
-                <div className="text-right text-gray-400 text-sm w-16 flex-shrink-0">
-                    <span className={`inline-flex items-center ${isMaxVolume ? 'font-bold text-yellow-300' : ''}`}>
-                        {volume} <Activity className="ml-1 h-4 w-4" />
-                    </span>
-                </div>
-                
-                <button
-                    onClick={() => onRemoveSerie(dayName, categoryName, exerciseId, serieIndex)}
-                    className="p-1 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/40 transition-colors flex-shrink-0"
-                    title="Supprimer la série"
-                >
-                    <X className="h-4 w-4" />
-                </button>
+                        <div className="text-right text-gray-400 text-sm w-16 flex-shrink-0">
+                            <span className={`inline-flex items-center ${isMaxVolume ? 'font-bold text-yellow-300' : ''}`}>
+                                {volume} <Activity className="ml-1 h-4 w-4" />
+                            </span>
+                        </div>
+                        
+                        <button
+                            onClick={() => onRemoveSerie(dayName, categoryName, exerciseId, serieIndex)}
+                            className="p-1 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/40 transition-colors flex-shrink-0"
+                            title="Supprimer la série"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </>
+                )}
             </div>
         );
-    }, [onToggleSerieCompleted, onUpdateSerie, onRemoveSerie, personalBests]);
+    }, [onToggleSerieCompleted, onRemoveSerie, personalBests, editingSerie, tempWeight, tempReps, startEditingSerie, saveSerie, cancelEditingSerie, onUpdateSerie]);
 
     const renderExercise = useCallback((exercise, dayName, categoryName) => {
         const exerciseVolume = (exercise.series || []).reduce((sum, serie) => sum + ((parseFloat(serie.weight) || 0) * (parseInt(serie.reps) || 0)), 0);
-        const isExpanded = expandedCategories.has(exercise.id);
+        const isExpanded = expandedCategories.has(exercise.id); // This controls exercise expansion
+        const isEditingNotesForThisExercise = editingNotes === exercise.id;
 
         return (
             <div key={exercise.id} className="bg-gray-800 rounded-lg shadow-xl border border-gray-700">
                 <button
-                    onClick={() => toggleCategoryExpansion(exercise.id)}
+                    onClick={() => toggleCategoryExpansion(exercise.id)} // This toggles exercise expansion
                     className="w-full p-4 flex justify-between items-center text-left focus:outline-none"
                 >
                     <div className="flex items-center gap-3 flex-grow">
@@ -257,13 +349,47 @@ function MainWorkoutView({
 
                         <div className="mt-4">
                             <label className="block text-sm font-medium text-gray-300 mb-2">Notes:</label>
-                            <textarea
-                                value={exercise.notes}
-                                onChange={(e) => onUpdateExerciseNotes(dayName, categoryName, exercise.id, e.target.value)}
-                                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                rows="3"
-                                placeholder="Ajoutez des notes sur votre performance, vos sensations..."
-                            ></textarea>
+                            {isEditingNotesForThisExercise ? (
+                                <div className="mt-2">
+                                    <textarea
+                                        value={tempNotes}
+                                        onChange={(e) => setTempNotes(e.target.value)}
+                                        className="w-full px-3 py-2 text-sm bg-gray-600 border border-gray-500 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none"
+                                        placeholder="Ajouter des notes..."
+                                        rows={3}
+                                    />
+                                    <div className="flex gap-2 mt-2">
+                                        <button
+                                            onClick={() => saveNotes(dayName, categoryName, exercise.id)}
+                                            className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                                        >
+                                            Sauvegarder
+                                        </button>
+                                        <button
+                                            onClick={cancelEditingNotes}
+                                            className="px-3 py-1 text-xs bg-gray-600 text-gray-300 rounded hover:bg-gray-700 transition-colors"
+                                        >
+                                            Annuler
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <textarea
+                                        value={exercise.notes}
+                                        readOnly
+                                        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none text-sm resize-none"
+                                        rows="3"
+                                        placeholder="Ajoutez des notes sur votre performance, vos sensations..."
+                                        onClick={() => startEditingNotes(exercise.id, exercise.notes)}
+                                    ></textarea>
+                                    {exercise.notes && (
+                                        <div className="text-xs text-gray-400 mt-2 p-2 bg-gray-600/30 rounded border-l-2 border-blue-500">
+                                            📝 {exercise.notes}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
 
                         {isAdvancedMode && (
@@ -271,7 +397,7 @@ function MainWorkoutView({
                                 <button
                                     onClick={() => onAnalyzeProgression({ name: exercise.name, series: exercise.series })}
                                     className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 text-sm"
-                                    disabled={onAnalyzeProgression === null} // Check if function is available
+                                    disabled={onAnalyzeProgression === null} 
                                 >
                                     <Sparkles className="h-4 w-4" /> Analyse IA
                                 </button>
@@ -312,15 +438,15 @@ function MainWorkoutView({
                 )}
             </div>
         );
-    }, [expandedCategories, toggleCategoryExpansion, renderSerie, onAddSerie, onUpdateExerciseNotes, isAdvancedMode, onAnalyzeProgression, onEditClick, onDeleteExercise, exerciseMenuOpen, toggleExerciseMenu, personalBests]);
+    }, [expandedCategories, toggleCategoryExpansion, renderSerie, onAddSerie, onUpdateExerciseNotes, isAdvancedMode, onAnalyzeProgression, onEditClick, onDeleteExercise, exerciseMenuOpen, toggleExerciseMenu, personalBests, editingNotes, tempNotes, startEditingNotes, saveNotes, cancelEditingNotes]);
 
 
     const renderCategory = useCallback((categoryName, dayName) => {
         const exercises = workouts.days[dayName]?.categories[categoryName] || [];
-        const visibleExercises = filterExercises(exercises, dayName, categoryName);
+        const visibleExercises = filterExercises(exercises); // Pass exercises directly
 
         if (visibleExercises.length === 0 && (searchTerm || selectedCategoryFilter)) {
-            return null; // Don't render category if no exercises match filters
+            return null; 
         }
 
         return (
@@ -459,7 +585,7 @@ function MainWorkoutView({
 
                     const visibleCategoriesForDay = (dayData?.categoryOrder || []).filter(categoryName => {
                         const exercises = dayData.categories[categoryName];
-                        return filterExercises(exercises, dayName, categoryName).length > 0;
+                        return filterExercises(exercises).length > 0;
                     });
 
                     // Si aucun exercice ne correspond aux filtres pour ce jour, ne pas l'afficher
