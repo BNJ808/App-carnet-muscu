@@ -68,16 +68,12 @@ const useHistory = (initialState) => {
     }, [currentIndex]);
 
     const undo = useCallback(() => {
-        if (currentIndex > 0) {
-            setCurrentIndex(prev => prev - 1);
-        }
-    }, [currentIndex]);
+        setCurrentIndex(prev => Math.max(0, prev - 1));
+    }, []); // Dépendances supprimées car setCurrentIndex utilise la mise à jour fonctionnelle
 
     const redo = useCallback(() => {
-        if (currentIndex < history.length - 1) {
-            setCurrentIndex(prev => prev + 1);
-        }
-    }, [currentIndex, history.length]);
+        setCurrentIndex(prev => Math.min(history.length - 1, prev + 1));
+    }, [history.length]); // Seule history.length est nécessaire
 
     const canUndo = currentIndex > 0;
     const canRedo = currentIndex < history.length - 1;
