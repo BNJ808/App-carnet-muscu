@@ -215,13 +215,14 @@ const ImprovedWorkoutApp = () => {
     const [showAddDayModal, setShowAddDayModal] = useState(false);
     const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
     const [showEditDayModal, setShowEditDayModal] = useState(false);
+    const [showEditCategoryModal, setShowEditCategoryModal] = useState(false); // Added this state
     const [editingDayName, setEditingDayName] = useState('');
     const [editingCategoryName, setEditingCategoryName] = useState('');
     const [editingDayOriginalName, setEditingDayOriginalName] = useState('');
     const [editingCategoryOriginalName, setEditingCategoryOriginalName] = useState('');
     const [selectedDayForCategory, setSelectedDayForCategory] = useState('');
-    const [newDayName, setNewDayName] = useState('');
-    const [newCategoryName, setNewCategoryName] = useState('');
+    const [newDayName, setNewDayName] = useState(''); 
+    const [newCategoryName, setNewCategoryName] = useState(''); 
     
     // États d'édition
     const [editingExercise, setEditingExercise] = useState(null);
@@ -750,6 +751,80 @@ const ImprovedWorkoutApp = () => {
         setIsDeletingExercise(false);
     }, [workouts, applyChanges]);
 
+    // Fonctions de gestion des séries (utilisées dans MainWorkoutView)
+    const onToggleSerieCompleted = useCallback((day, category, exerciseId, serieIndex, isCompleted) => {
+        const updatedWorkouts = { ...workouts };
+        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
+        if (!exercises) return;
+
+        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+        if (exerciseIndex === -1) return;
+
+        const updatedSeries = [...exercises[exerciseIndex].series];
+        updatedSeries[serieIndex] = { ...updatedSeries[serieIndex], isCompleted };
+        exercises[exerciseIndex] = { ...exercises[exerciseIndex], series: updatedSeries };
+
+        applyChanges(updatedWorkouts, "Série mise à jour !");
+    }, [workouts, applyChanges]);
+
+    const onUpdateSerie = useCallback((day, category, exerciseId, serieIndex, field, value) => {
+        const updatedWorkouts = { ...workouts };
+        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
+        if (!exercises) return;
+
+        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+        if (exerciseIndex === -1) return;
+
+        const updatedSeries = [...exercises[exerciseIndex].series];
+        updatedSeries[serieIndex] = { ...updatedSeries[serieIndex], [field]: value };
+        exercises[exerciseIndex] = { ...exercises[exerciseIndex], series: updatedSeries };
+
+        applyChanges(updatedWorkouts, "Série modifiée !");
+    }, [workouts, applyChanges]);
+
+    const onAddSerie = useCallback((day, category, exerciseId) => {
+        const updatedWorkouts = { ...workouts };
+        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
+        if (!exercises) return;
+
+        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+        if (exerciseIndex === -1) return;
+
+        const newSerie = { weight: '', reps: '', isCompleted: false };
+        exercises[exerciseIndex] = {
+            ...exercises[exerciseIndex],
+            series: [...exercises[exerciseIndex].series, newSerie]
+        };
+
+        applyChanges(updatedWorkouts, "Série ajoutée !");
+    }, [workouts, applyChanges]);
+
+    const onRemoveSerie = useCallback((day, category, exerciseId, serieIndex) => {
+        const updatedWorkouts = { ...workouts };
+        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
+        if (!exercises) return;
+
+        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+        if (exerciseIndex === -1) return;
+
+        const updatedSeries = exercises[exerciseIndex].series.filter((_, idx) => idx !== serieIndex);
+        exercises[exerciseIndex] = { ...exercises[exerciseIndex], series: updatedSeries };
+
+        applyChanges(updatedWorkouts, "Série supprimée !");
+    }, [workouts, applyChanges]);
+
+    const onUpdateExerciseNotes = useCallback((day, category, exerciseId, notes) => {
+        const updatedWorkouts = { ...workouts };
+        const exercises = updatedWorkouts.days?.[day]?.categories?.[category];
+        if (!exercises) return;
+
+        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+        if (exerciseIndex === -1) return;
+
+        exercises[exerciseIndex] = { ...exercises[exerciseIndex], notes };
+        applyChanges(updatedWorkouts, "Notes mises à jour !");
+    }, [workouts, applyChanges]);
+
     // Gestion des jours
     const handleAddDay = useCallback(() => {
         if (!newDayName.trim()) {
@@ -1091,6 +1166,52 @@ const ImprovedWorkoutApp = () => {
        });
    }, [workouts]);
 
+    const onSaveToHistory = useCallback(async () => {
+        if (!userId || !db) {
+            setToast({ message: "Utilisateur non connecté ou base de données non prête", type: 'error' });
+            return;
+        }
+
+        try {
+            const batch = writeBatch(db);
+            const workoutDocRef = doc(db, 'users', userId, 'workout', 'data');
+
+            // Mise à jour de la date de dernière modification des entraînements
+            batch.set(workoutDocRef, { lastModified: serverTimestamp() }, { merge: true });
+
+            // Enregistrement de la session dans l'historique
+            const sessionsRef = collection(db, 'users', userId, 'sessions');
+            const newSessionRef = doc(sessionsRef); 
+            batch.set(newSessionRef, {
+                timestamp: serverTimestamp(),
+                workoutData: workouts, 
+                version: '2.0'
+            });
+            
+            await batch.commit();
+
+            setToast({ message: "Séance sauvegardée dans l'historique !", type: 'success' });
+            setLastSaveTime(new Date());
+
+            // Réinitialiser les séries "completed"
+            const resetWorkouts = JSON.parse(JSON.stringify(workouts)); 
+            Object.values(resetWorkouts.days).forEach(day => {
+                Object.values(day.categories).forEach(exercises => {
+                    exercises.forEach(exercise => {
+                        exercise.series.forEach(serie => {
+                            serie.isCompleted = false; 
+                        });
+                    });
+                });
+            });
+            setWorkouts(resetWorkouts);
+            saveWorkoutsOptimized(resetWorkouts, "Entraînement réinitialisé", true); 
+        } catch (error) {
+            console.error("Erreur sauvegarde historique:", error);
+            setToast({ message: "Erreur lors de la sauvegarde de l'historique", type: 'error' });
+        }
+    }, [userId, db, workouts, saveWorkoutsOptimized]);
+
    // Calculs mémorisés pour les statistiques
    const getWorkoutStats = useCallback(() => {
        if (!workouts?.days || !historicalData) {
@@ -1190,10 +1311,10 @@ const ImprovedWorkoutApp = () => {
                    setShowStatsModal(false);
                    setShowExportModal(false);
                    setShowSettingsModal(false);
-                   setShowAddDayModal(false); // Close new day modal
-                   // setShowAddCategoryModal(false); // Commented out for now
-                   // setShowEditDayModal(false); // Commented out for now
-                   // setShowEditCategoryModal(false); // Commented out for now
+                   setShowAddDayModal(false);
+                   setShowAddCategoryModal(false); 
+                   setShowEditDayModal(false); 
+                   setShowEditCategoryModal(false); 
                    break;
                case ' ':
                    if (currentView === 'timer' && !e.target.tagName.match(/INPUT|TEXTAREA|SELECT/)) {
@@ -1210,7 +1331,7 @@ const ImprovedWorkoutApp = () => {
 
        document.addEventListener('keydown', handleKeyPress);
        return () => document.removeEventListener('keydown', handleKeyPress);
-   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer, setShowAddDayModal]); // Removed setShowAddCategoryModal, setShowEditDayModal, setShowEditCategoryModal from deps
+   }, [handleUndo, handleRedo, workouts, saveWorkoutsOptimized, exportData, currentView, timerIsRunning, startTimer, pauseTimer, setShowAddDayModal, setShowAddCategoryModal, setShowEditDayModal, setShowEditCategoryModal]); // Re-added modale setters to deps
 
    // Demande de permission pour les notifications au démarrage
    useEffect(() => {
@@ -1407,12 +1528,100 @@ const ImprovedWorkoutApp = () => {
                </div>
            </header>
 
-           {/* Contenu principal - Temporairement simplifié pour le débogage */}
-           <main className="p-4 pb-20 max-w-7xl mx-auto min-h-[50vh] flex items-center justify-center text-gray-400">
-               {/* Commenté temporairement MainWorkoutView, TimerView, StatsView, HistoryView 
-                   pour isoler la source de l'erreur "P is not a function".
-               */}
-               <p className="text-lg">Contenu principal désactivé pour débogage. Veuillez patienter.</p>
+           {/* Contenu principal */}
+           <main className="p-4 pb-20 max-w-7xl mx-auto">
+               {/* Contenu des vues */}
+               {currentView === 'workout' && (
+                   <MainWorkoutView
+                       workouts={workouts}
+                       onToggleSerieCompleted={onToggleSerieCompleted}
+                       onUpdateSerie={onUpdateSerie}
+                       onAddSerie={onAddSerie}
+                       onRemoveSerie={onRemoveSerie}
+                       onUpdateExerciseNotes={onUpdateExerciseNotes}
+                       onEditClick={handleEditClick}
+                       onDeleteExercise={handleDeleteExercise}
+                       onAnalyzeProgression={analyzeProgressionWithAI}
+                       searchTerm={searchTerm} 
+                       setSearchTerm={setSearchTerm}
+                       selectedDayFilter={selectedDayFilter}
+                       setSelectedDayFilter={setSelectedDayFilter}
+                       selectedCategoryFilter={selectedCategoryForAdd} // Use selectedCategoryForAdd for initial filter
+                       onCategoryFilterChange={(cat) => setSelectedCategoryForAdd(cat)} // Update selectedCategoryForAdd
+                       showOnlyCompleted={false} // Assuming this is managed elsewhere or not needed directly here now
+                       onToggleCompletedFilter={() => {}} // Placeholder, adjust if needed
+                       onAddExercise={() => { // Simplified to open modal directly
+                           setSelectedDayForAdd(workouts?.dayOrder?.[0] || ''); // Default to first day
+                           setSelectedCategoryForAdd('PECS'); // Default to PECS
+                           setNewExerciseName('');
+                           setNewWeight('');
+                           setNewReps('');
+                           setNewSets('3');
+                           setShowAddExerciseModal(true);
+                       }}
+                       onSaveToHistory={onSaveToHistory}
+                       isCompactView={isCompactView}
+                       historicalData={historicalData}
+                       personalBests={personalBests}
+                       getDayButtonColors={getDayButtonColors}
+                       formatDate={formatDate}
+                       getSeriesDisplay={getSeriesDisplay}
+                       isSavingExercise={isSavingExercise}
+                       isDeletingExercise={isDeletingExercise}
+                       isAddingExercise={isAddingExercise}
+                       isAdvancedMode={isAdvancedMode}
+                       days={workouts?.dayOrder || []}
+                       categories={['PECS', 'DOS', 'EPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'ABDOS']}
+                       handleAddDay={() => { setNewDayName(''); setShowAddDayModal(true); }}
+                       handleEditDay={(dayName) => { setEditingDayOriginalName(dayName); setEditingDayName(dayName); setShowEditDayModal(true); }}
+                       handleDeleteDay={handleDeleteDay}
+                       handleAddCategory={(dayName) => { setSelectedDayForCategory(dayName); setNewCategoryName(''); setShowAddCategoryModal(true); }}
+                       handleEditCategory={(dayName, categoryName) => { setSelectedDayForCategory(dayName); setEditingCategoryOriginalName(categoryName); setEditingCategoryName(categoryName); setShowEditCategoryModal(true); }}
+                       handleDeleteCategory={handleDeleteCategory}
+                   />
+               )}
+
+               {currentView === 'timer' && (
+                   <TimerView
+                       timerSeconds={timerSeconds}
+                       timerIsRunning={timerIsRunning}
+                       timerIsFinished={timerIsFinished}
+                       startTimer={startTimer}
+                       pauseTimer={pauseTimer}
+                       resetTimer={resetTimer}
+                       setTimerSeconds={setTimerSeconds}
+                       restTimeInput={restTimeInput}
+                       setRestTimeInput={setRestTimeInput}
+                       formatTime={formatTime}
+                       setTimerPreset={setTimerPreset}
+                   />
+               )}
+
+               {currentView === 'stats' && (
+                   <StatsView
+                       workouts={workouts}
+                       historicalData={historicalData}
+                       personalBests={personalBests}
+                       formatDate={formatDate}
+                       getWorkoutStats={getWorkoutStats} 
+                   />
+               )}
+
+               {currentView === 'history' && (
+                   <HistoryView
+                       historicalData={historicalData}
+                       personalBests={personalBests}
+                       handleReactivateExercise={handleReactivateExercise}
+                       analyzeProgressionWithAI={analyzeProgressionWithAI}
+                       formatDate={formatDate}
+                       getSeriesDisplay={getSeriesDisplay}
+                       isAdvancedMode={isAdvancedMode}
+                       searchTerm={debouncedSearchTerm}
+                       setSearchTerm={setSearchTerm}
+                       sortBy={sortBy}
+                       setSortBy={setSortBy}
+                   />
+               )}
            </main>
 
            {/* Navigation inférieure mobile */}
@@ -1421,7 +1630,7 @@ const ImprovedWorkoutApp = () => {
                setCurrentView={setCurrentView} 
            />
 
-           {/* Modales - Conservées car elles sont déclenchées par des actions spécifiques */}
+           {/* Modales */}
            {/* Modale d'ajout d'exercice améliorée */}
            {showAddExerciseModal && (
                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
@@ -1871,8 +2080,7 @@ const ImprovedWorkoutApp = () => {
             )}
 
             {/* Modale d'édition de catégorie */}
-            {/* showEditCategoryModal et son contenu commentés */}
-            {/* {showEditCategoryModal && (
+            {showEditCategoryModal && (
                 <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
                     <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto scrollbar-thin">
                         <div className="p-6">
@@ -1926,7 +2134,7 @@ const ImprovedWorkoutApp = () => {
                                     Annuler
                                 </button>
                                 <button
-                                    onClick={() => handleEditCategory(selectedDayForCategory)}
+                                    onClick={() => handleEditCategory(selectedDayForCategory, editingCategoryOriginalName)}
                                     disabled={!editingCategoryName.trim()}
                                     className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
                                         !editingCategoryName.trim()
@@ -1940,7 +2148,7 @@ const ImprovedWorkoutApp = () => {
                         </div>
                     </div>
                 </div>
-            )} */}
+            )}
 
 
            {/* Modale de paramètres et export/import */}
@@ -2075,7 +2283,7 @@ const ImprovedWorkoutApp = () => {
                        <div className="p-6">
                            <div className="flex items-center justify-between mb-6">
                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                   <Sparkles className="h-5 w-5" />
+                                   <Sparkles className="h-5 w-5 text-purple-400" />
                                    Analyse IA de progression
                                </h3>
                                <button
