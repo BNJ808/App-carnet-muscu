@@ -1,6 +1,6 @@
 // BottomNavigationBar.jsx
 import React from 'react';
-import { Dumbbell, Clock, History, BarChart3 } from 'lucide-react';
+import { Dumbbell, History, BarChart3 } from 'lucide-react';
 
 /**
  * Composant de barre de navigation inférieure pour l'application mobile.
@@ -16,12 +16,6 @@ const BottomNavigationBar = ({ currentView, setCurrentView }) => {
             icon: Dumbbell, // Icône pour la vue d'entraînement
             view: 'workout', // Nom de la vue correspondante
             color: 'text-blue-400' // Couleur associée à la vue
-        },
-        {
-            name: 'Minuteur',
-            icon: Clock, // Icône pour la vue du minuteur
-            view: 'timer', // Nom de la vue correspondante
-            color: 'text-green-400' // Couleur associée à la vue
         },
         {
             name: 'Statistiques',

@@ -22,7 +22,6 @@ import {
     Dumbbell,
     Layers,
     Activity,
-    Clock,
     Zap, // Added Zap for AI suggestions
     RotateCcw, // For AI generation spinner
     Undo2, Redo2,
@@ -767,20 +766,6 @@ function MainWorkoutView({
                         title="Copier la séance du jour précédent"
                     >
                         <Copy className="h-4 w-4" /> Copier
-                    </button>
-                    {/* Bouton pour ouvrir le minuteur intégré, si nécessaire */}
-                    <button
-                        onClick={() => {
-                            setTimerSeconds(90); // Valeur par défaut pour le minuteur
-                            startTimer();
-                            setCurrentView('timer'); // Basculer vers la vue minuteur
-                            showToast("Minuteur de 90s démarré !", "info");
-                        }}
-                        className="bg-green-600 hover:bg-green-700 text-white font-medium px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm"
-                        aria-label="Démarrer le minuteur"
-                        title="Démarrer le minuteur"
-                    >
-                        <Clock className="h-4 w-4" /> Minuteur
                     </button>
                 </div>
             </div>
