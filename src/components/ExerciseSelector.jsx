@@ -13,7 +13,7 @@ import {
   searchExercises,
   getExercisesByMuscleGroup,
   getPopularExercises
-} from './ExerciseDatabase.js';
+} from './ExerciseDatabase.jsx';
 
 /**
  * Composant ExerciseSelector pour choisir un exercice prédéfini ou personnalisé
