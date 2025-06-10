@@ -152,4 +152,164 @@ const StatsView = ({
                             className="w-full bg-gray-700 text-white rounded-lg p-3 min-h-[100px] focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
                             placeholder="Écrivez ici vos objectifs à long terme, réflexions générales sur l'entraînement, etc."
                             value={globalNotes}
-                            onChange={(e) => setGlobalNotes
+                            onChange={(e) => setGlobalNotes(e.target.value)}
+                        />
+                    </div>
+
+                    {/* Analyse AI des statistiques globales */}
+                    <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700 shadow-xl">
+                        <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                            <Sparkles className="h-6 w-6 text-yellow-400" /> Analyse AI & Suggestions
+                        </h3>
+                        <button
+                            onClick={onGenerateAISuggestions}
+                            disabled={isLoadingAI}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isLoadingAI ? (
+                                <>
+                                    <RotateCcw className="h-5 w-5 animate-spin" />
+                                    Génération en cours...
+                                </>
+                            ) : (
+                                <>
+                                    <Zap className="h-5 w-5" />
+                                    Obtenir des suggestions AI
+                                </>
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Suggestions IA (si disponibles) */}
+                    {aiSuggestions && aiSuggestions.length > 0 && (
+                        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-xl mb-6">
+                            <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                                <Sparkles className="h-6 w-6 text-yellow-400" />
+                                Suggestions IA
+                            </h3>
+                            <div className="space-y-3">
+                                {aiSuggestions.map((suggestion, index) => (
+                                    <div key={index} className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+                                        <p className="text-gray-300 text-sm whitespace-pre-wrap">{suggestion}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+
+                    {/* Graphique de Volume Quotidien */}
+                    {dailyVolumeData.length > 0 && (
+                        <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700 shadow-xl">
+                            <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                                <LineChartIcon className="h-6 w-6 text-cyan-400" /> Volume Quotidien
+                            </h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <LineChart data={dailyVolumeData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                                    <XAxis
+                                        dataKey="date"
+                                        tickFormatter={formatDate}
+                                        stroke="#999"
+                                        tick={{ fontSize: 12 }}
+                                        minTickGap={30}
+                                    />
+                                    <YAxis stroke="#999" tick={{ fontSize: 12 }} />
+                                    <Tooltip
+                                        labelFormatter={formatDate}
+                                        formatter={(value) => [`${value.toFixed(0)} kg`, 'Volume']}
+                                    />
+                                    <Legend />
+                                    <Line type="monotone" dataKey="volume" stroke="#00C49F" strokeWidth={2} activeDot={{ r: 8 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                            <p className="text-xs text-gray-400 mt-2 text-center">Volume total d'entraînement par jour.</p>
+                        </div>
+                    )}
+
+                    {/* Graphique de Volume par Exercice (Barres) */}
+                    {exerciseVolumeData.length > 0 && (
+                        <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700 shadow-xl">
+                            <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                                <BarChart3 className="h-6 w-6 text-orange-400" /> Volume par Exercice
+                            </h3>
+                            <ResponsiveContainer width="100%" height={Math.max(300, exerciseVolumeData.length * 50)}>
+                                <BarChart
+                                    data={exerciseVolumeData}
+                                    layout="vertical"
+                                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                                    <XAxis type="number" stroke="#999" tick={{ fontSize: 12 }} />
+                                    <YAxis type="category" dataKey="name" stroke="#999" tick={{ fontSize: 12 }} width={100} />
+                                    <Tooltip formatter={(value) => [`${value.toFixed(0)} kg`, 'Volume']} />
+                                    <Legend />
+                                    <Bar dataKey="volume" fill="#ff7300" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                            <p className="text-xs text-gray-400 mt-2 text-center">Volume total accumulé par exercice.</p>
+                        </div>
+                    )}
+
+                    {/* Graphique de Fréquence par Exercice (Pie Chart si pertinent, sinon Barres) */}
+                    {exerciseFrequencyData.length > 0 && (
+                        <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700 shadow-xl">
+                            <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                                <PieChartIcon className="h-6 w-6 text-pink-400" /> Fréquence des Exercices
+                            </h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <PieChart>
+                                    <Pie
+                                        data={exerciseFrequencyData}
+                                        dataKey="count"
+                                        nameKey="name"
+                                        cx="50%"
+                                        cy="50%"
+                                        outerRadius={100}
+                                        fill="#8884d8"
+                                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                    >
+                                        {exerciseFrequencyData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip formatter={(value) => [`${value} séances`, 'Fréquence']} />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                            <p className="text-xs text-gray-400 mt-2 text-center">Répartition de la fréquence de vos exercices.</p>
+                        </div>
+                    )}
+
+                    {/* Records Personnels */}
+                    <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-xl">
+                        <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                            <Award className="h-6 w-6 text-yellow-400" /> Vos Records Personnels
+                        </h3>
+                        {formattedPersonalBests.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {formattedPersonalBests.map((pb, index) => (
+                                    <div key={index} className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+                                        <p className="text-lg font-semibold text-blue-300 mb-1">{pb.exerciseName}</p>
+                                        <p className="text-white">
+                                            <span className="font-medium">{pb.pbType}:</span> {pb.pbValue}
+                                        </p>
+                                        <p className="text-gray-300 text-sm">~1RM estimé: {pb.estimated1RM}</p>
+                                        <p className="text-gray-400 text-xs mt-1">Date: {pb.date}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center text-gray-400 py-8">
+                                <p>Pas de records personnels enregistrés pour le moment.</p>
+                                <p className="text-sm">Effectuez des entraînements pour en créer !</p>
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
+export default StatsView;
