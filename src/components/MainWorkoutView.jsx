@@ -32,7 +32,8 @@ import {
     Download,
     Upload,
     Share,
-    Eye, EyeOff, Maximize2, Minimize2
+    Eye, EyeOff, Maximize2, Minimize2,
+    Award
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'; // Recharts for progression graph
 import ExerciseSelector from './ExerciseSelector.jsx';
@@ -93,6 +94,7 @@ function MainWorkoutView({
     const today = useMemo(() => new Date().toISOString().split('T')[0], []); // 'YYYY-MM-DD'
     const [currentDay, setCurrentDay] = useState(today);
     const [isAddingExercise, setIsAddingExercise] = useState(false);
+    const [isExerciseSelectorOpen, setIsExerciseSelectorOpen] = useState(false);
     const [newExerciseName, setNewExerciseName] = useState('');
     const [expandedExercise, setExpandedExercise] = useState(null); // L'ID de l'exercice actuellement étendu
     const [isEditingWorkoutName, setIsEditingWorkoutName] = useState(false);
@@ -108,6 +110,9 @@ function MainWorkoutView({
     const dragExerciseItem = useRef(null); // {dayIndex, exerciseIndex}
     const dragOverExerciseItem = useRef(null); // {dayIndex, exerciseIndex}
 
+    // États pour la gestion des exercices favoris et récents
+    const [favoriteExercises, setFavoriteExercises] = useState([]);
+    const [recentExercises, setRecentExercises] = useState([]);
 
     // Synchronisation des jours avec la date actuelle si nécessaire
     useEffect(() => {
@@ -130,6 +135,91 @@ function MainWorkoutView({
         }
     }, [currentDay, workouts]);
 
+    // Calculer les exercices récents basés sur l'historique
+    useEffect(() => {
+        const exerciseFrequency = {};
+        
+        // Compter la fréquence des exercices dans l'historique récent (30 derniers jours)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        historicalData
+            .filter(session => {
+                const sessionDate = typeof session.date.toDate === 'function' 
+                    ? session.date.toDate() 
+                    : new Date(session.date);
+                return sessionDate >= thirtyDaysAgo;
+            })
+            .forEach(session => {
+                session.exercises.forEach(exercise => {
+                    if (!exercise.deleted) {
+                        exerciseFrequency[exercise.name] = (exerciseFrequency[exercise.name] || 0) + 1;
+                    }
+                });
+            });
+
+        // Trier par fréquence et prendre les 10 plus récents
+        const sortedExercises = Object.entries(exerciseFrequency)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 10)
+            .map(([name]) => name);
+
+        setRecentExercises(sortedExercises);
+    }, [historicalData]);
+
+    // Gestion des favoris
+    const toggleFavoriteExercise = useCallback((exerciseName) => {
+        setFavoriteExercises(prev => {
+            if (prev.includes(exerciseName)) {
+                return prev.filter(name => name !== exerciseName);
+            } else {
+                return [...prev, exerciseName];
+            }
+        });
+    }, []);
+
+    // Gestion de la sélection d'exercice depuis le sélecteur
+    const handleSelectExercise = useCallback((exerciseName) => {
+        // Ajouter l'exercice à l'entraînement du jour
+        setWorkouts(prevWorkouts => {
+            const updatedDays = { ...prevWorkouts.days };
+            const currentWorkout = updatedDays[currentDay];
+            if (currentWorkout) {
+                const newExercise = {
+                    id: Date.now(), // ID unique pour l'exercice
+                    name: exerciseName.trim(),
+                    sets: [{ id: Date.now() + 1, reps: 0, weight: 0 }],
+                    notes: '',
+                    deleted: false // S'assurer qu'il n'est pas marqué comme supprimé
+                };
+                currentWorkout.exercises = [...currentWorkout.exercises, newExercise];
+            } else {
+                updatedDays[currentDay] = {
+                    name: 'Entraînement du jour',
+                    exercises: [{
+                        id: Date.now(),
+                        name: exerciseName.trim(),
+                        sets: [{ id: Date.now() + 1, reps: 0, weight: 0 }],
+                        notes: '',
+                        deleted: false
+                    }]
+                };
+                if (!prevWorkouts.dayOrder.includes(currentDay)) {
+                    prevWorkouts.dayOrder = [currentDay, ...prevWorkouts.dayOrder];
+                }
+            }
+            return { ...prevWorkouts, days: updatedDays };
+        });
+
+        // Mettre à jour les exercices récents (ajouter en premier)
+        setRecentExercises(prev => {
+            const filtered = prev.filter(name => name !== exerciseName);
+            return [exerciseName, ...filtered].slice(0, 10);
+        });
+
+        showToast(`Exercice "${exerciseName}" ajouté !`, "success");
+    }, [currentDay, setWorkouts, showToast]);
+
     // Mise à jour de l'historique quand une séance est marquée comme terminée
     const updateHistoricalData = useCallback((sessionId, sessionData) => {
         setHistoricalData(prevData => {
@@ -145,7 +235,6 @@ function MainWorkoutView({
             });
         });
     }, [setHistoricalData]);
-
 
     const calculatePersonalBests = useCallback((exerciseName, sets) => {
         const newPBs = { ...personalBests };
@@ -178,42 +267,16 @@ function MainWorkoutView({
         setPersonalBests(newPBs);
     }, [personalBests, setPersonalBests]);
 
-
+    // Ajouter un exercice avec l'ancien système (conservé pour compatibilité)
     const addExercise = useCallback(() => {
         if (newExerciseName.trim() === '') {
             showToast("Le nom de l'exercice ne peut pas être vide.", "warning");
             return;
         }
-        setWorkouts(prevWorkouts => {
-            const updatedDays = { ...prevWorkouts.days };
-            const currentWorkout = updatedDays[currentDay];
-            if (currentWorkout) {
-                const newExercise = {
-                    id: Date.now(), // ID unique pour l'exercice
-                    name: newExerciseName.trim(),
-                    sets: [{ id: Date.now() + 1, reps: 0, weight: 0 }],
-                    notes: '',
-                    deleted: false // S'assurer qu'il n'est pas marqué comme supprimé
-                };
-                currentWorkout.exercises = [...currentWorkout.exercises, newExercise];
-            } else {
-                updatedDays[currentDay] = {
-                    name: 'Entraînement du jour',
-                    exercises: [{
-                        id: Date.now(),
-                        name: newExerciseName.trim(),
-                        sets: [{ id: Date.now() + 1, reps: 0, weight: 0 }],
-                        notes: '',
-                        deleted: false
-                    }]
-                };
-                prevWorkouts.dayOrder = [currentDay, ...prevWorkouts.dayOrder.filter(day => day !== currentDay)];
-            }
-            return { ...prevWorkouts, days: updatedDays };
-        });
+        handleSelectExercise(newExerciseName);
         setNewExerciseName('');
         setIsAddingExercise(false);
-    }, [newExerciseName, currentDay, setWorkouts, showToast]);
+    }, [newExerciseName, handleSelectExercise, showToast]);
 
     const addSet = useCallback((exerciseId) => {
         setWorkouts(prevWorkouts => {
@@ -363,7 +426,6 @@ function MainWorkoutView({
         setIsEditingWorkoutName(false);
     }, [editedWorkoutName, currentDay, setWorkouts, showToast]);
 
-
     const handleDragStart = (e, position) => {
         dragItem.current = position;
         setIsDraggingWorkout(true);
@@ -456,7 +518,6 @@ function MainWorkoutView({
         setIsDraggingExercise(false);
     }, [setWorkouts]);
 
-
     const handleExerciseDragEnd = () => {
         setIsDraggingExercise(false);
         dragExerciseItem.current = null;
@@ -498,7 +559,6 @@ function MainWorkoutView({
         // Trier par date croissante pour le graphique
         return history.sort((a, b) => a.date - b.date);
     }, [historicalData]);
-
 
     const getVolumeForExercise = useCallback((exercise) => {
         return exercise.sets.reduce((total, set) => total + (set.reps * set.weight), 0);
@@ -792,7 +852,6 @@ function MainWorkoutView({
                     </div>
                 )}
 
-
                 <div className="flex items-center justify-between mt-4 border-t border-gray-700 pt-4">
                     <div className="flex items-center gap-2">
                         <Search className="h-5 w-5 text-gray-400" />
@@ -859,13 +918,23 @@ function MainWorkoutView({
                         </button>
                     </div>
                 ) : (
-                    <button
-                        onClick={() => setIsAddingExercise(true)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                        aria-label="Ajouter un nouvel exercice"
-                    >
-                        <Plus className="h-5 w-5" /> Ajouter un exercice
-                    </button>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => setIsExerciseSelectorOpen(true)}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                            aria-label="Choisir un exercice prédéfini"
+                        >
+                            <Dumbbell className="h-5 w-5" /> Choisir un exercice
+                        </button>
+                        <button
+                            onClick={() => setIsAddingExercise(true)}
+                            className="bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                            aria-label="Créer un exercice personnalisé"
+                            title="Exercice personnalisé"
+                        >
+                            <Plus className="h-5 w-5" />
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -879,6 +948,16 @@ function MainWorkoutView({
                     <CheckCircle className="h-6 w-6" /> Terminer la séance
                 </button>
             </div>
+
+            {/* Sélecteur d'exercices */}
+            <ExerciseSelector
+                isOpen={isExerciseSelectorOpen}
+                onClose={() => setIsExerciseSelectorOpen(false)}
+                onSelectExercise={handleSelectExercise}
+                recentExercises={recentExercises}
+                favoriteExercises={favoriteExercises}
+                onToggleFavorite={toggleFavoriteExercise}
+            />
 
             {/* Résultat de l'analyse IA */}
             {progressionAnalysisContent && (
