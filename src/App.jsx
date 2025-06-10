@@ -18,7 +18,8 @@ import HistoryView from './components/HistoryView.jsx';
 import TimerView from './components/TimerView.jsx';
 import StatsView from './components/StatsView.jsx';
 import BottomNavigationBar from './components/BottomNavigationBar.jsx';
-import TimerModal from './components/TimerModal.jsx'; // Import du TimerModal
+import TimerModal from './components/TimerModal.jsx';
+import ExerciseSelector from './components/ExerciseSelector.jsx';
 
 // Configuration Firebase
 const firebaseConfig = {

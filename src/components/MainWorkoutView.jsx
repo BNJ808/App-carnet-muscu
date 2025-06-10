@@ -35,6 +35,7 @@ import {
     Eye, EyeOff, Maximize2, Minimize2
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'; // Recharts for progression graph
+import ExerciseSelector from './ExerciseSelector.jsx';
 
 /**
  * Fonction pour un tri stable (préserve l'ordre relatif des éléments égaux).
