@@ -1,3 +1,4 @@
+// Toast.jsx
 import React, { useEffect } from 'react';
 
 /**
@@ -6,8 +7,10 @@ import React, { useEffect } from 'react';
  * @param {string} props.message - Le message à afficher dans le toast.
  * @param {'success' | 'error' | 'warning' | 'info'} props.type - Le type de toast.
  * @param {function} props.onClose - Fonction de rappel à appeler lorsque le toast doit être fermé.
- * @param {object} props.action - Action optionnelle avec label et onClick.
- * @param {number} props.duration - Durée d'affichage en ms (défaut: 3000).
+ * @param {object} [props.action] - Action optionnelle avec label et onClick.
+ * @param {string} props.action.label - Le libellé de l'action.
+ * @param {function} props.action.onClick - La fonction à exécuter lors du clic sur l'action.
+ * @param {number} [props.duration=3000] - Durée d'affichage en ms (défaut: 3000).
  */
 const Toast = ({ message, type = 'info', onClose, action, duration = 3000 }) => {
     // Détermine les couleurs en fonction du type de toast

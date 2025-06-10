@@ -1,8 +1,20 @@
-import React, { useState, useEffect } from 'react';
+// TimerView.jsx
+import React, { useState, useEffect, useCallback } from 'react';
 import { Play, Pause, RotateCcw, Plus, Minus, Clock, Zap, ChevronUp, ChevronDown } from 'lucide-react';
 
 /**
  * Composant TimerView pour la gestion du minuteur de repos.
+ * @param {object} props - Les props du composant.
+ * @param {number} props.timerSeconds - Le nombre de secondes restantes du minuteur.
+ * @param {boolean} props.timerIsRunning - Indique si le minuteur est en cours.
+ * @param {boolean} props.timerIsFinished - Indique si le minuteur est terminé.
+ * @param {function} props.startTimer - Fonction pour démarrer le minuteur.
+ * @param {function} props.pauseTimer - Fonction pour mettre en pause le minuteur.
+ * @param {function} props.resetTimer - Fonction pour réinitialiser le minuteur.
+ * @param {function} props.setTimerSeconds - Fonction pour définir le temps du minuteur.
+ * @param {string} props.restTimeInput - L'entrée textuelle du temps de repos (non utilisé directement ici, mais peut l'être).
+ * @param {function} props.setRestTimeInput - Fonction pour mettre à jour l'entrée textuelle du temps de repos (non utilisé directement ici).
+ * @param {function} props.formatTime - Fonction pour formater le temps en MM:SS.
  */
 const TimerView = ({
     timerSeconds = 0,
@@ -11,7 +23,7 @@ const TimerView = ({
     startTimer,
     pauseTimer,
     resetTimer,
-    setTimerSeconds, // Cette prop est maintenant utilisée pour définir le temps
+    setTimerSeconds,
     restTimeInput = '90', // Assume this is a string
     setRestTimeInput, // Pour mettre à jour l'input textuel dans App.jsx
     formatTime, // Ensure formatTime is destructured from props
@@ -26,196 +38,147 @@ const TimerView = ({
     // et que le minuteur n'est pas en cours d'exécution.
     useEffect(() => {
         if (!timerIsRunning && timerSeconds === 0 && !timerIsFinished) {
-            // Only update custom inputs if timer is reset or not active
-            const totalSecondsFromInput = parseInt(restTimeInput, 10) || 0;
-            setCustomMinutes(Math.floor(totalSecondsFromInput / 60));
-            setCustomSeconds(totalSecondsFromInput % 60);
-        } else if (!timerIsRunning && timerSeconds > 0 && !timerIsFinished) {
-            // If timer was paused, update inputs to reflect current timerSeconds
+            // Si le minuteur est à 0 et non démarré/fini, réinitialiser les inputs au preset par défaut
+            setCustomMinutes(Math.floor(selectedPreset / 60));
+            setCustomSeconds(selectedPreset % 60);
+        } else if (!timerIsRunning) {
+            // Si le minuteur est arrêté mais a une valeur, mettez à jour les inputs pour refléter cette valeur.
             setCustomMinutes(Math.floor(timerSeconds / 60));
             setCustomSeconds(timerSeconds % 60);
         }
-    }, [timerSeconds, timerIsRunning, timerIsFinished, restTimeInput]);
+    }, [timerSeconds, timerIsRunning, timerIsFinished, selectedPreset]);
 
-    // Presets de temps populaires
-    const timePresets = [
-        { label: '30s', value: 30 },
-        { label: '45s', value: 45 },
-        { label: '1min', value: 60 },
-        { label: '1m30', value: 90 },
-        { label: '2min', value: 120 },
-        { label: '3min', value: 180 },
-    ];
 
-    const handlePresetClick = (value) => {
-        setSelectedPreset(value);
-        setTimerSeconds(value); // Définit le temps dans l'état global App.jsx
-        setRestTimeInput(String(value)); // Met à jour l'input affiché si nécessaire
-        // Pas besoin de startTimer ici, l'utilisateur doit cliquer sur "Play"
-    };
-
-    const handleCustomTimerStart = () => {
-        const totalSeconds = (customMinutes * 60) + customSeconds;
-        if (totalSeconds > 0) {
-            setTimerSeconds(totalSeconds); // Définit le temps dans l'état global App.jsx
-            setRestTimeInput(String(totalSeconds)); // Met à jour l'input affiché
-            startTimer(); // Démarre le minuteur
+    const handlePresetClick = useCallback((seconds) => {
+        setTimerSeconds(seconds);
+        setSelectedPreset(seconds);
+        // Mettre à jour les champs personnalisés pour refléter le préréglage
+        setCustomMinutes(Math.floor(seconds / 60));
+        setCustomSeconds(seconds % 60);
+        if (!timerIsRunning) { // Démarrer seulement si pas déjà en cours
+            startTimer();
         }
-    };
+    }, [setTimerSeconds, startTimer, timerIsRunning]);
 
-    // Fonctions pour ajuster les minutes/secondes personnalisées
-    const increaseMinute = () => setCustomMinutes(prev => Math.min(prev + 1, 59)); // Max 59 minutes
-    const decreaseMinute = () => setCustomMinutes(prev => Math.max(prev - 1, 0));
-    const increaseSecond = () => setCustomSeconds(prev => Math.min(prev + 1, 59)); // Max 59 seconds
-    const decreaseSecond = () => setCustomSeconds(prev => Math.max(prev - 1, 0));
+    const handleCustomTimerStart = useCallback(() => {
+        const totalSeconds = customMinutes * 60 + customSeconds;
+        if (totalSeconds > 0) {
+            setTimerSeconds(totalSeconds);
+            startTimer();
+        }
+    }, [customMinutes, customSeconds, setTimerSeconds, startTimer]);
 
-    // Définir la valeur de l'input des minutes
-    const handleMinuteInputChange = (e) => {
+    const increaseMinute = useCallback(() => {
+        setCustomMinutes(prev => Math.min(prev + 1, 59)); // Limite à 59 minutes
+    }, []);
+
+    const decreaseMinute = useCallback(() => {
+        setCustomMinutes(prev => Math.max(prev - 1, 0)); // Minimum 0 minute
+    }, []);
+
+    const increaseSecond = useCallback(() => {
+        setCustomSeconds(prev => (prev === 59 ? 0 : prev + 1));
+    }, []);
+
+    const decreaseSecond = useCallback(() => {
+        setCustomSeconds(prev => (prev === 0 ? 59 : prev - 1));
+    }, []);
+
+    const handleMinuteInputChange = useCallback((e) => {
         const value = parseInt(e.target.value, 10);
-        setCustomMinutes(isNaN(value) ? 0 : Math.min(Math.max(value, 0), 59));
-    };
+        if (!isNaN(value)) {
+            setCustomMinutes(Math.max(0, Math.min(59, value)));
+        }
+    }, []);
 
-    // Définir la valeur de l'input des secondes
-    const handleSecondInputChange = (e) => {
+    const handleSecondInputChange = useCallback((e) => {
         const value = parseInt(e.target.value, 10);
-        setCustomSeconds(isNaN(value) ? 0 : Math.min(Math.max(value, 0), 59));
-    };
-
+        if (!isNaN(value)) {
+            setCustomSeconds(Math.max(0, Math.min(59, value)));
+        }
+    }, []);
 
     return (
-        <div className="p-4 bg-gray-900 min-h-screen text-gray-100 font-sans">
-            <h1 className="text-3xl font-extrabold text-white mb-6 text-center">Minuteur de repos</h1>
+        <div className="container mx-auto p-4">
+            <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+                <Clock className="h-8 w-8 text-green-400" /> Minuteur
+            </h2>
 
-            {/* Affichage du minuteur principal */}
-            <div className="bg-gray-800 rounded-3xl p-8 mb-8 text-center shadow-lg border border-gray-700 relative">
-                <Clock className="h-16 w-16 text-green-400 mx-auto mb-4 animate-pulse-slow" />
-                <div className="text-6xl sm:text-7xl font-bold text-white mb-6 tracking-wide">
+            {/* Affichage principal du minuteur */}
+            <div className="bg-gray-800 rounded-2xl p-6 mb-6 border border-gray-700 shadow-xl text-center">
+                <p className="text-7xl font-mono font-extrabold text-green-400">
                     {formatTime(timerSeconds)}
-                </div>
-                <div className="flex justify-center space-x-4">
+                </p>
+                <div className="mt-6 flex justify-center gap-4">
                     <button
                         onClick={timerIsRunning ? pauseTimer : startTimer}
-                        className={`p-4 rounded-full shadow-lg transition-all duration-200 ${timerIsRunning ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600'}`}
-                        disabled={timerSeconds === 0 && !timerIsRunning}
-                        aria-label={timerIsRunning ? 'Pause' : 'Démarrer'}
+                        className={`p-4 rounded-full ${timerIsRunning ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600'} text-white transition-colors shadow-lg`}
+                        aria-label={timerIsRunning ? "Pause" : "Démarrer"}
                     >
-                        {timerIsRunning ? <Pause className="h-8 w-8 text-white" /> : <Play className="h-8 w-8 text-white" />}
+                        {timerIsRunning ? <Pause className="h-8 w-8" /> : <Play className="h-8 w-8" />}
                     </button>
                     <button
                         onClick={resetTimer}
-                        className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors shadow-lg"
+                        className="p-4 rounded-full bg-gray-600 hover:bg-gray-700 text-white transition-colors shadow-lg"
                         aria-label="Réinitialiser"
                     >
-                        <RotateCcw className="h-8 w-8 text-white" />
+                        <RotateCcw className="h-8 w-8" />
                     </button>
                 </div>
                 {timerIsFinished && timerSeconds === 0 && (
-                    <p className="text-green-400 mt-4 text-sm font-semibold animate-bounce">
-                        Temps de repos terminé !
-                    </p>
+                    <p className="text-sm text-yellow-400 mt-3 animate-pulse">Temps écoulé !</p>
                 )}
             </div>
 
-            {/* Presets de temps */}
-            <div className="bg-gray-800 rounded-2xl p-6 mb-8 shadow-md border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    <Zap className="h-5 w-5 text-yellow-400" />
-                    Presets Rapides
-                </h3>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                    {timePresets.map((preset) => (
-                        <button
-                            key={preset.value}
-                            onClick={() => handlePresetClick(preset.value)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
-                                ${selectedPreset === preset.value && !timerIsRunning
-                                    ? 'bg-blue-600 text-white shadow-md'
-                                    : 'bg-gray-700 text-gray-300 hover:bg-blue-500/30 hover:text-white'
-                                }
-                                ${timerIsRunning ? 'opacity-50 cursor-not-allowed' : ''}
-                            `}
-                            disabled={timerIsRunning}
-                        >
-                            {preset.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Personnaliser le temps */}
-            <div className="bg-gray-800 rounded-2xl p-6 mb-8 shadow-md border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-blue-400" />
-                    Personnaliser
-                </h3>
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
-                    {/* Minutes */}
-                    <div className="flex items-center gap-2">
-                        <button onClick={decreaseMinute} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><Minus className="h-5 w-5" /></button>
-                        <input
-                            type="number"
-                            value={String(customMinutes).padStart(2, '0')}
-                            onChange={handleMinuteInputChange}
-                            className="bg-gray-700 text-white text-center rounded-lg px-2 py-1 w-16 text-xl font-mono appearance-none"
-                            disabled={timerIsRunning}
-                            min="0"
-                            max="59"
-                            inputMode="numeric"
-                        />
-                        <button onClick={increaseMinute} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><Plus className="h-5 w-5" /></button>
-                        <span className="text-gray-400 text-base">min</span>
-                    </div>
-
-                    {/* Secondes */}
-                    <div className="flex items-center gap-2">
-                        <button onClick={decreaseSecond} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><Minus className="h-5 w-5" /></button>
-                        <input
-                            type="number"
-                            value={String(customSeconds).padStart(2, '0')}
-                            onChange={handleSecondInputChange}
-                            className="bg-gray-700 text-white text-center rounded-lg px-2 py-1 w-16 text-xl font-mono appearance-none"
-                            disabled={timerIsRunning}
-                            min="0"
-                            max="59"
-                            inputMode="numeric"
-                        />
-                        <button onClick={increaseSecond} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><Plus className="h-5 w-5" /></button>
-                        <span className="text-gray-400 text-base">s</span>
-                    </div>
-                </div>
-
-                <div className="text-center mb-4">
+            {/* Préréglages du minuteur */}
+            <div className="bg-gray-800 rounded-2xl p-6 mb-6 border border-gray-700 shadow-xl">
+                <h3 className="text-lg font-semibold text-white mb-4">Préréglages rapides :</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                     <button
-                        onClick={handleCustomTimerStart}
-                        disabled={timerIsRunning || ((customMinutes === 0 && customSeconds === 0))}
-                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl transition-all flex items-center gap-2 text-lg mx-auto"
+                        onClick={() => handlePresetClick(60)}
+                        className={`py-3 px-4 rounded-lg font-medium transition-all text-lg ${selectedPreset === 60 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                     >
-                        <Play className="h-5 w-5" />
-                        Démarrer le minuteur personnalisé
+                        60s
+                    </button>
+                    <button
+                        onClick={() => handlePresetClick(90)}
+                        className={`py-3 px-4 rounded-lg font-medium transition-all text-lg ${selectedPreset === 90 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                    >
+                        90s
+                    </button>
+                    <button
+                        onClick={() => handlePresetClick(120)}
+                        className={`py-3 px-4 rounded-lg font-medium transition-all text-lg ${selectedPreset === 120 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                    >
+                        120s
+                    </button>
+                    <button
+                        onClick={() => handlePresetClick(180)}
+                        className={`py-3 px-4 rounded-lg font-medium transition-all text-lg ${selectedPreset === 180 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                    >
+                        180s
+                    </button>
+                    <button
+                        onClick={() => handlePresetClick(240)}
+                        className={`py-3 px-4 rounded-lg font-medium transition-all text-lg ${selectedPreset === 240 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                    >
+                        240s
+                    </button>
+                    <button
+                        onClick={() => handlePresetClick(300)}
+                        className={`py-3 px-4 rounded-lg font-medium transition-all text-lg ${selectedPreset === 300 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                    >
+                        300s
                     </button>
                 </div>
             </div>
 
-            {/* Conseils de repos (déjà bien stylisé) */}
-            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">💡 Conseils de temps de repos</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <h4 className="font-medium text-green-400 mb-2">Force (1-5 reps)</h4>
-                        <p className="text-gray-300">3-5 minutes entre les séries pour une récupération complète</p>
-                    </div>
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <h4 className="font-medium text-blue-400 mb-2">Hypertrophie (6-12 reps)</h4>
-                        <p className="text-gray-300">1-3 minutes pour maintenir l'intensité musculaire</p>
-                    </div>
-                    <div className="bg-gray-700/50 rounded-lg p-3">
-                        <h4 className="font-medium text-yellow-400 mb-2">Endurance (12+ reps)</h4>
-                        <p className="text-gray-300">30-90 secondes pour une récupération rapide</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default TimerView;
+            {/* Minuteur personnalisé */}
+            <div className="bg-gray-800 rounded-2xl p-6 mb-6 border border-gray-700 shadow-xl">
+                <h3 className="text-lg font-semibold text-white mb-4">Définir un minuteur personnalisé :</h3>
+                <div className="flex items-center justify-center gap-4 mb-4">
+                    <div className="flex flex-col items-center">
+                        <button onClick={increaseMinute} className="p-1 text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={timerIsRunning}><ChevronUp className="h-6 w-6" /></button>
+                        <input
+                            type="number"
+                            value={String(customMinutes).padStart(2, '0')}
