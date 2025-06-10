@@ -769,4 +769,139 @@ function MainWorkoutView({
                             rows="2"
                         ></textarea>
 
-                        <label htmlFor="workout
+                        <label htmlFor="workout-duration" className="block text-gray-300 text-sm font-medium mb-1 mt-3">Durée de la séance (minutes) :</label>
+                        <input
+                            type="number"
+                            id="workout-duration"
+                            value={workouts.days[currentDay]?.duration || ''}
+                            onChange={(e) => setWorkouts(prev => ({
+                                ...prev,
+                                days: {
+                                    ...prev.days,
+                                    [currentDay]: {
+                                        ...prev.days[currentDay],
+                                        duration: Number(e.target.value) || null
+                                    }
+                                }
+                            }))}
+                            className="w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Ex: 60"
+                            min="0"
+                        />
+                    </div>
+                )}
+
+
+                <div className="flex items-center justify-between mt-4 border-t border-gray-700 pt-4">
+                    <div className="flex items-center gap-2">
+                        <Search className="h-5 w-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Filtrer exercices..."
+                            className="bg-gray-700 text-white rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-sm"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    {isAdvancedMode && (
+                        <button
+                            onClick={() => setShowDeletedExercises(prev => !prev)}
+                            className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors text-sm"
+                        >
+                            {showDeletedExercises ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            {showDeletedExercises ? 'Masquer Supprimés' : 'Afficher Supprimés'}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Liste des exercices */}
+            <div className="space-y-4">
+                {currentWorkoutExercises.length === 0 ? (
+                    <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700">
+                        <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-400 mb-2">Aucun exercice pour aujourd'hui.</p>
+                        <p className="text-sm text-gray-500">Ajoutez un exercice pour commencer votre entraînement !</p>
+                    </div>
+                ) : (
+                    currentWorkoutExercises.map((exercise, index) => renderWorkoutCard(exercise, index))
+                )}
+            </div>
+
+            {/* Ajouter un exercice */}
+            <div className="bg-gray-800 rounded-lg p-4 mt-6 border border-gray-700 shadow-xl">
+                {isAddingExercise ? (
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            value={newExerciseName}
+                            onChange={(e) => setNewExerciseName(e.target.value)}
+                            placeholder="Nom du nouvel exercice..."
+                            className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onKeyDown={(e) => { if (e.key === 'Enter') addExercise(); }}
+                            autoFocus
+                            aria-label="Nom du nouvel exercice"
+                        />
+                        <button
+                            onClick={addExercise}
+                            className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors flex items-center gap-2"
+                            aria-label="Ajouter l'exercice"
+                        >
+                            <Check className="h-5 w-5" />
+                        </button>
+                        <button
+                            onClick={() => setIsAddingExercise(false)}
+                            className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg transition-colors flex items-center gap-2"
+                            aria-label="Annuler l'ajout"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        onClick={() => setIsAddingExercise(true)}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        aria-label="Ajouter un nouvel exercice"
+                    >
+                        <Plus className="h-5 w-5" /> Ajouter un exercice
+                    </button>
+                )}
+            </div>
+
+            {/* Bouton Terminer la séance */}
+            <div className="mt-6">
+                <button
+                    onClick={completeWorkout}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-6 rounded-lg shadow-lg flex items-center justify-center gap-3 transition-colors text-lg"
+                    aria-label="Terminer la séance"
+                >
+                    <CheckCircle className="h-6 w-6" /> Terminer la séance
+                </button>
+            </div>
+
+            {/* Résultat de l'analyse IA */}
+            {progressionAnalysisContent && (
+                <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg p-4 relative mb-4 mt-6">
+                    <h3 className="text-xl font-semibold text-white mb-3 flex items-center gap-2">
+                        <Sparkles className="h-6 w-6 text-yellow-400" /> Analyse IA
+                        <button
+                            onClick={() => setProgressionAnalysisContent('')}
+                            className="ml-auto text-gray-400 hover:text-white transition-colors"
+                            aria-label="Effacer l'analyse IA"
+                        >
+                            <XCircle className="h-5 w-5" />
+                        </button>
+                    </h3>
+                    <div className="text-sm text-white whitespace-pre-wrap leading-relaxed">
+                        {progressionAnalysisContent}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-4">
+                        💡 Cette analyse est générée par IA et doit être considérée comme un conseil général.
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default MainWorkoutView;
