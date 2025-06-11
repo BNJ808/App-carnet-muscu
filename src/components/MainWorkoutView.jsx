@@ -595,6 +595,28 @@ function MainWorkoutView({
                         {exercise.deleted && <span className="text-xs text-red-300 ml-2">(Supprimé)</span>}
                     </h3>
                     <div className="flex items-center gap-2">
+                        {/* Bouton IA pour analyse spécifique de l'exercice */}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation(); // Empêcher l'expansion de l'exercice
+                                const exerciseHistory = getExerciseHistoryForGraph(exercise.name);
+                                if (exerciseHistory.length > 0) {
+                                    analyzeProgressionWithAI(exercise.name, exerciseHistory);
+                                } else {
+                                    showToast("Pas d'historique suffisant pour analyser cet exercice.", "info");
+                                }
+                            }}
+                            disabled={isLoadingAI}
+                            className="p-1 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-110"
+                            title="Analyser cet exercice avec l'IA"
+                            aria-label={`Analyser l'exercice ${exercise.name} avec l'IA`}
+                        >
+                            {isLoadingAI ? (
+                                <RotateCcw className="h-4 w-4 text-white animate-spin" />
+                            ) : (
+                                <Sparkles className="h-4 w-4 text-white" />
+                            )}
+                        </button>
                         <span className="text-sm text-gray-400">Vol: {getVolumeForExercise(exercise).toFixed(0)} kg</span>
                         {currentExercisePB && (
                             <div className="text-xs text-yellow-300 flex items-center gap-1">
