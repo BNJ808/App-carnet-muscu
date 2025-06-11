@@ -53,7 +53,6 @@ const ImprovedWorkoutApp = () => {
     const [globalNotes, setGlobalNotes] = useState('');
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [isAdvancedMode, setIsAdvancedMode] = useState(false);
     const [toast, setToast] = useState(null);
     const [isTimerModalOpen, setIsTimerModalOpen] = useState(false); // État pour la modale du minuteur
 
@@ -171,7 +170,6 @@ const ImprovedWorkoutApp = () => {
                     setHistoricalData(data.historicalData || []);
                     setPersonalBests(data.personalBests || {});
                     setGlobalNotes(data.globalNotes || '');
-                    setIsAdvancedMode(data.isAdvancedMode || false);
                 } else {
                     console.log("Document utilisateur non trouvé, initialisation...");
                     // Initialiser avec des structures vides si le document n'existe pas
@@ -179,8 +177,7 @@ const ImprovedWorkoutApp = () => {
                         workouts: { days: {}, dayOrder: [] },
                         historicalData: [],
                         personalBests: {},
-                        globalNotes: '',
-                        isAdvancedMode: false
+                        globalNotes: ''
                     }).catch(e => console.error("Erreur d'initialisation du document:", e));
                 }
             }, (error) => {
@@ -208,12 +205,12 @@ const ImprovedWorkoutApp = () => {
         }
     }, [user, showToast]);
 
-    // Effet pour sauvegarder les workouts, historicalData, personalBests, globalNotes et isAdvancedMode
+    // Effet pour sauvegarder les workouts, historicalData, personalBests et globalNotes
     useEffect(() => {
         if (user && workouts.days) { // S'assurer que workouts est initialisé
-            saveData({ workouts, historicalData, personalBests, globalNotes, isAdvancedMode });
+            saveData({ workouts, historicalData, personalBests, globalNotes });
         }
-    }, [workouts, historicalData, personalBests, globalNotes, isAdvancedMode, user, saveData]);
+    }, [workouts, historicalData, personalBests, globalNotes, user, saveData]);
 
     // Fonctions utilitaires
     const formatDate = useCallback((dateString) => {
@@ -484,23 +481,12 @@ const ImprovedWorkoutApp = () => {
                 <h1 className="text-2xl font-bold text-blue-400">Workout Tracker</h1>
                 <div className="flex items-center gap-4">
                     <button
-                        onClick={() => setIsAdvancedMode(prev => !prev)}
-                        className={`px-3 py-1 rounded-full text-sm font-semibold transition-all ${isAdvancedMode ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                        aria-label={isAdvancedMode ? "Désactiver le mode avancé" : "Activer le mode avancé"}
-                    >
-                        {isAdvancedMode ? 'Mode Avancé ON' : 'Mode Avancé OFF'}
-                    </button>
-                    <button
                         onClick={() => setIsTimerModalOpen(true)}
                         className="p-2 rounded-full bg-blue-500 hover:bg-blue-600 transition-colors"
                         aria-label="Ouvrir le minuteur"
                     >
                         <Clock className="h-6 w-6 text-white" />
                     </button>
-                    {/* Future icône pour les paramètres */}
-                    {/* <button className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors">
-                        <Settings className="h-6 w-6 text-gray-300" />
-                    </button> */}
                 </div>
             </header>
 
@@ -515,7 +501,6 @@ const ImprovedWorkoutApp = () => {
                         setPersonalBests={setPersonalBests}
                         formatDate={formatDate}
                         getSeriesDisplay={getSeriesDisplay}
-                        isAdvancedMode={isAdvancedMode}
                         analyzeProgressionWithAI={analyzeProgressionWithAI}
                         progressionAnalysisContent={progressionAnalysisContent}
                         setProgressionAnalysisContent={setProgressionAnalysisContent}
@@ -548,7 +533,6 @@ const ImprovedWorkoutApp = () => {
                         progressionAnalysisContent={progressionAnalysisContent}
                         formatDate={formatDate}
                         getSeriesDisplay={getSeriesDisplay}
-                        isAdvancedMode={isAdvancedMode}
                         deleteHistoricalSession={deleteHistoricalSession}
                         isLoadingAI={isLoadingAI}
                         showToast={showToast}

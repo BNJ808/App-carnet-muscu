@@ -16,7 +16,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
  * @param {string} props.progressionAnalysisContent - Le texte de l'analyse AI de progression.
  * @param {function} props.formatDate - Fonction pour formater une date.
  * @param {function} props.getSeriesDisplay - Fonction pour afficher les séries.
- * @param {boolean} props.isAdvancedMode - Indique si le mode avancé est activé.
  * @param {function} props.deleteHistoricalSession - Fonction pour supprimer une session historique.
  * @param {boolean} props.isLoadingAI - État de chargement de l'analyse AI.
  * @param {function} props.showToast - Fonction pour afficher des toasts.
@@ -29,7 +28,6 @@ const HistoryView = ({
     progressionAnalysisContent = '',
     formatDate,
     getSeriesDisplay,
-    isAdvancedMode,
     deleteHistoricalSession,
     isLoadingAI = false,
     showToast
@@ -253,7 +251,8 @@ const HistoryView = ({
                                                 )}
                                             </div>
                                         )}
-                                        {isAdvancedMode && exerciseHistory.length > 1 && (
+                                        {/* Graphiques et analyses IA toujours visibles maintenant */}
+                                        {exerciseHistory.length > 1 && (
                                             <div className="mt-4">
                                                 <h6 className="text-md font-semibold text-white mb-2 flex items-center gap-2">
                                                     <LineChartIcon className="h-5 w-5 text-purple-400" /> Progression du volume
@@ -326,7 +325,7 @@ const HistoryView = ({
                 )}
             </div>
         );
-    }, [expandedSessions, personalBests, isAdvancedMode, isLoadingAI, progressionAnalysisContent, selectedExerciseForProgression, analyzeProgressionWithAI, deleteHistoricalSession, handleReactivateExercise, formatDate, getSeriesDisplay, getExerciseHistoryForGraph, toggleSessionExpand]);
+    }, [expandedSessions, personalBests, isLoadingAI, progressionAnalysisContent, selectedExerciseForProgression, analyzeProgressionWithAI, deleteHistoricalSession, handleReactivateExercise, formatDate, getSeriesDisplay, getExerciseHistoryForGraph, toggleSessionExpand]);
 
 
     return (

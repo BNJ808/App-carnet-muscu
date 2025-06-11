@@ -61,7 +61,6 @@ const stableSort = (array, compareFunction) => {
  * @param {function} props.setPersonalBests - Fonction pour mettre à jour les records personnels.
  * @param {function} props.formatDate - Fonction pour formater une date.
  * @param {function} props.getSeriesDisplay - Fonction pour afficher les séries d'un exercice.
- * @param {boolean} props.isAdvancedMode - Indique si le mode avancé est activé.
  * @param {function} props.analyzeProgressionWithAI - Fonction pour analyser la progression avec l'IA.
  * @param {string} props.progressionAnalysisContent - Le contenu de l'analyse de progression de l'IA.
  * @param {function} props.setProgressionAnalysisContent - Fonction pour définir le contenu de l'analyse de progression de l'IA.
@@ -80,7 +79,6 @@ function MainWorkoutView({
     setPersonalBests,
     formatDate,
     getSeriesDisplay,
-    isAdvancedMode,
     analyzeProgressionWithAI,
     progressionAnalysisContent = '',
     setProgressionAnalysisContent,
@@ -577,7 +575,7 @@ function MainWorkoutView({
         return (
             <div
                 key={exercise.id}
-                draggable={isAdvancedMode && !isAddingExercise} // Rendre l'exercice draggable en mode avancé
+                draggable={!isAddingExercise} // Rendre l'exercice draggable par défaut
                 onDragStart={(e) => handleExerciseDragStart(e, currentDay, exercise.id)}
                 onDragEnter={(e) => handleExerciseDragEnter(e, currentDay, exercise.id)}
                 onDragEnd={handleExerciseDragEnd}
@@ -685,61 +683,59 @@ function MainWorkoutView({
                             ></textarea>
                         </div>
 
-                        {isAdvancedMode && (
-                            <div className="mt-4 flex flex-col gap-2">
-                                <button
-                                    onClick={() => softDeleteExercise(exercise.id)}
-                                    className={`w-full py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors ${exercise.deleted ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} text-white font-medium`}
-                                >
-                                    {exercise.deleted ? (
-                                        <> <RotateCcw className="h-5 w-5" /> Réactiver l'exercice </>
-                                    ) : (
-                                        <> <Trash2 className="h-5 w-5" /> Supprimer l'exercice </>
-                                    )}
-                                </button>
-                                {exerciseHistory.length > 1 && (
-                                    <>
-                                        <h6 className="text-md font-semibold text-white mb-2 flex items-center gap-2 mt-4">
-                                            <LineChartIcon className="h-5 w-5 text-purple-400" /> Progression du volume
-                                        </h6>
-                                        <ResponsiveContainer width="100%" height={200}>
-                                            <LineChart data={exerciseHistory} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-                                                <XAxis
-                                                    dataKey="date"
-                                                    type="number"
-                                                    domain={['dataMin', 'dataMax']}
-                                                    tickFormatter={(unixTime) => formatDate(new Date(unixTime))}
-                                                    stroke="#999"
-                                                    tick={{ fontSize: 10 }}
-                                                    minTickGap={30}
-                                                />
-                                                <YAxis stroke="#999" tick={{ fontSize: 10 }} />
-                                                <Tooltip labelFormatter={(label) => formatDate(new Date(label))} formatter={(value) => [`${value.toFixed(0)} kg`, 'Volume']} />
-                                                <Line type="monotone" dataKey="volume" stroke="#8884d8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
-                                            </LineChart>
-                                        </ResponsiveContainer>
-                                        <button
-                                            onClick={() => analyzeProgressionWithAI(exercise.name, exerciseHistory)}
-                                            disabled={isLoadingAI}
-                                            className="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {isLoadingAI ? (
-                                                <RotateCcw className="h-4 w-4 animate-spin mr-2" />
-                                            ) : (
-                                                <Sparkles className="h-4 w-4 mr-2" />
-                                            )}
-                                            Analyser la progression (IA)
-                                        </button>
-                                    </>
+                        <div className="mt-4 flex flex-col gap-2">
+                            <button
+                                onClick={() => softDeleteExercise(exercise.id)}
+                                className={`w-full py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors ${exercise.deleted ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} text-white font-medium`}
+                            >
+                                {exercise.deleted ? (
+                                    <> <RotateCcw className="h-5 w-5" /> Réactiver l'exercice </>
+                                ) : (
+                                    <> <Trash2 className="h-5 w-5" /> Supprimer l'exercice </>
                                 )}
-                            </div>
-                        )}
+                            </button>
+                            {exerciseHistory.length > 1 && (
+                                <>
+                                    <h6 className="text-md font-semibold text-white mb-2 flex items-center gap-2 mt-4">
+                                        <LineChartIcon className="h-5 w-5 text-purple-400" /> Progression du volume
+                                    </h6>
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <LineChart data={exerciseHistory} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                                            <XAxis
+                                                dataKey="date"
+                                                type="number"
+                                                domain={['dataMin', 'dataMax']}
+                                                tickFormatter={(unixTime) => formatDate(new Date(unixTime))}
+                                                stroke="#999"
+                                                tick={{ fontSize: 10 }}
+                                                minTickGap={30}
+                                            />
+                                            <YAxis stroke="#999" tick={{ fontSize: 10 }} />
+                                            <Tooltip labelFormatter={(label) => formatDate(new Date(label))} formatter={(value) => [`${value.toFixed(0)} kg`, 'Volume']} />
+                                            <Line type="monotone" dataKey="volume" stroke="#8884d8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                    <button
+                                        onClick={() => analyzeProgressionWithAI(exercise.name, exerciseHistory)}
+                                        disabled={isLoadingAI}
+                                        className="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isLoadingAI ? (
+                                            <RotateCcw className="h-4 w-4 animate-spin mr-2" />
+                                        ) : (
+                                            <Sparkles className="h-4 w-4 mr-2" />
+                                        )}
+                                        Analyser la progression (IA)
+                                    </button>
+                                </>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
         );
-    }, [expandedExercise, personalBests, isAdvancedMode, isAddingExercise, isDraggingExercise, currentDay, isLoadingAI, analyzeProgressionWithAI, deleteSet, updateSet, softDeleteExercise, updateExerciseNotes, toggleExpandExercise, getExerciseHistoryForGraph, getVolumeForExercise, getEstimated1RM, formatDate, handleExerciseDragStart, handleExerciseDragEnter, handleExerciseDragEnd, handleExerciseDrop]);
+    }, [expandedExercise, personalBests, isAddingExercise, isDraggingExercise, currentDay, isLoadingAI, analyzeProgressionWithAI, deleteSet, updateSet, softDeleteExercise, updateExerciseNotes, toggleExpandExercise, getExerciseHistoryForGraph, getVolumeForExercise, getEstimated1RM, formatDate, handleExerciseDragStart, handleExerciseDragEnter, handleExerciseDragEnd, handleExerciseDrop]);
 
     const handleCopyPreviousWorkout = useCallback(() => {
         const previousDayIndex = workouts.dayOrder.indexOf(currentDay) + 1;
@@ -816,48 +812,47 @@ function MainWorkoutView({
                     <p className="text-gray-400 text-sm">{formatDate(currentDay)}</p>
                 </div>
 
-                {isAdvancedMode && (
-                    <div className="mb-4">
-                        <label htmlFor="workout-notes" className="block text-gray-300 text-sm font-medium mb-1">Notes de la séance :</label>
-                        <textarea
-                            id="workout-notes"
-                            value={workouts.days[currentDay]?.notes || ''}
-                            onChange={(e) => setWorkouts(prev => ({
-                                ...prev,
-                                days: {
-                                    ...prev.days,
-                                    [currentDay]: {
-                                        ...prev.days[currentDay],
-                                        notes: e.target.value
-                                    }
+                {/* Notes de séance et durée (toujours visibles maintenant) */}
+                <div className="mb-4">
+                    <label htmlFor="workout-notes" className="block text-gray-300 text-sm font-medium mb-1">Notes de la séance :</label>
+                    <textarea
+                        id="workout-notes"
+                        value={workouts.days[currentDay]?.notes || ''}
+                        onChange={(e) => setWorkouts(prev => ({
+                            ...prev,
+                            days: {
+                                ...prev.days,
+                                [currentDay]: {
+                                    ...prev.days[currentDay],
+                                    notes: e.target.value
                                 }
-                            }))}
-                            className="w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px]"
-                            placeholder="Notes générales pour cette séance (humeur, énergie, etc.)"
-                            rows="2"
-                        ></textarea>
+                            }
+                        }))}
+                        className="w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px]"
+                        placeholder="Notes générales pour cette séance (humeur, énergie, etc.)"
+                        rows="2"
+                    ></textarea>
 
-                        <label htmlFor="workout-duration" className="block text-gray-300 text-sm font-medium mb-1 mt-3">Durée de la séance (minutes) :</label>
-                        <input
-                            type="number"
-                            id="workout-duration"
-                            value={workouts.days[currentDay]?.duration || ''}
-                            onChange={(e) => setWorkouts(prev => ({
-                                ...prev,
-                                days: {
-                                    ...prev.days,
-                                    [currentDay]: {
-                                        ...prev.days[currentDay],
-                                        duration: Number(e.target.value) || null
-                                    }
+                    <label htmlFor="workout-duration" className="block text-gray-300 text-sm font-medium mb-1 mt-3">Durée de la séance (minutes) :</label>
+                    <input
+                        type="number"
+                        id="workout-duration"
+                        value={workouts.days[currentDay]?.duration || ''}
+                        onChange={(e) => setWorkouts(prev => ({
+                            ...prev,
+                            days: {
+                                ...prev.days,
+                                [currentDay]: {
+                                    ...prev.days[currentDay],
+                                    duration: Number(e.target.value) || null
                                 }
-                            }))}
-                            className="w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Ex: 60"
-                            min="0"
-                        />
-                    </div>
-                )}
+                            }
+                        }))}
+                        className="w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ex: 60"
+                        min="0"
+                    />
+                </div>
 
                 <div className="flex items-center justify-between mt-4 border-t border-gray-700 pt-4">
                     <div className="flex items-center gap-2">
@@ -870,15 +865,14 @@ function MainWorkoutView({
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    {isAdvancedMode && (
-                        <button
-                            onClick={() => setShowDeletedExercises(prev => !prev)}
-                            className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors text-sm"
-                        >
-                            {showDeletedExercises ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                            {showDeletedExercises ? 'Masquer Supprimés' : 'Afficher Supprimés'}
-                        </button>
-                    )}
+                    {/* Bouton pour afficher/masquer les exercices supprimés (toujours visible maintenant) */}
+                    <button
+                        onClick={() => setShowDeletedExercises(prev => !prev)}
+                        className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors text-sm"
+                    >
+                        {showDeletedExercises ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        {showDeletedExercises ? 'Masquer Supprimés' : 'Afficher Supprimés'}
+                    </button>
                 </div>
             </div>
 
