@@ -55,6 +55,22 @@ const ImprovedWorkoutApp = () => {
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState(null);
     const [isTimerModalOpen, setIsTimerModalOpen] = useState(false); // État pour la modale du minuteur
+    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false); // État pour la modale des paramètres
+
+    // États pour les paramètres
+    const [settings, setSettings] = useState({
+        defaultRestTime: 90, // Temps de repos par défaut en secondes
+        autoStartTimer: false, // Démarrer automatiquement le minuteur après chaque série
+        showEstimated1RM: true, // Afficher le 1RM estimé
+        weightIncrement: 2.5, // Incrément de poids par défaut
+        theme: 'dark', // Thème (dark/light)
+        notifications: true, // Notifications activées
+        autoSave: true, // Sauvegarde automatique
+        showVolume: true, // Afficher le volume par exercice
+        compactMode: false, // Mode compact pour l'affichage
+        defaultSets: 3, // Nombre de séries par défaut pour nouveaux exercices
+        defaultReps: 10 // Nombre de répétitions par défaut pour nouvelles séries
+    });
 
     // États pour le minuteur global
     const [timerSeconds, setTimerSeconds] = useState(0);
@@ -170,6 +186,19 @@ const ImprovedWorkoutApp = () => {
                     setHistoricalData(data.historicalData || []);
                     setPersonalBests(data.personalBests || {});
                     setGlobalNotes(data.globalNotes || '');
+                    setSettings(data.settings || {
+                        defaultRestTime: 90,
+                        autoStartTimer: false,
+                        showEstimated1RM: true,
+                        weightIncrement: 2.5,
+                        theme: 'dark',
+                        notifications: true,
+                        autoSave: true,
+                        showVolume: true,
+                        compactMode: false,
+                        defaultSets: 3,
+                        defaultReps: 10
+                    });
                 } else {
                     console.log("Document utilisateur non trouvé, initialisation...");
                     // Initialiser avec des structures vides si le document n'existe pas
@@ -177,7 +206,20 @@ const ImprovedWorkoutApp = () => {
                         workouts: { days: {}, dayOrder: [] },
                         historicalData: [],
                         personalBests: {},
-                        globalNotes: ''
+                        globalNotes: '',
+                        settings: {
+                            defaultRestTime: 90,
+                            autoStartTimer: false,
+                            showEstimated1RM: true,
+                            weightIncrement: 2.5,
+                            theme: 'dark',
+                            notifications: true,
+                            autoSave: true,
+                            showVolume: true,
+                            compactMode: false,
+                            defaultSets: 3,
+                            defaultReps: 10
+                        }
                     }).catch(e => console.error("Erreur d'initialisation du document:", e));
                 }
             }, (error) => {
@@ -205,12 +247,12 @@ const ImprovedWorkoutApp = () => {
         }
     }, [user, showToast]);
 
-    // Effet pour sauvegarder les workouts, historicalData, personalBests et globalNotes
+    // Effet pour sauvegarder les workouts, historicalData, personalBests, globalNotes et settings
     useEffect(() => {
         if (user && workouts.days) { // S'assurer que workouts est initialisé
-            saveData({ workouts, historicalData, personalBests, globalNotes });
+            saveData({ workouts, historicalData, personalBests, globalNotes, settings });
         }
-    }, [workouts, historicalData, personalBests, globalNotes, user, saveData]);
+    }, [workouts, historicalData, personalBests, globalNotes, settings, user, saveData]);
 
     // Fonctions utilitaires
     const formatDate = useCallback((dateString) => {
@@ -478,7 +520,7 @@ const ImprovedWorkoutApp = () => {
     return (
         <div className="flex flex-col h-screen bg-gray-900 text-white">
             <header className="flex items-center justify-between p-4 bg-gray-800 shadow-md">
-                <h1 className="text-2xl font-bold text-blue-400">Workout Tracker</h1>
+                <h1 className="text-2xl font-bold text-blue-400">Carnet Muscu</h1>
                 <div className="flex items-center gap-4">
                     <button
                         onClick={() => setIsTimerModalOpen(true)}
@@ -486,6 +528,13 @@ const ImprovedWorkoutApp = () => {
                         aria-label="Ouvrir le minuteur"
                     >
                         <Clock className="h-6 w-6 text-white" />
+                    </button>
+                    <button
+                        onClick={() => setIsSettingsModalOpen(true)}
+                        className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors"
+                        aria-label="Ouvrir les paramètres"
+                    >
+                        <Settings className="h-6 w-6 text-white" />
                     </button>
                 </div>
             </header>
@@ -509,6 +558,7 @@ const ImprovedWorkoutApp = () => {
                         startTimer={startTimer}
                         setTimerSeconds={setTimerSeconds}
                         setCurrentView={setCurrentView} // Permet à MainWorkoutView de changer de vue (ex: vers le minuteur)
+                        settings={settings}
                     />
                 )}
                 {currentView === 'timer' && (
@@ -591,6 +641,240 @@ const ImprovedWorkoutApp = () => {
                 setTimerSeconds={setTimerSeconds}
                 formatTime={formatTime}
             />
+
+            {/* Settings Modal */}
+            {isSettingsModalOpen && (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4 animate-fade-in">
+                    <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl relative">
+                        <button
+                            onClick={() => setIsSettingsModalOpen(false)}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+                            aria-label="Fermer les paramètres"
+                        >
+                            <X className="h-6 w-6" />
+                        </button>
+
+                        <h2 className="text-3xl font-bold text-white text-center mb-6 flex items-center justify-center gap-3">
+                            <Settings className="h-8 w-8 text-gray-400" /> Paramètres
+                        </h2>
+
+                        <div className="space-y-6">
+                            {/* Section Minuteur */}
+                            <div className="bg-gray-700/30 rounded-lg p-4 border border-gray-600/50">
+                                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <Clock className="h-5 w-5 text-blue-400" /> Minuteur
+                                </h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                                            Temps de repos par défaut (secondes)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={settings.defaultRestTime}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, defaultRestTime: Number(e.target.value) }))}
+                                            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            min="0"
+                                            max="600"
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            id="autoStartTimer"
+                                            checked={settings.autoStartTimer}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, autoStartTimer: e.target.checked }))}
+                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="autoStartTimer" className="text-gray-300">
+                                            Démarrer automatiquement le minuteur après chaque série
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section Affichage */}
+                            <div className="bg-gray-700/30 rounded-lg p-4 border border-gray-600/50">
+                                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <Eye className="h-5 w-5 text-green-400" /> Affichage
+                                </h3>
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            id="showEstimated1RM"
+                                            checked={settings.showEstimated1RM}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, showEstimated1RM: e.target.checked }))}
+                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="showEstimated1RM" className="text-gray-300">
+                                            Afficher le 1RM estimé pour chaque série
+                                        </label>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            id="showVolume"
+                                            checked={settings.showVolume}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, showVolume: e.target.checked }))}
+                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="showVolume" className="text-gray-300">
+                                            Afficher le volume par exercice
+                                        </label>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            id="compactMode"
+                                            checked={settings.compactMode}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, compactMode: e.target.checked }))}
+                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="compactMode" className="text-gray-300">
+                                            Mode compact (affichage condensé)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section Entraînement */}
+                            <div className="bg-gray-700/30 rounded-lg p-4 border border-gray-600/50">
+                                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <Dumbbell className="h-5 w-5 text-purple-400" /> Entraînement
+                                </h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                                            Incrément de poids par défaut (kg)
+                                        </label>
+                                        <select
+                                            value={settings.weightIncrement}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, weightIncrement: Number(e.target.value) }))}
+                                            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value={0.5}>0.5 kg</option>
+                                            <option value={1}>1 kg</option>
+                                            <option value={1.25}>1.25 kg</option>
+                                            <option value={2.5}>2.5 kg</option>
+                                            <option value={5}>5 kg</option>
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                                Séries par défaut
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={settings.defaultSets}
+                                                onChange={(e) => setSettings(prev => ({ ...prev, defaultSets: Number(e.target.value) }))}
+                                                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                min="1"
+                                                max="10"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                                Répétitions par défaut
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={settings.defaultReps}
+                                                onChange={(e) => setSettings(prev => ({ ...prev, defaultReps: Number(e.target.value) }))}
+                                                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                min="1"
+                                                max="50"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section Système */}
+                            <div className="bg-gray-700/30 rounded-lg p-4 border border-gray-600/50">
+                                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <Settings className="h-5 w-5 text-orange-400" /> Système
+                                </h3>
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            id="notifications"
+                                            checked={settings.notifications}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, notifications: e.target.checked }))}
+                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="notifications" className="text-gray-300">
+                                            Activer les notifications
+                                        </label>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            id="autoSave"
+                                            checked={settings.autoSave}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, autoSave: e.target.checked }))}
+                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="autoSave" className="text-gray-300">
+                                            Sauvegarde automatique
+                                        </label>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                                            Thème
+                                        </label>
+                                        <select
+                                            value={settings.theme}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, theme: e.target.value }))}
+                                            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="dark">Sombre</option>
+                                            <option value="light">Clair</option>
+                                            <option value="auto">Automatique</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Boutons d'action */}
+                        <div className="flex gap-3 mt-8">
+                            <button
+                                onClick={() => {
+                                    setSettings({
+                                        defaultRestTime: 90,
+                                        autoStartTimer: false,
+                                        showEstimated1RM: true,
+                                        weightIncrement: 2.5,
+                                        theme: 'dark',
+                                        notifications: true,
+                                        autoSave: true,
+                                        showVolume: true,
+                                        compactMode: false,
+                                        defaultSets: 3,
+                                        defaultReps: 10
+                                    });
+                                    showToast("Paramètres réinitialisés", "info");
+                                }}
+                                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+                            >
+                                Réinitialiser
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsSettingsModalOpen(false);
+                                    showToast("Paramètres sauvegardés", "success");
+                                }}
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+                            >
+                                Enregistrer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

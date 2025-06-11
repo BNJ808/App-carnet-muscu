@@ -1,4 +1,61 @@
-// MainWorkoutView.jsx
+}
+                        {settings.showVolume && (
+                            <span className="text-sm text-gray-400">Vol: {getVolumeForExercise(exercise).toFixed(0)} kg</span>
+                        )}
+                        {currentExercisePB && (
+                            <div className="text-xs text-yellow-300 flex items-center gap-1">
+                                <Award className="h-4 w-4" />
+                                PB
+                            </div>
+                        )}
+                        {isCurrentExerciseExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+                    </div>
+                </div>
+
+                {isCurrentExerciseExpanded && (
+                    <div className="mt-4 border-t border-gray-700 pt-4 space-y-3">
+                        {exercise.sets.map((set, setIndex) => (
+                            <div key={set.id} className="flex items-center bg-gray-700 p-2 rounded-md">
+                                <span className="text-gray-300 font-medium w-12 flex-shrink-0">Série {setIndex + 1}:</span>
+                                <input
+                                    type="number"
+                                    value={set.reps}
+                                    onChange={(e) => updateSet(exercise.id, set.id, 'reps', e.target.value)}
+                                    className="w-16 bg-gray-600 text-white text-center rounded-md p-1 mr-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    min="0"
+                                    aria-label={`Répétitions pour la série ${setIndex + 1}`}
+                                />
+                                <span className="text-gray-400">x</span>
+                                <input
+                                    type="number"
+                                    value={set.weight}
+                                    onChange={(e) => updateSet(exercise.id, set.id, 'weight', e.target.value)}
+                                    className="w-20 bg-gray-600 text-white text-center rounded-md p-1 mx-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    step={settings.weightIncrement || 2.5}
+                                    min="0"
+                                    aria-label={`Poids pour la série ${setIndex + 1}`}
+                                />
+                                <span className="text-gray-400">kg</span>
+                                {settings.showEstimated1RM && set.reps > 0 && set.weight > 0 && (
+                                    <span className="ml-auto text-sm text-gray-300">
+                                        ~1RM: {getEstimated1RM(set.reps, set.weight).toFixed(0)}kg
+                                    </span>
+                                )}
+                                <button
+                                    onClick={() => deleteSet(exercise.id, set.id)}
+                                    className="ml-2 text-red-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-600 transition-colors"
+                                    aria-label="Supprimer la série"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ))}
+                        <button
+                            onClick={() => addSet(exercise.id)}
+                            className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        >
+                            <Plus className="h-5 w-5" /> Ajouter une série
+                        </button>// MainWorkoutView.jsx
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
     Search,
@@ -69,6 +126,7 @@ const stableSort = (array, compareFunction) => {
  * @param {function} props.startTimer - Fonction pour démarrer le minuteur.
  * @param {function} props.setTimerSeconds - Fonction pour définir les secondes du minuteur.
  * @param {function} props.setCurrentView - Fonction pour changer la vue principale.
+ * @param {object} props.settings - Les paramètres de l'application.
  */
 function MainWorkoutView({
     workouts = { days: {}, dayOrder: [] },
@@ -86,7 +144,8 @@ function MainWorkoutView({
     showToast,
     startTimer,
     setTimerSeconds,
-    setCurrentView
+    setCurrentView,
+    settings = {}
 }) {
     const today = useMemo(() => new Date().toISOString().split('T')[0], []); // 'YYYY-MM-DD'
     const [currentDay, setCurrentDay] = useState(today);
@@ -185,7 +244,11 @@ function MainWorkoutView({
                 const newExercise = {
                     id: Date.now(), // ID unique pour l'exercice
                     name: exerciseName.trim(),
-                    sets: [{ id: Date.now() + 1, reps: 0, weight: 0 }],
+                    sets: Array.from({ length: settings.defaultSets || 3 }, (_, i) => ({ 
+                        id: Date.now() + i + 1, 
+                        reps: settings.defaultReps || 10, 
+                        weight: 0 
+                    })),
                     notes: '',
                     deleted: false // S'assurer qu'il n'est pas marqué comme supprimé
                 };
@@ -196,7 +259,11 @@ function MainWorkoutView({
                     exercises: [{
                         id: Date.now(),
                         name: exerciseName.trim(),
-                        sets: [{ id: Date.now() + 1, reps: 0, weight: 0 }],
+                        sets: Array.from({ length: settings.defaultSets || 3 }, (_, i) => ({ 
+                            id: Date.now() + i + 1, 
+                            reps: settings.defaultReps || 10, 
+                            weight: 0 
+                        })),
                         notes: '',
                         deleted: false
                     }]
@@ -282,12 +349,16 @@ function MainWorkoutView({
             if (currentWorkout) {
                 const exerciseIndex = currentWorkout.exercises.findIndex(ex => ex.id === exerciseId);
                 if (exerciseIndex !== -1) {
-                    currentWorkout.exercises[exerciseIndex].sets.push({ id: Date.now(), reps: 0, weight: 0 });
+                    currentWorkout.exercises[exerciseIndex].sets.push({ 
+                        id: Date.now(), 
+                        reps: settings.defaultReps || 10, 
+                        weight: 0 
+                    });
                 }
             }
             return { ...prevWorkouts, days: updatedDays };
         });
-    }, [currentDay, setWorkouts]);
+    }, [currentDay, setWorkouts, settings]);
 
     const updateSet = useCallback((exerciseId, setId, field, value) => {
         setWorkouts(prevWorkouts => {
@@ -775,17 +846,6 @@ function MainWorkoutView({
                 <h2 className="text-3xl font-bold text-white flex items-center gap-3">
                     <Dumbbell className="h-8 w-8 text-blue-400" /> Mon Entraînement
                 </h2>
-                <div className="flex items-center gap-2">
-                    {/* Bouton pour copier la séance précédente */}
-                    <button
-                        onClick={handleCopyPreviousWorkout}
-                        className="bg-gray-700 hover:bg-gray-600 text-white font-medium px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm"
-                        aria-label="Copier la séance précédente"
-                        title="Copier la séance du jour précédent"
-                    >
-                        <Copy className="h-4 w-4" /> Copier
-                    </button>
-                </div>
             </div>
 
             {/* Navigation et gestion des jours */}
