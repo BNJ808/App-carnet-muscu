@@ -7,7 +7,7 @@ import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ChevronUp, Pencil, Sparkles, ArrowUp, ArrowDown,
     Plus, Trash2, Play, Pause, RotateCcw, Search, Filter, Dumbbell, Clock, History, NotebookText,
     LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
-    Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity
+    Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity, X
 } from 'lucide-react';
 import * as GenerativeAIModule from '@google/generative-ai';
 
