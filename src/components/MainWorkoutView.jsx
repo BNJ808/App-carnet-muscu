@@ -21,11 +21,11 @@ import {
     Dumbbell,
     Layers,
     Activity,
-    Zap, // Added Zap for AI suggestions
-    RotateCcw, // For AI generation spinner
+    Zap,
+    RotateCcw,
     Undo2, Redo2,
     Settings,
-    XCircle, // For clearing AI analysis
+    XCircle,
     CheckCircle,
     Download,
     Upload,
@@ -33,7 +33,7 @@ import {
     Eye, EyeOff, Maximize2, Minimize2,
     Award
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'; // Recharts for progression graph
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import ExerciseSelector from './ExerciseSelector.jsx';
 
 /**
@@ -51,24 +51,6 @@ const stableSort = (array, compareFunction) => {
 
 /**
  * Composant principal pour la vue d'entraînement.
- * @param {object} props - Les props du composant.
- * @param {object} props.workouts - L'objet des entraînements.
- * @param {function} props.setWorkouts - Fonction pour mettre à jour les entraînements.
- * @param {Array<object>} props.historicalData - Les données historiques des séances.
- * @param {function} props.setHistoricalData - Fonction pour mettre à jour les données historiques.
- * @param {object} props.personalBests - Les records personnels.
- * @param {function} props.setPersonalBests - Fonction pour mettre à jour les records personnels.
- * @param {function} props.formatDate - Fonction pour formater une date.
- * @param {function} props.getSeriesDisplay - Fonction pour afficher les séries d'un exercice.
- * @param {function} props.analyzeProgressionWithAI - Fonction pour analyser la progression avec l'IA.
- * @param {string} props.progressionAnalysisContent - Le contenu de l'analyse de progression de l'IA.
- * @param {function} props.setProgressionAnalysisContent - Fonction pour définir le contenu de l'analyse de progression de l'IA.
- * @param {boolean} props.isLoadingAI - Indique si l'IA est en cours de chargement.
- * @param {function} props.showToast - Fonction pour afficher un toast.
- * @param {function} props.startTimer - Fonction pour démarrer le minuteur.
- * @param {function} props.setTimerSeconds - Fonction pour définir les secondes du minuteur.
- * @param {function} props.setCurrentView - Fonction pour changer la vue principale.
- * @param {object} props.settings - Les paramètres de l'application.
  */
 function MainWorkoutView({
     workouts = { days: {}, dayOrder: [] },
@@ -87,26 +69,27 @@ function MainWorkoutView({
     startTimer,
     setTimerSeconds,
     setCurrentView,
-    settings = {}
+    settings = {},
+    currentTheme = 'dark'
 }) {
-    const today = useMemo(() => new Date().toISOString().split('T')[0], []); // 'YYYY-MM-DD'
+    const today = useMemo(() => new Date().toISOString().split('T')[0], []);
     const [currentDay, setCurrentDay] = useState(today);
     const [isAddingExercise, setIsAddingExercise] = useState(false);
     const [isExerciseSelectorOpen, setIsExerciseSelectorOpen] = useState(false);
     const [newExerciseName, setNewExerciseName] = useState('');
-    const [expandedExercise, setExpandedExercise] = useState(null); // L'ID de l'exercice actuellement étendu
+    const [expandedExercise, setExpandedExercise] = useState(null);
     const [isEditingWorkoutName, setIsEditingWorkoutName] = useState(false);
     const [editedWorkoutName, setEditedWorkoutName] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [showDeletedExercises, setShowDeletedExercises] = useState(false); // État pour l'affichage des exercices supprimés
+    const [showDeletedExercises, setShowDeletedExercises] = useState(false);
     const [isDraggingWorkout, setIsDraggingWorkout] = useState(false);
     const dragItem = useRef(null);
     const dragOverItem = useRef(null);
 
     // États pour le drag and drop des exercices
     const [isDraggingExercise, setIsDraggingExercise] = useState(false);
-    const dragExerciseItem = useRef(null); // {dayIndex, exerciseIndex}
-    const dragOverExerciseItem = useRef(null); // {dayIndex, exerciseIndex}
+    const dragExerciseItem = useRef(null);
+    const dragOverExerciseItem = useRef(null);
 
     // États pour la gestion des exercices favoris et récents
     const [favoriteExercises, setFavoriteExercises] = useState([]);
@@ -137,7 +120,6 @@ function MainWorkoutView({
     useEffect(() => {
         const exerciseFrequency = {};
         
-        // Compter la fréquence des exercices dans l'historique récent (30 derniers jours)
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         
@@ -156,7 +138,6 @@ function MainWorkoutView({
                 });
             });
 
-        // Trier par fréquence et prendre les 10 plus récents
         const sortedExercises = Object.entries(exerciseFrequency)
             .sort(([,a], [,b]) => b - a)
             .slice(0, 10)
@@ -178,13 +159,12 @@ function MainWorkoutView({
 
     // Gestion de la sélection d'exercice depuis le sélecteur
     const handleSelectExercise = useCallback((exerciseName) => {
-        // Ajouter l'exercice à l'entraînement du jour
         setWorkouts(prevWorkouts => {
             const updatedDays = { ...prevWorkouts.days };
             const currentWorkout = updatedDays[currentDay];
             if (currentWorkout) {
                 const newExercise = {
-                    id: Date.now(), // ID unique pour l'exercice
+                    id: Date.now(),
                     name: exerciseName.trim(),
                     sets: Array.from({ length: settings.defaultSets || 3 }, (_, i) => ({ 
                         id: Date.now() + i + 1, 
@@ -192,7 +172,7 @@ function MainWorkoutView({
                         weight: 0 
                     })),
                     notes: '',
-                    deleted: false // S'assurer qu'il n'est pas marqué comme supprimé
+                    deleted: false
                 };
                 currentWorkout.exercises = [...currentWorkout.exercises, newExercise];
             } else {
@@ -217,27 +197,24 @@ function MainWorkoutView({
             return { ...prevWorkouts, days: updatedDays };
         });
 
-        // Mettre à jour les exercices récents (ajouter en premier)
         setRecentExercises(prev => {
             const filtered = prev.filter(name => name !== exerciseName);
             return [exerciseName, ...filtered].slice(0, 10);
         });
 
         showToast(`Exercice "${exerciseName}" ajouté !`, "success");
-    }, [currentDay, setWorkouts, showToast]);
+    }, [currentDay, setWorkouts, showToast, settings]);
 
     // Mise à jour de l'historique quand une séance est marquée comme terminée
     const updateHistoricalData = useCallback((sessionId, sessionData) => {
         setHistoricalData(prevData => {
-            // Supprimer l'ancienne entrée si elle existe (pour éviter les doublons en cas de réenregistrement)
             const filteredData = prevData.filter(session => session.id !== sessionId);
             const updatedData = [...filteredData, { ...sessionData, id: sessionId, date: sessionData.date || new Date() }];
 
-            // Tri par date pour que l'historique soit toujours ordonné
             return updatedData.sort((a, b) => {
                 const dateA = a.date instanceof Date ? a.date.getTime() : (a.date && typeof a.date.toDate === 'function' ? a.date.toDate().getTime() : new Date(a.date).getTime());
                 const dateB = b.date instanceof Date ? b.date.getTime() : (b.date && typeof b.date.toDate === 'function' ? b.date.toDate().getTime() : new Date(b.date).getTime());
-                return dateB - dateA; // Du plus récent au plus ancien
+                return dateB - dateA;
             });
         });
     }, [setHistoricalData]);
@@ -249,7 +226,6 @@ function MainWorkoutView({
         sets.forEach(set => {
             const { reps, weight } = set;
 
-            // Calcul du PB pour le poids maximal (peu importe les reps)
             if (weight > currentExercisePB.maxWeight) {
                 currentExercisePB.maxWeight = weight;
                 currentExercisePB.maxReps = reps;
@@ -259,9 +235,6 @@ function MainWorkoutView({
                 currentExercisePB.date = new Date();
             }
 
-            // Calcul du PB pour les reps maximales (pour un poids donné, ou toutes reps confondues)
-            // Cette logique peut être plus complexe si on veut "max reps @ X kg"
-            // Pour l'instant, on va prendre le max reps absolu ou pour un certain poids significatif
             if (reps > currentExercisePB.maxRepsForWeight && weight >= currentExercisePB.weightForMaxReps) {
                 currentExercisePB.maxRepsForWeight = reps;
                 currentExercisePB.weightForMaxReps = weight;
@@ -273,7 +246,7 @@ function MainWorkoutView({
         setPersonalBests(newPBs);
     }, [personalBests, setPersonalBests]);
 
-    // Ajouter un exercice avec l'ancien système (conservé pour compatibilité)
+    // Ajouter un exercice avec l'ancien système
     const addExercise = useCallback(() => {
         if (newExerciseName.trim() === '') {
             showToast("Le nom de l'exercice ne peut pas être vide.", "warning");
@@ -327,7 +300,6 @@ function MainWorkoutView({
                 const exerciseIndex = currentWorkout.exercises.findIndex(ex => ex.id === exerciseId);
                 if (exerciseIndex !== -1) {
                     currentWorkout.exercises[exerciseIndex].sets = currentWorkout.exercises[exerciseIndex].sets.filter(s => s.id !== setId);
-                    // Si plus de séries, supprimer l'exercice
                     if (currentWorkout.exercises[exerciseIndex].sets.length === 0) {
                         currentWorkout.exercises = currentWorkout.exercises.filter(ex => ex.id !== exerciseId);
                     }
@@ -390,9 +362,9 @@ function MainWorkoutView({
             id: `session-${Date.now()}`,
             date: new Date(),
             notes: currentWorkoutData.notes || '',
-            duration: currentWorkoutData.duration || null, // S'assurer que la durée est incluse
+            duration: currentWorkoutData.duration || null,
             exercises: currentWorkoutData.exercises
-                .filter(ex => !ex.deleted) // N'ajouter que les exercices non supprimés à l'historique
+                .filter(ex => !ex.deleted)
                 .map(ex => ({
                     name: ex.name,
                     sets: ex.sets.map(s => ({ reps: s.reps, weight: s.weight })),
@@ -407,12 +379,10 @@ function MainWorkoutView({
 
         updateHistoricalData(sessionToAdd.id, sessionToAdd);
 
-        // Mettre à jour les records personnels
         sessionToAdd.exercises.forEach(ex => {
             calculatePersonalBests(ex.name, ex.sets);
         });
 
-        // Vider l'entraînement du jour après complétion
         setWorkouts(prevWorkouts => {
             const updatedDays = { ...prevWorkouts.days };
             updatedDays[currentDay] = { name: 'Entraînement du jour', exercises: [] };
@@ -455,7 +425,6 @@ function MainWorkoutView({
             return;
         }
 
-        // Réordonner dayOrder
         const [reorderedItem] = dayOrder.splice(dragItemIndex, 1);
         dayOrder.splice(dragOverItemIndex, 0, reorderedItem);
 
@@ -480,7 +449,7 @@ function MainWorkoutView({
         dragExerciseItem.current = { dayId, exerciseId };
         setIsDraggingExercise(true);
         e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", ""); // Required for Firefox
+        e.dataTransfer.setData("text/plain", "");
     };
 
     const handleExerciseDragEnter = (e, dayId, exerciseId) => {
@@ -503,20 +472,15 @@ function MainWorkoutView({
 
             if (!sourceDay || !targetDay) return prevWorkouts;
 
-            // Find the exercise to move
             const sourceExerciseIndex = sourceDay.exercises.findIndex(ex => ex.id === sourceExerciseId);
             if (sourceExerciseIndex === -1) return prevWorkouts;
 
             const [movedExercise] = sourceDay.exercises.splice(sourceExerciseIndex, 1);
-
-            // Find the target index in the target day
             const targetExerciseIndex = targetDay.exercises.findIndex(ex => ex.id === targetExerciseId);
 
             if (sourceDayId === targetDayId) {
-                // Moving within the same day
                 targetDay.exercises.splice(targetExerciseIndex, 0, movedExercise);
             } else {
-                // Moving to a different day
                 targetDay.exercises.splice(targetExerciseIndex, 0, movedExercise);
             }
 
@@ -557,16 +521,14 @@ function MainWorkoutView({
         historicalData.forEach(session => {
             const exerciseEntry = session.exercises.find(ex => ex.name === exerciseName && !ex.deleted);
             if (exerciseEntry) {
-                // Pour le graphique de progression, nous voulons une métrique simple par séance, par exemple le volume total.
                 const volume = exerciseEntry.sets.reduce((sum, set) => sum + (set.reps * set.weight), 0);
                 history.push({
-                    date: typeof session.date.toDate === 'function' ? session.date.toDate().getTime() : new Date(session.date).getTime(), // Timestamp for Recharts
+                    date: typeof session.date.toDate === 'function' ? session.date.toDate().getTime() : new Date(session.date).getTime(),
                     volume: volume,
-                    sets: exerciseEntry.sets // Keep sets to pass to AI
+                    sets: exerciseEntry.sets
                 });
             }
         });
-        // Trier par date croissante pour le graphique
         return history.sort((a, b) => a.date - b.date);
     }, [historicalData]);
 
@@ -576,7 +538,6 @@ function MainWorkoutView({
 
     const getEstimated1RM = useCallback((reps, weight) => {
         if (reps === 0 || weight === 0) return 0;
-        // Brzycki formula
         return Math.round(weight * (36 / (37 - reps)));
     }, []);
 
@@ -588,28 +549,45 @@ function MainWorkoutView({
         return (
             <div
                 key={exercise.id}
-                draggable={!isAddingExercise} // Rendre l'exercice draggable par défaut
+                draggable={!isAddingExercise}
                 onDragStart={(e) => handleExerciseDragStart(e, currentDay, exercise.id)}
                 onDragEnter={(e) => handleExerciseDragEnter(e, currentDay, exercise.id)}
                 onDragEnd={handleExerciseDragEnd}
-                onDragOver={(e) => e.preventDefault()} // Nécessaire pour que le drop fonctionne
-                onDrop={handleExerciseDrop} // Gérer le drop sur cet élément
-                className={`bg-gray-800 rounded-lg p-4 mb-4 border border-gray-700 shadow-md transition-all duration-200 ease-in-out ${exercise.deleted ? 'opacity-60 border-red-600' : ''} ${isDraggingExercise && dragExerciseItem.current?.exerciseId === exercise.id ? 'opacity-30 border-dashed border-blue-400' : ''}`}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleExerciseDrop}
+                className={`rounded-lg p-4 mb-4 border shadow-md transition-all duration-200 ease-in-out ${
+                    currentTheme === 'light' 
+                        ? 'bg-white border-gray-300' 
+                        : 'bg-gray-800 border-gray-700'
+                } ${exercise.deleted ? (currentTheme === 'light' ? 'opacity-60 border-red-500' : 'opacity-60 border-red-600') : ''} ${
+                    isDraggingExercise && dragExerciseItem.current?.exerciseId === exercise.id 
+                        ? 'opacity-30 border-dashed border-blue-400' 
+                        : ''
+                }`}
             >
                 <div
                     className="flex justify-between items-center cursor-pointer"
                     onClick={() => toggleExpandExercise(exercise.id)}
                 >
-                    <h3 className={`text-lg font-semibold ${exercise.deleted ? 'line-through text-red-300' : 'text-blue-400'} flex items-center gap-2`}>
+                    <h3 className={`text-lg font-semibold flex items-center gap-2 ${
+                        exercise.deleted 
+                            ? (currentTheme === 'light' ? 'line-through text-red-600' : 'line-through text-red-300')
+                            : (currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400')
+                    }`}>
                         <Dumbbell className="h-5 w-5" />
                         {exercise.name}
-                        {exercise.deleted && <span className="text-xs text-red-300 ml-2">(Supprimé)</span>}
+                        {exercise.deleted && (
+                            <span className={`text-xs ml-2 ${
+                                currentTheme === 'light' ? 'text-red-600' : 'text-red-300'
+                            }`}>
+                                (Supprimé)
+                            </span>
+                        )}
                     </h3>
                     <div className="flex items-center gap-2">
-                        {/* Bouton IA pour analyse spécifique de l'exercice */}
                         <button
                             onClick={(e) => {
-                                e.stopPropagation(); // Empêcher l'expansion de l'exercice
+                                e.stopPropagation();
                                 const exerciseHistory = getExerciseHistoryForGraph(exercise.name);
                                 if (exerciseHistory.length > 0) {
                                     analyzeProgressionWithAI(exercise.name, exerciseHistory);
@@ -628,49 +606,96 @@ function MainWorkoutView({
                                 <Sparkles className="h-4 w-4 text-white" />
                             )}
                         </button>
-                        <span className="text-sm text-gray-400">Vol: {getVolumeForExercise(exercise).toFixed(0)} kg</span>
+                        
+                        {settings.showVolume && (
+                            <span className={`text-sm ${
+                                currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                            }`}>
+                                Vol: {getVolumeForExercise(exercise).toFixed(0)} kg
+                            </span>
+                        )}
+                        
                         {currentExercisePB && (
-                            <div className="text-xs text-yellow-300 flex items-center gap-1">
+                            <div className={`text-xs flex items-center gap-1 ${
+                                currentTheme === 'light' ? 'text-yellow-600' : 'text-yellow-300'
+                            }`}>
                                 <Award className="h-4 w-4" />
                                 PB
                             </div>
                         )}
-                        {isCurrentExerciseExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+                        
+                        {isCurrentExerciseExpanded ? (
+                            <ChevronUp className={`h-5 w-5 ${
+                                currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                            }`} />
+                        ) : (
+                            <ChevronDown className={`h-5 w-5 ${
+                                currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                            }`} />
+                        )}
                     </div>
                 </div>
 
                 {isCurrentExerciseExpanded && (
-                    <div className="mt-4 border-t border-gray-700 pt-4 space-y-3">
+                    <div className={`mt-4 border-t pt-4 space-y-3 ${
+                        currentTheme === 'light' ? 'border-gray-300' : 'border-gray-700'
+                    }`}>
                         {exercise.sets.map((set, setIndex) => (
-                            <div key={set.id} className="flex items-center bg-gray-700 p-2 rounded-md">
-                                <span className="text-gray-300 font-medium w-12 flex-shrink-0">Série {setIndex + 1}:</span>
+                            <div key={set.id} className={`flex items-center p-2 rounded-md ${
+                                currentTheme === 'light' ? 'bg-gray-100' : 'bg-gray-700'
+                            }`}>
+                                <span className={`font-medium w-12 flex-shrink-0 ${
+                                    currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                                }`}>
+                                    Série {setIndex + 1}:
+                                </span>
                                 <input
                                     type="number"
                                     value={set.reps}
                                     onChange={(e) => updateSet(exercise.id, set.id, 'reps', e.target.value)}
-                                    className="w-16 bg-gray-600 text-white text-center rounded-md p-1 mr-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className={`w-16 text-center rounded-md p-1 mr-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                        currentTheme === 'light' 
+                                            ? 'bg-white text-gray-900 border border-gray-300' 
+                                            : 'bg-gray-600 text-white border-gray-500'
+                                    }`}
                                     min="0"
                                     aria-label={`Répétitions pour la série ${setIndex + 1}`}
                                 />
-                                <span className="text-gray-400">x</span>
+                                <span className={`${
+                                    currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                                }`}>x</span>
                                 <input
                                     type="number"
                                     value={set.weight}
                                     onChange={(e) => updateSet(exercise.id, set.id, 'weight', e.target.value)}
-                                    className="w-20 bg-gray-600 text-white text-center rounded-md p-1 mx-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className={`w-20 text-center rounded-md p-1 mx-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                        currentTheme === 'light' 
+                                            ? 'bg-white text-gray-900 border border-gray-300' 
+                                            : 'bg-gray-600 text-white border-gray-500'
+                                    }`}
                                     step="2.5"
                                     min="0"
                                     aria-label={`Poids pour la série ${setIndex + 1}`}
                                 />
-                                <span className="text-gray-400">kg</span>
-                                {set.reps > 0 && set.weight > 0 && (
-                                    <span className="ml-auto text-sm text-gray-300">
+                                <span className={`${
+                                    currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                                }`}>kg</span>
+                                
+                                {settings.showEstimated1RM && set.reps > 0 && set.weight > 0 && (
+                                    <span className={`ml-auto text-sm ${
+                                        currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                                    }`}>
                                         ~1RM: {getEstimated1RM(set.reps, set.weight).toFixed(0)}kg
                                     </span>
                                 )}
+                                
                                 <button
                                     onClick={() => deleteSet(exercise.id, set.id)}
-                                    className="ml-2 text-red-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-600 transition-colors"
+                                    className={`ml-2 p-1 rounded-full transition-colors ${
+                                        currentTheme === 'light' 
+                                            ? 'text-red-500 hover:text-red-600 hover:bg-gray-200' 
+                                            : 'text-red-400 hover:text-red-500 hover:bg-gray-600'
+                                    }`}
                                     aria-label="Supprimer la série"
                                 >
                                     <X className="h-4 w-4" />
@@ -685,12 +710,18 @@ function MainWorkoutView({
                         </button>
 
                         <div className="mt-4">
-                            <label htmlFor={`notes-${exercise.id}`} className="block text-gray-300 text-sm font-medium mb-1">Notes :</label>
+                            <label htmlFor={`notes-${exercise.id}`} className={`block text-sm font-medium mb-1 ${
+                                currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                            }`}>Notes :</label>
                             <textarea
                                 id={`notes-${exercise.id}`}
                                 value={exercise.notes}
                                 onChange={(e) => updateExerciseNotes(exercise.id, e.target.value)}
-                                className="w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px]"
+                                className={`w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px] ${
+                                    currentTheme === 'light' 
+                                        ? 'bg-white text-gray-900 border border-gray-300' 
+                                        : 'bg-gray-700 text-white border-gray-600'
+                                }`}
                                 placeholder="Notes sur l'exercice (sensations, difficultés, etc.)"
                                 rows="3"
                             ></textarea>
@@ -699,7 +730,11 @@ function MainWorkoutView({
                         <div className="mt-4 flex flex-col gap-2">
                             <button
                                 onClick={() => softDeleteExercise(exercise.id)}
-                                className={`w-full py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors ${exercise.deleted ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} text-white font-medium`}
+                                className={`w-full py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors text-white font-medium ${
+                                    exercise.deleted 
+                                        ? 'bg-green-600 hover:bg-green-700' 
+                                        : 'bg-red-600 hover:bg-red-700'
+                                }`}
                             >
                                 {exercise.deleted ? (
                                     <> <RotateCcw className="h-5 w-5" /> Réactiver l'exercice </>
@@ -709,22 +744,27 @@ function MainWorkoutView({
                             </button>
                             {exerciseHistory.length > 1 && (
                                 <>
-                                    <h6 className="text-md font-semibold text-white mb-2 flex items-center gap-2 mt-4">
-                                        <LineChartIcon className="h-5 w-5 text-purple-400" /> Progression du volume
+                                    <h6 className={`text-md font-semibold mb-2 flex items-center gap-2 mt-4 ${
+                                        currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                                    }`}>
+                                        <LineChartIcon className={`h-5 w-5 ${
+                                            currentTheme === 'light' ? 'text-purple-600' : 'text-purple-400'
+                                        }`} /> 
+                                        Progression du volume
                                     </h6>
                                     <ResponsiveContainer width="100%" height={200}>
                                         <LineChart data={exerciseHistory} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                                            <CartesianGrid strokeDasharray="3 3" stroke={currentTheme === 'light' ? '#ccc' : '#444'} />
                                             <XAxis
                                                 dataKey="date"
                                                 type="number"
                                                 domain={['dataMin', 'dataMax']}
                                                 tickFormatter={(unixTime) => formatDate(new Date(unixTime))}
-                                                stroke="#999"
+                                                stroke={currentTheme === 'light' ? '#666' : '#999'}
                                                 tick={{ fontSize: 10 }}
                                                 minTickGap={30}
                                             />
-                                            <YAxis stroke="#999" tick={{ fontSize: 10 }} />
+                                            <YAxis stroke={currentTheme === 'light' ? '#666' : '#999'} tick={{ fontSize: 10 }} />
                                             <Tooltip labelFormatter={(label) => formatDate(new Date(label))} formatter={(value) => [`${value.toFixed(0)} kg`, 'Volume']} />
                                             <Line type="monotone" dataKey="volume" stroke="#8884d8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
                                         </LineChart>
@@ -748,7 +788,7 @@ function MainWorkoutView({
                 )}
             </div>
         );
-    }, [expandedExercise, personalBests, isAddingExercise, isDraggingExercise, currentDay, isLoadingAI, analyzeProgressionWithAI, deleteSet, updateSet, softDeleteExercise, updateExerciseNotes, toggleExpandExercise, getExerciseHistoryForGraph, getVolumeForExercise, getEstimated1RM, formatDate, handleExerciseDragStart, handleExerciseDragEnter, handleExerciseDragEnd, handleExerciseDrop]);
+    }, [expandedExercise, personalBests, isAddingExercise, isDraggingExercise, currentDay, isLoadingAI, analyzeProgressionWithAI, deleteSet, updateSet, softDeleteExercise, updateExerciseNotes, toggleExpandExercise, getExerciseHistoryForGraph, getVolumeForExercise, getEstimated1RM, formatDate, handleExerciseDragStart, handleExerciseDragEnter, handleExerciseDragEnd, handleExerciseDrop, settings, currentTheme, showToast]);
 
     const handleCopyPreviousWorkout = useCallback(() => {
         const previousDayIndex = workouts.dayOrder.indexOf(currentDay) + 1;
@@ -765,9 +805,9 @@ function MainWorkoutView({
                 const updatedDays = { ...prevWorkouts.days };
                 const copiedExercises = previousWorkoutData.exercises.map(ex => ({
                     ...ex,
-                    id: Date.now() + Math.random(), // Nouvel ID
-                    sets: ex.sets.map(s => ({ ...s, id: Date.now() + Math.random() + 100 })), // Nouveaux IDs pour les séries
-                    deleted: false // S'assurer que les exercices copiés ne sont pas supprimés
+                    id: Date.now() + Math.random(),
+                    sets: ex.sets.map(s => ({ ...s, id: Date.now() + Math.random() + 100 })),
+                    deleted: false
                 }));
                 updatedDays[currentDay] = {
                     name: previousWorkoutData.name ? `Copie de ${previousWorkoutData.name}` : 'Entraînement du jour',
@@ -785,15 +825,26 @@ function MainWorkoutView({
     return (
         <div className="container mx-auto p-4">
             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-                    <Dumbbell className="h-8 w-8 text-blue-400" /> Mon Entraînement
+                <h2 className={`text-3xl font-bold flex items-center gap-3 ${
+                    currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                }`}>
+                    <Dumbbell className={`h-8 w-8 ${
+                        currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400'
+                    }`} /> 
+                    Mon Entraînement
                 </h2>
             </div>
 
             {/* Navigation et gestion des jours */}
-            <div className="bg-gray-800 rounded-lg p-4 mb-6 border border-gray-700 shadow-xl">
+            <div className={`rounded-lg p-4 mb-6 border shadow-xl ${
+                currentTheme === 'light' 
+                    ? 'bg-white border-gray-300' 
+                    : 'bg-gray-800 border-gray-700'
+            }`}>
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold text-white">
+                    <h3 className={`text-xl font-semibold ${
+                        currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                    }`}>
                         {isEditingWorkoutName ? (
                             <input
                                 type="text"
@@ -801,22 +852,37 @@ function MainWorkoutView({
                                 onChange={(e) => setEditedWorkoutName(e.target.value)}
                                 onBlur={handleEditWorkoutName}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditWorkoutName(); }}
-                                className="bg-gray-700 text-white rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className={`rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                    currentTheme === 'light' 
+                                        ? 'bg-gray-100 text-gray-900 border border-gray-300' 
+                                        : 'bg-gray-700 text-white border-gray-600'
+                                }`}
                                 autoFocus
                                 aria-label="Éditer le nom de l'entraînement"
                             />
                         ) : (
-                            <span onClick={() => setIsEditingWorkoutName(true)} className="cursor-pointer hover:text-blue-300 transition-colors flex items-center gap-2">
-                                {workouts.days[currentDay]?.name || 'Entraînement du jour'} <Pencil className="h-4 w-4 text-gray-500" />
+                            <span onClick={() => setIsEditingWorkoutName(true)} className={`cursor-pointer transition-colors flex items-center gap-2 ${
+                                currentTheme === 'light' ? 'hover:text-blue-600' : 'hover:text-blue-300'
+                            }`}>
+                                {workouts.days[currentDay]?.name || 'Entraînement du jour'} 
+                                <Pencil className={`h-4 w-4 ${
+                                    currentTheme === 'light' ? 'text-gray-500' : 'text-gray-500'
+                                }`} />
                             </span>
                         )}
                     </h3>
-                    <p className="text-gray-400 text-sm">{formatDate(currentDay)}</p>
+                    <p className={`text-sm ${
+                        currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                    }`}>
+                        {formatDate(currentDay)}
+                    </p>
                 </div>
 
-                {/* Notes de séance et durée (toujours visibles maintenant) */}
+                {/* Notes de séance et durée */}
                 <div className="mb-4">
-                    <label htmlFor="workout-notes" className="block text-gray-300 text-sm font-medium mb-1">Notes de la séance :</label>
+                    <label htmlFor="workout-notes" className={`block text-sm font-medium mb-1 ${
+                        currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                    }`}>Notes de la séance :</label>
                     <textarea
                         id="workout-notes"
                         value={workouts.days[currentDay]?.notes || ''}
@@ -830,12 +896,18 @@ function MainWorkoutView({
                                 }
                             }
                         }))}
-                        className="w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px]"
+                        className={`w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px] ${
+                            currentTheme === 'light' 
+                                ? 'bg-gray-50 text-gray-900 border border-gray-300' 
+                                : 'bg-gray-700 text-white border-gray-600'
+                        }`}
                         placeholder="Notes générales pour cette séance (humeur, énergie, etc.)"
                         rows="2"
                     ></textarea>
 
-                    <label htmlFor="workout-duration" className="block text-gray-300 text-sm font-medium mb-1 mt-3">Durée de la séance (minutes) :</label>
+                    <label htmlFor="workout-duration" className={`block text-sm font-medium mb-1 mt-3 ${
+                        currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                    }`}>Durée de la séance (minutes) :</label>
                     <input
                         type="number"
                         id="workout-duration"
@@ -850,27 +922,40 @@ function MainWorkoutView({
                                 }
                             }
                         }))}
-                        className="w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className={`w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            currentTheme === 'light' 
+                                ? 'bg-gray-50 text-gray-900 border border-gray-300' 
+                                : 'bg-gray-700 text-white border-gray-600'
+                        }`}
                         placeholder="Ex: 60"
                         min="0"
                     />
                 </div>
 
-                <div className="flex items-center justify-between mt-4 border-t border-gray-700 pt-4">
+                <div className={`flex items-center justify-between mt-4 border-t pt-4 ${
+                    currentTheme === 'light' ? 'border-gray-300' : 'border-gray-700'
+                }`}>
                     <div className="flex items-center gap-2">
-                        <Search className="h-5 w-5 text-gray-400" />
+                        <Search className={`h-5 w-5 ${
+                            currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                        }`} />
                         <input
                             type="text"
                             placeholder="Filtrer exercices..."
-                            className="bg-gray-700 text-white rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-sm"
+                            className={`rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-sm ${
+                                currentTheme === 'light' 
+                                    ? 'bg-gray-100 text-gray-900 border border-gray-300' 
+                                    : 'bg-gray-700 text-white border-gray-600'
+                            }`}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    {/* Bouton pour afficher/masquer les exercices supprimés (toujours visible maintenant) */}
                     <button
                         onClick={() => setShowDeletedExercises(prev => !prev)}
-                        className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors text-sm"
+                        className={`flex items-center gap-2 transition-colors text-sm ${
+                            currentTheme === 'light' ? 'text-gray-700 hover:text-gray-900' : 'text-gray-300 hover:text-white'
+                        }`}
                     >
                         {showDeletedExercises ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         {showDeletedExercises ? 'Masquer Supprimés' : 'Afficher Supprimés'}
@@ -881,10 +966,20 @@ function MainWorkoutView({
             {/* Liste des exercices */}
             <div className="space-y-4">
                 {currentWorkoutExercises.length === 0 ? (
-                    <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700">
-                        <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-400 mb-2">Aucun exercice pour aujourd'hui.</p>
-                        <p className="text-sm text-gray-500">Ajoutez un exercice pour commencer votre entraînement !</p>
+                    <div className={`rounded-lg p-8 text-center border ${
+                        currentTheme === 'light' 
+                            ? 'bg-white border-gray-300' 
+                            : 'bg-gray-800 border-gray-700'
+                    }`}>
+                        <Activity className={`h-12 w-12 mx-auto mb-4 ${
+                            currentTheme === 'light' ? 'text-gray-500' : 'text-gray-400'
+                        }`} />
+                        <p className={`mb-2 ${
+                            currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                        }`}>Aucun exercice pour aujourd'hui.</p>
+                        <p className={`text-sm ${
+                            currentTheme === 'light' ? 'text-gray-500' : 'text-gray-500'
+                        }`}>Ajoutez un exercice pour commencer votre entraînement !</p>
                     </div>
                 ) : (
                     currentWorkoutExercises.map((exercise, index) => renderWorkoutCard(exercise, index))
@@ -892,7 +987,11 @@ function MainWorkoutView({
             </div>
 
             {/* Ajouter un exercice */}
-            <div className="bg-gray-800 rounded-lg p-4 mt-6 border border-gray-700 shadow-xl">
+            <div className={`rounded-lg p-4 mt-6 border shadow-xl ${
+                currentTheme === 'light' 
+                    ? 'bg-white border-gray-300' 
+                    : 'bg-gray-800 border-gray-700'
+            }`}>
                 {isAddingExercise ? (
                     <div className="flex items-center gap-2">
                         <input
@@ -900,7 +999,11 @@ function MainWorkoutView({
                             value={newExerciseName}
                             onChange={(e) => setNewExerciseName(e.target.value)}
                             placeholder="Nom du nouvel exercice..."
-                            className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className={`flex-1 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                currentTheme === 'light' 
+                                    ? 'bg-gray-50 text-gray-900 border border-gray-300' 
+                                    : 'bg-gray-700 text-white border-gray-600'
+                            }`}
                             onKeyDown={(e) => { if (e.key === 'Enter') addExercise(); }}
                             autoFocus
                             aria-label="Nom du nouvel exercice"
@@ -931,7 +1034,11 @@ function MainWorkoutView({
                         </button>
                         <button
                             onClick={() => setIsAddingExercise(true)}
-                            className="bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                            className={`font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors ${
+                                currentTheme === 'light' 
+                                    ? 'bg-gray-300 hover:bg-gray-400 text-gray-900' 
+                                    : 'bg-gray-600 hover:bg-gray-700 text-white'
+                            }`}
                             aria-label="Créer un exercice personnalisé"
                             title="Exercice personnalisé"
                         >
@@ -960,25 +1067,43 @@ function MainWorkoutView({
                 recentExercises={recentExercises}
                 favoriteExercises={favoriteExercises}
                 onToggleFavorite={toggleFavoriteExercise}
+                currentTheme={currentTheme}
             />
 
             {/* Résultat de l'analyse IA */}
             {progressionAnalysisContent && (
-                <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg p-4 relative mb-4 mt-6">
-                    <h3 className="text-xl font-semibold text-white mb-3 flex items-center gap-2">
-                        <Sparkles className="h-6 w-6 text-yellow-400" /> Analyse IA
+                <div className={`border rounded-lg p-4 relative mb-4 mt-6 ${
+                    currentTheme === 'light' 
+                        ? 'bg-blue-50 border-blue-200' 
+                        : 'bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20'
+                }`}>
+                    <h3 className={`text-xl font-semibold mb-3 flex items-center gap-2 ${
+                        currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                    }`}>
+                        <Sparkles className={`h-6 w-6 ${
+                            currentTheme === 'light' ? 'text-yellow-600' : 'text-yellow-400'
+                        }`} /> 
+                        Analyse IA
                         <button
                             onClick={() => setProgressionAnalysisContent('')}
-                            className="ml-auto text-gray-400 hover:text-white transition-colors"
+                            className={`ml-auto transition-colors ${
+                                currentTheme === 'light' 
+                                    ? 'text-gray-600 hover:text-gray-900' 
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
                             aria-label="Effacer l'analyse IA"
                         >
                             <XCircle className="h-5 w-5" />
                         </button>
                     </h3>
-                    <div className="text-sm text-white whitespace-pre-wrap leading-relaxed">
+                    <div className={`text-sm whitespace-pre-wrap leading-relaxed ${
+                        currentTheme === 'light' ? 'text-gray-800' : 'text-white'
+                    }`}>
                         {progressionAnalysisContent}
                     </div>
-                    <div className="text-xs text-gray-400 mt-4">
+                    <div className={`text-xs mt-4 ${
+                        currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                    }`}>
                         💡 Cette analyse est générée par IA et doit être considérée comme un conseil général.
                     </div>
                 </div>

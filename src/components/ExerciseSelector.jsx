@@ -17,13 +17,6 @@ import {
 
 /**
  * Composant ExerciseSelector pour choisir un exercice prédéfini ou personnalisé
- * @param {object} props - Les props du composant
- * @param {boolean} props.isOpen - Si le sélecteur est ouvert
- * @param {function} props.onClose - Fonction pour fermer le sélecteur
- * @param {function} props.onSelectExercise - Fonction appelée quand un exercice est sélectionné
- * @param {Array<string>} props.recentExercises - Liste des exercices récemment utilisés
- * @param {Array<string>} props.favoriteExercises - Liste des exercices favoris
- * @param {function} props.onToggleFavorite - Fonction pour ajouter/retirer des favoris
  */
 const ExerciseSelector = ({
   isOpen,
@@ -31,7 +24,8 @@ const ExerciseSelector = ({
   onSelectExercise,
   recentExercises = [],
   favoriteExercises = [],
-  onToggleFavorite
+  onToggleFavorite,
+  currentTheme = 'dark'
 }) => {
   const [activeTab, setActiveTab] = useState('popular'); // 'popular', 'muscle', 'search', 'custom'
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState(MUSCLE_GROUPS.PECTORAUX);
@@ -159,13 +153,13 @@ const ExerciseSelector = ({
   const getLevelIcon = (level) => {
     switch (level) {
       case EXERCISE_LEVELS.BASE:
-        return <Target className="h-4 w-4 text-green-400" />;
+        return <Target className={`h-4 w-4 ${currentTheme === 'light' ? 'text-green-600' : 'text-green-400'}`} />;
       case EXERCISE_LEVELS.ADVANCED:
-        return <Zap className="h-4 w-4 text-yellow-400" />;
+        return <Zap className={`h-4 w-4 ${currentTheme === 'light' ? 'text-yellow-600' : 'text-yellow-400'}`} />;
       case EXERCISE_LEVELS.FINITION:
-        return <Award className="h-4 w-4 text-purple-400" />;
+        return <Award className={`h-4 w-4 ${currentTheme === 'light' ? 'text-purple-600' : 'text-purple-400'}`} />;
       default:
-        return <Dumbbell className="h-4 w-4 text-gray-400" />;
+        return <Dumbbell className={`h-4 w-4 ${currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'}`} />;
     }
   };
 
@@ -177,24 +171,40 @@ const ExerciseSelector = ({
       <div
         key={exercise.name}
         onClick={() => handleSelectExercise(exercise.name)}
-        className="flex items-center justify-between p-3 bg-gray-700/50 hover:bg-gray-700 rounded-lg cursor-pointer transition-all duration-200 border border-gray-600/50 hover:border-gray-500"
+        className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all duration-200 border ${
+          currentTheme === 'light' 
+            ? 'bg-gray-50 hover:bg-gray-100 border-gray-200 hover:border-gray-300' 
+            : 'bg-gray-700/50 hover:bg-gray-700 border-gray-600/50 hover:border-gray-500'
+        }`}
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {getLevelIcon(exercise.level)}
           <div className="flex-1 min-w-0">
-            <p className="text-white font-medium truncate">{exercise.name}</p>
+            <p className={`font-medium truncate ${
+              currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+            }`}>{exercise.name}</p>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-gray-400">{exercise.muscleGroupLabel}</span>
+              <span className={`text-xs ${
+                currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+              }`}>{exercise.muscleGroupLabel}</span>
               {exercise.levelLabel && (
                 <>
-                  <span className="text-xs text-gray-500">•</span>
-                  <span className="text-xs text-gray-400">{exercise.levelLabel}</span>
+                  <span className={`text-xs ${
+                    currentTheme === 'light' ? 'text-gray-500' : 'text-gray-500'
+                  }`}>•</span>
+                  <span className={`text-xs ${
+                    currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                  }`}>{exercise.levelLabel}</span>
                 </>
               )}
               {isRecent && (
                 <>
-                  <span className="text-xs text-gray-500">•</span>
-                  <span className="text-xs text-blue-400 flex items-center gap-1">
+                  <span className={`text-xs ${
+                    currentTheme === 'light' ? 'text-gray-500' : 'text-gray-500'
+                  }`}>•</span>
+                  <span className={`text-xs flex items-center gap-1 ${
+                    currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400'
+                  }`}>
                     <Clock className="h-3 w-3" /> Récent
                   </span>
                 </>
@@ -206,8 +216,8 @@ const ExerciseSelector = ({
           onClick={(e) => handleToggleFavorite(exercise.name, e)}
           className={`p-1 rounded-full transition-colors ${
             isFavorite 
-              ? 'text-yellow-400 hover:text-yellow-500' 
-              : 'text-gray-500 hover:text-yellow-400'
+              ? (currentTheme === 'light' ? 'text-yellow-600 hover:text-yellow-700' : 'text-yellow-400 hover:text-yellow-500')
+              : (currentTheme === 'light' ? 'text-gray-500 hover:text-yellow-600' : 'text-gray-500 hover:text-yellow-400')
           }`}
           aria-label={isFavorite ? "Retirer des favoris" : "Ajouter aux favoris"}
         >
@@ -215,7 +225,7 @@ const ExerciseSelector = ({
         </button>
       </div>
     );
-  }, [favoriteExercises, recentExercises, handleSelectExercise, handleToggleFavorite, getLevelIcon]);
+  }, [favoriteExercises, recentExercises, handleSelectExercise, handleToggleFavorite, getLevelIcon, currentTheme]);
 
   const renderExercisesByLevel = useCallback((exercises, level) => {
     const exercisesToShow = exercises || [];
@@ -234,14 +244,30 @@ const ExerciseSelector = ({
       <div key={level} className="mb-4">
         <button
           onClick={() => toggleLevel(level)}
-          className="w-full flex items-center justify-between p-3 bg-gray-700/30 hover:bg-gray-700/50 rounded-lg transition-colors border border-gray-600/30"
+          className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors border ${
+            currentTheme === 'light' 
+              ? 'bg-gray-50 hover:bg-gray-100 border-gray-200' 
+              : 'bg-gray-700/30 hover:bg-gray-700/50 border-gray-600/30'
+          }`}
         >
           <div className="flex items-center gap-2">
             {getLevelIcon(level)}
-            <span className="font-medium text-white">{EXERCISE_LEVEL_LABELS[level]}</span>
-            <span className="text-sm text-gray-400">({exercisesToShow.length})</span>
+            <span className={`font-medium ${
+              currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+            }`}>{EXERCISE_LEVEL_LABELS[level]}</span>
+            <span className={`text-sm ${
+              currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+            }`}>({exercisesToShow.length})</span>
           </div>
-          {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+          {isExpanded ? (
+            <ChevronUp className={`h-5 w-5 ${
+              currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+            }`} />
+          ) : (
+            <ChevronDown className={`h-5 w-5 ${
+              currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+            }`} />
+          )}
         </button>
         
         {isExpanded && (
@@ -251,22 +277,38 @@ const ExerciseSelector = ({
         )}
       </div>
     );
-  }, [expandedLevels, selectedMuscleGroup, toggleLevel, getLevelIcon, renderExerciseItem]);
+  }, [expandedLevels, selectedMuscleGroup, toggleLevel, getLevelIcon, renderExerciseItem, currentTheme]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4 animate-fade-in">
-      <div className="bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] border border-gray-700 shadow-2xl flex flex-col">
+    <div className={`fixed inset-0 bg-opacity-75 flex items-center justify-center z-50 p-4 animate-fade-in ${
+      currentTheme === 'light' ? 'bg-gray-500' : 'bg-gray-900'
+    }`}>
+      <div className={`rounded-2xl w-full max-w-4xl max-h-[90vh] border shadow-2xl flex flex-col ${
+        currentTheme === 'light' 
+          ? 'bg-white border-gray-300' 
+          : 'bg-gray-800 border-gray-700'
+      }`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-            <Dumbbell className="h-7 w-7 text-blue-400" />
+        <div className={`flex items-center justify-between p-6 border-b ${
+          currentTheme === 'light' ? 'border-gray-300' : 'border-gray-700'
+        }`}>
+          <h2 className={`text-2xl font-bold flex items-center gap-3 ${
+            currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+          }`}>
+            <Dumbbell className={`h-7 w-7 ${
+              currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400'
+            }`} />
             Choisir un exercice
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors p-2 rounded-full hover:bg-gray-700"
+            className={`transition-colors p-2 rounded-full ${
+              currentTheme === 'light' 
+                ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100' 
+                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            }`}
             aria-label="Fermer"
           >
             <X className="h-6 w-6" />
@@ -274,13 +316,15 @@ const ExerciseSelector = ({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-700 px-6">
+        <div className={`flex border-b px-6 ${
+          currentTheme === 'light' ? 'border-gray-300' : 'border-gray-700'
+        }`}>
           <button
             onClick={() => setActiveTab('popular')}
             className={`py-3 px-4 font-medium transition-colors border-b-2 ${
               activeTab === 'popular'
-                ? 'text-blue-400 border-blue-400'
-                : 'text-gray-400 border-transparent hover:text-white'
+                ? (currentTheme === 'light' ? 'text-blue-600 border-blue-600' : 'text-blue-400 border-blue-400')
+                : (currentTheme === 'light' ? 'text-gray-600 border-transparent hover:text-gray-900' : 'text-gray-400 border-transparent hover:text-white')
             }`}
           >
             Populaires
@@ -289,8 +333,8 @@ const ExerciseSelector = ({
             onClick={() => setActiveTab('muscle')}
             className={`py-3 px-4 font-medium transition-colors border-b-2 ${
               activeTab === 'muscle'
-                ? 'text-blue-400 border-blue-400'
-                : 'text-gray-400 border-transparent hover:text-white'
+                ? (currentTheme === 'light' ? 'text-blue-600 border-blue-600' : 'text-blue-400 border-blue-400')
+                : (currentTheme === 'light' ? 'text-gray-600 border-transparent hover:text-gray-900' : 'text-gray-400 border-transparent hover:text-white')
             }`}
           >
             Par muscle
@@ -299,8 +343,8 @@ const ExerciseSelector = ({
             onClick={() => setActiveTab('search')}
             className={`py-3 px-4 font-medium transition-colors border-b-2 ${
               activeTab === 'search'
-                ? 'text-blue-400 border-blue-400'
-                : 'text-gray-400 border-transparent hover:text-white'
+                ? (currentTheme === 'light' ? 'text-blue-600 border-blue-600' : 'text-blue-400 border-blue-400')
+                : (currentTheme === 'light' ? 'text-gray-600 border-transparent hover:text-gray-900' : 'text-gray-400 border-transparent hover:text-white')
             }`}
           >
             Recherche
@@ -309,8 +353,8 @@ const ExerciseSelector = ({
             onClick={() => setActiveTab('custom')}
             className={`py-3 px-4 font-medium transition-colors border-b-2 ${
               activeTab === 'custom'
-                ? 'text-blue-400 border-blue-400'
-                : 'text-gray-400 border-transparent hover:text-white'
+                ? (currentTheme === 'light' ? 'text-blue-600 border-blue-600' : 'text-blue-400 border-blue-400')
+                : (currentTheme === 'light' ? 'text-gray-600 border-transparent hover:text-gray-900' : 'text-gray-400 border-transparent hover:text-white')
             }`}
           >
             Personnalisé
@@ -321,9 +365,13 @@ const ExerciseSelector = ({
         <div className="flex-1 overflow-hidden flex">
           {/* Sidebar pour la sélection de muscle (visible seulement dans l'onglet muscle) */}
           {activeTab === 'muscle' && (
-            <div className="w-64 border-r border-gray-700 overflow-y-auto scrollbar-thin">
+            <div className={`w-64 border-r overflow-y-auto scrollbar-thin ${
+              currentTheme === 'light' ? 'border-gray-300' : 'border-gray-700'
+            }`}>
               <div className="p-4">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wide">
+                <h3 className={`text-sm font-semibold mb-3 uppercase tracking-wide ${
+                  currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                }`}>
                   Groupes musculaires
                 </h3>
                 <div className="space-y-1">
@@ -334,7 +382,9 @@ const ExerciseSelector = ({
                       className={`w-full text-left p-2 rounded-lg transition-colors text-sm ${
                         selectedMuscleGroup === key
                           ? 'bg-blue-600 text-white'
-                          : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                          : (currentTheme === 'light' 
+                              ? 'text-gray-700 hover:bg-gray-100 hover:text-gray-900' 
+                              : 'text-gray-300 hover:bg-gray-700 hover:text-white')
                       }`}
                     >
                       {label}
@@ -354,8 +404,12 @@ const ExerciseSelector = ({
                   {/* Favoris */}
                   {favoriteExercisesWithInfo.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                        <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                      <h3 className={`text-lg font-semibold mb-3 flex items-center gap-2 ${
+                        currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                      }`}>
+                        <Star className={`h-5 w-5 fill-current ${
+                          currentTheme === 'light' ? 'text-yellow-600' : 'text-yellow-400'
+                        }`} />
                         Mes favoris ({favoriteExercisesWithInfo.length})
                       </h3>
                       <div className="space-y-2">
@@ -367,8 +421,12 @@ const ExerciseSelector = ({
                   {/* Récents */}
                   {recentExercisesWithInfo.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                        <Clock className="h-5 w-5 text-blue-400" />
+                      <h3 className={`text-lg font-semibold mb-3 flex items-center gap-2 ${
+                        currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                      }`}>
+                        <Clock className={`h-5 w-5 ${
+                          currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400'
+                        }`} />
                         Récemment utilisés ({recentExercisesWithInfo.length})
                       </h3>
                       <div className="space-y-2">
@@ -379,8 +437,12 @@ const ExerciseSelector = ({
 
                   {/* Exercices populaires */}
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                      <Dumbbell className="h-5 w-5 text-green-400" />
+                    <h3 className={`text-lg font-semibold mb-3 flex items-center gap-2 ${
+                      currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                    }`}>
+                      <Dumbbell className={`h-5 w-5 ${
+                        currentTheme === 'light' ? 'text-green-600' : 'text-green-400'
+                      }`} />
                       Exercices populaires
                     </h3>
                     <div className="space-y-2">
@@ -393,19 +455,27 @@ const ExerciseSelector = ({
               {/* Tab: Par muscle */}
               {activeTab === 'muscle' && (
                 <div>
-                  <h3 className="text-xl font-semibold text-white mb-4">
+                  <h3 className={`text-xl font-semibold mb-4 ${
+                    currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                  }`}>
                     {MUSCLE_GROUP_LABELS[selectedMuscleGroup]}
                   </h3>
                   
                   {/* Filtre par niveau */}
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className={`block text-sm font-medium mb-2 ${
+                      currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                    }`}>
                       Filtrer par niveau :
                     </label>
                     <select
                       value={selectedLevel}
                       onChange={(e) => setSelectedLevel(e.target.value)}
-                      className="bg-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className={`rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        currentTheme === 'light' 
+                          ? 'bg-white text-gray-900 border border-gray-300' 
+                          : 'bg-gray-700 text-white border border-gray-600'
+                      }`}
                     >
                       <option value="all">Tous les niveaux</option>
                       <option value={EXERCISE_LEVELS.BASE}>Exercices de base</option>
@@ -432,31 +502,53 @@ const ExerciseSelector = ({
               {activeTab === 'search' && (
                 <div>
                   <div className="relative mb-6">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 ${
+                      currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                    }`} />
                     <input
                       type="text"
                       placeholder="Rechercher un exercice..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full bg-gray-700 text-white rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                      className={`w-full rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                        currentTheme === 'light' 
+                          ? 'bg-gray-50 text-gray-900 border border-gray-300' 
+                          : 'bg-gray-700 text-white border border-gray-600'
+                      }`}
                       autoFocus
                     />
                   </div>
 
                   {searchTerm.trim() === '' ? (
-                    <div className="text-center text-gray-400 py-8">
-                      <Search className="h-12 w-12 mx-auto mb-4 text-gray-500" />
-                      <p>Tapez pour rechercher un exercice</p>
-                      <p className="text-sm mt-2">Exemple : "développé", "curl", "squat"...</p>
+                    <div className="text-center py-8">
+                      <Search className={`h-12 w-12 mx-auto mb-4 ${
+                        currentTheme === 'light' ? 'text-gray-400' : 'text-gray-500'
+                      }`} />
+                      <p className={currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'}>
+                        Tapez pour rechercher un exercice
+                      </p>
+                      <p className={`text-sm mt-2 ${
+                        currentTheme === 'light' ? 'text-gray-500' : 'text-gray-500'
+                      }`}>
+                        Exemple : "développé", "curl", "squat"...
+                      </p>
                     </div>
                   ) : searchResults.length === 0 ? (
-                    <div className="text-center text-gray-400 py-8">
-                      <p>Aucun exercice trouvé pour "{searchTerm}"</p>
-                      <p className="text-sm mt-2">Essayez avec un autre terme ou créez un exercice personnalisé</p>
+                    <div className="text-center py-8">
+                      <p className={currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'}>
+                        Aucun exercice trouvé pour "{searchTerm}"
+                      </p>
+                      <p className={`text-sm mt-2 ${
+                        currentTheme === 'light' ? 'text-gray-500' : 'text-gray-500'
+                      }`}>
+                        Essayez avec un autre terme ou créez un exercice personnalisé
+                      </p>
                     </div>
                   ) : (
                     <div>
-                      <p className="text-gray-300 mb-4">
+                      <p className={`mb-4 ${
+                        currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                      }`}>
                         {searchResults.length} exercice(s) trouvé(s) pour "{searchTerm}"
                       </p>
                       <div className="space-y-2">
@@ -470,11 +562,19 @@ const ExerciseSelector = ({
               {/* Tab: Personnalisé */}
               {activeTab === 'custom' && (
                 <div>
-                  <h3 className="text-xl font-semibold text-white mb-4">
+                  <h3 className={`text-xl font-semibold mb-4 ${
+                    currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                  }`}>
                     Créer un exercice personnalisé
                   </h3>
-                  <div className="bg-gray-700/30 rounded-lg p-6 border border-gray-600/50">
-                    <label htmlFor="custom-exercise" className="block text-sm font-medium text-gray-300 mb-2">
+                  <div className={`rounded-lg p-6 border ${
+                    currentTheme === 'light' 
+                      ? 'bg-gray-50 border-gray-200' 
+                      : 'bg-gray-700/30 border-gray-600/50'
+                  }`}>
+                    <label htmlFor="custom-exercise" className={`block text-sm font-medium mb-2 ${
+                      currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                    }`}>
                       Nom de l'exercice :
                     </label>
                     <div className="flex gap-3">
@@ -484,7 +584,11 @@ const ExerciseSelector = ({
                         value={customExerciseName}
                         onChange={(e) => setCustomExerciseName(e.target.value)}
                         placeholder="Ex: Mon exercice spécial"
-                        className="flex-1 bg-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                        className={`flex-1 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                          currentTheme === 'light' 
+                            ? 'bg-white text-gray-900 border border-gray-300' 
+                            : 'bg-gray-700 text-white border border-gray-600'
+                        }`}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             handleCustomExerciseSubmit();
@@ -501,7 +605,9 @@ const ExerciseSelector = ({
                         Ajouter
                       </button>
                     </div>
-                    <p className="text-sm text-gray-400 mt-3">
+                    <p className={`text-sm mt-3 ${
+                      currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                    }`}>
                       Les exercices personnalisés seront sauvegardés pour une utilisation future.
                     </p>
                   </div>
