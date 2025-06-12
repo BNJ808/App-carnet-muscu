@@ -259,3 +259,112 @@ const TimerView = ({
                             }`} 
                             disabled={timerIsRunning}
                         >
+                            <ChevronDown className="h-6 w-6" />
+                        </button>
+                        <span className={`text-sm mt-1 ${
+                            currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                        }`}>minutes</span>
+                    </div>
+                    <span className={`text-4xl font-bold ${
+                        currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                    }`}>:</span>
+                    <div className="flex flex-col items-center">
+                        <button 
+                            onClick={increaseSecond} 
+                            className={`p-1 transition-colors disabled:opacity-50 ${
+                                currentTheme === 'light' 
+                                    ? 'text-gray-700 hover:text-gray-900' 
+                                    : 'text-gray-300 hover:text-white'
+                            }`} 
+                            disabled={timerIsRunning}
+                        >
+                            <ChevronUp className="h-6 w-6" />
+                        </button>
+                        <input
+                            type="number"
+                            value={String(customSeconds).padStart(2, '0')}
+                            onChange={handleSecondInputChange}
+                            className={`text-center rounded-lg px-3 py-2 w-20 text-xl appearance-none [moz-appearance:_textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0 ${
+                                currentTheme === 'light' 
+                                    ? 'bg-gray-100 text-gray-900 border border-gray-300' 
+                                    : 'bg-gray-700 text-white border-gray-600'
+                            }`}
+                            disabled={timerIsRunning}
+                            min="0"
+                            max="59"
+                            inputMode="numeric"
+                            aria-label="Secondes pour le minuteur personnalisé"
+                        />
+                        <button 
+                            onClick={decreaseSecond} 
+                            className={`p-1 transition-colors disabled:opacity-50 ${
+                                currentTheme === 'light' 
+                                    ? 'text-gray-700 hover:text-gray-900' 
+                                    : 'text-gray-300 hover:text-white'
+                            }`} 
+                            disabled={timerIsRunning}
+                        >
+                            <ChevronDown className="h-6 w-6" />
+                        </button>
+                        <span className={`text-sm mt-1 ${
+                            currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
+                        }`}>secondes</span>
+                    </div>
+                </div>
+                <button
+                    onClick={handleCustomTimerStart}
+                    disabled={timerIsRunning || (customMinutes === 0 && customSeconds === 0)}
+                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 text-lg"
+                >
+                    <Play className="h-5 w-5" />
+                    Démarrer le minuteur personnalisé
+                </button>
+            </div>
+
+            {/* Conseils de repos */}
+            <div className={`rounded-2xl p-6 border ${
+                currentTheme === 'light' 
+                    ? 'bg-white border-gray-300' 
+                    : 'bg-gray-800 border-gray-700'
+            }`}>
+                <h3 className={`text-lg font-semibold mb-4 ${
+                    currentTheme === 'light' ? 'text-gray-900' : 'text-white'
+                }`}>💡 Conseils de temps de repos</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div className={`rounded-lg p-3 ${
+                        currentTheme === 'light' ? 'bg-gray-50' : 'bg-gray-700/50'
+                    }`}>
+                        <h4 className={`font-medium mb-2 ${
+                            currentTheme === 'light' ? 'text-green-600' : 'text-green-400'
+                        }`}>Force (1-5 reps)</h4>
+                        <p className={
+                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                        }>3-5 minutes entre les séries pour une récupération complète</p>
+                    </div>
+                    <div className={`rounded-lg p-3 ${
+                        currentTheme === 'light' ? 'bg-gray-50' : 'bg-gray-700/50'
+                    }`}>
+                        <h4 className={`font-medium mb-2 ${
+                            currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400'
+                        }`}>Hypertrophie (6-12 reps)</h4>
+                        <p className={
+                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                        }>1-3 minutes pour maintenir l'intensité musculaire</p>
+                    </div>
+                    <div className={`rounded-lg p-3 ${
+                        currentTheme === 'light' ? 'bg-gray-50' : 'bg-gray-700/50'
+                    }`}>
+                        <h4 className={`font-medium mb-2 ${
+                            currentTheme === 'light' ? 'text-yellow-600' : 'text-yellow-400'
+                        }`}>Endurance (12+ reps)</h4>
+                        <p className={
+                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
+                        }>30-90 secondes pour une endurance musculaire accrue</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default TimerView;
