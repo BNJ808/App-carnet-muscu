@@ -259,12 +259,33 @@ function MainWorkoutView({
         });
     }, [setHistoricalData]);
 
-    const calculatePersonalBests = useCallback((exerciseName, sets) => {
+    const calculatePersonalBests = useCallback((exerciseName, sets, sessionData) => {
         const newPBs = { ...personalBests };
-        const currentExercisePB = newPBs[exerciseName] || { maxWeight: 0, maxReps: 0, weightForMaxReps: 0, maxRepsForWeight: 0, date: null };
+        const currentExercisePB = newPBs[exerciseName] || { 
+            maxWeight: 0, 
+            maxReps: 0, 
+            weightForMaxReps: 0, 
+            maxRepsForWeight: 0, 
+            date: null,
+            totalSessions: 0,
+            lastSession: null
+        };
+
+        // Mettre à jour les informations de session
+        currentExercisePB.totalSessions = (currentExercisePB.totalSessions || 0) + 1;
+        currentExercisePB.lastSession = {
+            date: new Date(),
+            sets: sets.map(set => ({
+                reps: parseInt(set.reps) || 0,
+                weight: parseFloat(set.weight) || 0
+            })),
+            totalSets: sets.length,
+            notes: sessionData?.notes || ''
+        };
 
         sets.forEach(set => {
-            const { reps, weight } = set;
+            const reps = parseInt(set.reps) || 0;
+            const weight = parseFloat(set.weight) || 0;
 
             if (weight > currentExercisePB.maxWeight) {
                 currentExercisePB.maxWeight = weight;
@@ -360,7 +381,11 @@ function MainWorkoutView({
         validExercises.forEach(exercise => {
             const validSets = exercise.sets.filter(set => set.reps > 0 && parseFloat(set.weight) > 0);
             if (validSets.length > 0) {
-                calculatePersonalBests(exercise.name, validSets);
+                calculatePersonalBests(exercise.name, validSets, {
+                    notes: exercise.notes,
+                    sessionNotes: currentWorkout.notes,
+                    duration: currentWorkout.duration
+                });
             }
         });
 
@@ -546,6 +571,10 @@ function MainWorkoutView({
                 <div 
                     className="flex items-center justify-between cursor-pointer"
                     onClick={() => setExpandedExercise(isCurrentExerciseExpanded ? null : exercise.id)}
+                    title={currentExercisePB && currentExercisePB.lastSession ? 
+                        `Dernière séance: ${currentExercisePB.lastSession.totalSets} séries le ${formatDisplayDate(currentExercisePB.lastSession.date)}` : 
+                        'Aucune donnée historique'
+                    }
                 >
                     <div className="flex items-center gap-3">
                         <h3 className="text-lg font-semibold text-blue-400">{exercise.name}</h3>
@@ -594,10 +623,16 @@ function MainWorkoutView({
                             </span>
                         )}
                         
-                        {currentExercisePB && (
-                            <div className="text-xs flex items-center gap-1 text-yellow-300">
+                        {currentExercisePB && currentExercisePB.maxWeight > 0 && (
+                            <div className="text-xs flex items-center gap-1 text-yellow-300" title={`PB: ${currentExercisePB.maxWeight}kg x ${currentExercisePB.maxReps} reps`}>
                                 <Award className="h-4 w-4" />
-                                PB
+                                PB: {currentExercisePB.maxWeight}kg
+                            </div>
+                        )}
+                        
+                        {currentExercisePB && currentExercisePB.lastSession && (
+                            <div className="text-xs text-gray-400" title={`Dernière séance: ${currentExercisePB.lastSession.totalSets} séries`}>
+                                {currentExercisePB.totalSessions || 0} séances
                             </div>
                         )}
                         
@@ -611,6 +646,34 @@ function MainWorkoutView({
 
                 {isCurrentExerciseExpanded && (
                     <div className="mt-4 border-t pt-4 space-y-3 border-gray-700">
+                        {/* Informations de la dernière séance */}
+                        {currentExercisePB && currentExercisePB.lastSession && (
+                            <div className="bg-gray-600/50 rounded-lg p-3 mb-4">
+                                <h4 className="text-sm font-medium text-blue-300 mb-2 flex items-center gap-2">
+                                    <History className="h-4 w-4" />
+                                    Dernière séance
+                                </h4>
+                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-300">
+                                    <div>Date: {formatDisplayDate(currentExercisePB.lastSession.date)}</div>
+                                    <div>Séries: {currentExercisePB.lastSession.totalSets}</div>
+                                    <div>Total séances: {currentExercisePB.totalSessions}</div>
+                                    <div>Record: {currentExercisePB.maxWeight}kg x {currentExercisePB.maxReps}</div>
+                                </div>
+                                {currentExercisePB.lastSession.sets && currentExercisePB.lastSession.sets.length > 0 && (
+                                    <div className="mt-2">
+                                        <span className="text-xs text-gray-400">Performance: </span>
+                                        <span className="text-xs text-gray-300">
+                                            {currentExercisePB.lastSession.sets
+                                                .map(set => `${set.reps}x${set.weight}kg`)
+                                                .join(', ')
+                                            }
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Séries actuelles */}
                         {exercise.sets.map((set, setIndex) => (
                             <div key={set.id} className="flex items-center p-2 rounded-md bg-gray-700">
                                 <span className="font-medium w-12 flex-shrink-0 text-gray-300">
