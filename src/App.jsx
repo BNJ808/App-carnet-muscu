@@ -196,9 +196,19 @@ const ImprovedWorkoutApp = () => {
 
     // Minuteur
     const startTimer = useCallback((seconds) => {
-        setTimerSeconds(seconds);
+        // Si pas de paramètre fourni, utiliser timerSeconds actuel
+        const timerDuration = typeof seconds === 'number' ? seconds : timerSeconds;
+        
+        if (timerDuration <= 0) return; // Ne pas démarrer si pas de temps défini
+        
+        setTimerSeconds(timerDuration);
         setTimerIsRunning(true);
         setTimerIsFinished(false);
+        
+        // Nettoyer l'ancien timer s'il existe
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+        }
         
         timerIntervalRef.current = setInterval(() => {
             setTimerSeconds(prev => {
@@ -216,7 +226,7 @@ const ImprovedWorkoutApp = () => {
                 return prev - 1;
             });
         }, 1000);
-    }, [settings.notifications]);
+    }, [timerSeconds, settings.notifications]);
 
     const stopTimer = useCallback(() => {
         if (timerIntervalRef.current) {
@@ -581,8 +591,10 @@ const ImprovedWorkoutApp = () => {
                     resetTimer={resetTimer}
                     setTimerSeconds={setTimerSeconds}
                     formatTime={(seconds) => {
-                        const mins = Math.floor(seconds / 60);
-                        const secs = seconds % 60;
+                        // Vérifier que seconds est un nombre valide
+                        const validSeconds = typeof seconds === 'number' && !isNaN(seconds) ? seconds : 0;
+                        const mins = Math.floor(validSeconds / 60);
+                        const secs = validSeconds % 60;
                         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
                     }}
                 />
