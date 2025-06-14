@@ -90,7 +90,24 @@ function MainWorkoutView({
 
     // États pour la gestion des exercices favoris et récents
     const [favoriteExercises, setFavoriteExercises] = useState([]);
-    const [recentExercises, setRecentExercises] = useState([]);
+
+    // Récupérer les exercices récents des 3 dernières séances historiques
+    const recentExercises = useMemo(() => {
+        const recent = [];
+        const recentSessions = historicalData
+            .slice(0, 3) // Prendre les 3 dernières séances
+            .reverse(); // Inverser pour avoir les plus récentes en premier
+        
+        recentSessions.forEach(session => {
+            session.exercises.forEach(exercise => {
+                if (!exercise.deleted && !recent.includes(exercise.name)) {
+                    recent.push(exercise.name);
+                }
+            });
+        });
+        
+        return recent.slice(0, 10); // Limiter à 10 exercices récents
+    }, [historicalData]);
 
     // Synchronisation des jours avec la date actuelle si nécessaire
     useEffect(() => {
@@ -124,12 +141,10 @@ function MainWorkoutView({
         });
     }, []);
 
-    // Mise à jour des exercices récents
+    // Mise à jour des exercices récents - Plus nécessaire car calculé depuis historicalData
     const updateRecentExercises = useCallback((exerciseName) => {
-        setRecentExercises(prev => {
-            const filtered = prev.filter(name => name !== exerciseName);
-            return [exerciseName, ...filtered].slice(0, 10);
-        });
+        // Cette fonction n'est plus nécessaire car recentExercises est calculé automatiquement
+        // depuis les données historiques
     }, []);
 
     // Fonction pour calculer l'estimation du 1RM
@@ -225,14 +240,20 @@ function MainWorkoutView({
         });
     }, [currentDay, setWorkouts]);
 
-    const updateHistoricalData = useCallback((exerciseName, sets) => {
+    const updateHistoricalData = useCallback((currentWorkout) => {
         const newSessionData = {
             date: new Date(),
-            exercises: [{
-                name: exerciseName,
-                sets: sets.filter(set => set.reps > 0 && set.weight > 0),
-                deleted: false
-            }]
+            exercises: currentWorkout.exercises.filter(exercise => 
+                !exercise.deleted && exercise.sets.some(set => set.reps > 0 && parseFloat(set.weight) > 0)
+            ).map(exercise => ({
+                name: exercise.name,
+                sets: exercise.sets.filter(set => set.reps > 0 && parseFloat(set.weight) > 0),
+                deleted: false,
+                notes: exercise.notes
+            })),
+            notes: currentWorkout.notes || '',
+            duration: currentWorkout.duration || null,
+            name: currentWorkout.name || 'Entraînement du jour'
         };
 
         setHistoricalData(prevData => {
