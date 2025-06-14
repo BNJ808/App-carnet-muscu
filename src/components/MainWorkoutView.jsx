@@ -149,7 +149,7 @@ function MainWorkoutView({
         const newExercise = {
             id: exerciseId,
             name: exerciseName,
-            sets: [{ id: Date.now(), reps: settings.defaultReps || 10, weight: 0 }],
+            sets: [{ id: Date.now(), reps: settings.defaultReps || 10, weight: '' }],
             notes: '',
             deleted: false
         };
@@ -279,7 +279,7 @@ function MainWorkoutView({
                     currentWorkout.exercises[exerciseIndex].sets.push({ 
                         id: Date.now(), 
                         reps: settings.defaultReps || 10, 
-                        weight: 0 
+                        weight: '' 
                     });
                 }
             }
@@ -296,9 +296,12 @@ function MainWorkoutView({
                 if (exerciseIndex !== -1) {
                     const setIndex = currentWorkout.exercises[exerciseIndex].sets.findIndex(set => set.id === setId);
                     if (setIndex !== -1) {
-                        const parsedValue = field === 'reps' || field === 'weight' ? 
-                            (value === '' || value === null ? 0 : Number(value)) : value;
-                        currentWorkout.exercises[exerciseIndex].sets[setIndex][field] = parsedValue;
+                        // Pour les champs numériques, conserver la valeur vide si elle est vide
+                        if (field === 'weight' || field === 'reps') {
+                            currentWorkout.exercises[exerciseIndex].sets[setIndex][field] = value;
+                        } else {
+                            currentWorkout.exercises[exerciseIndex].sets[setIndex][field] = value;
+                        }
                     }
                 }
             }
@@ -314,7 +317,7 @@ function MainWorkoutView({
         }
 
         const validExercises = currentWorkout.exercises.filter(exercise => 
-            !exercise.deleted && exercise.sets.some(set => set.reps > 0 && set.weight > 0)
+            !exercise.deleted && exercise.sets.some(set => set.reps > 0 && parseFloat(set.weight) > 0)
         );
 
         if (validExercises.length === 0) {
@@ -324,15 +327,33 @@ function MainWorkoutView({
 
         // Enregistrer les données historiques et calculer les PBs
         validExercises.forEach(exercise => {
-            const validSets = exercise.sets.filter(set => set.reps > 0 && set.weight > 0);
+            const validSets = exercise.sets.filter(set => set.reps > 0 && parseFloat(set.weight) > 0);
             if (validSets.length > 0) {
                 updateHistoricalData(exercise.name, validSets);
                 calculatePersonalBests(exercise.name, validSets);
             }
         });
 
-        showToast("Séance terminée et enregistrée !", "success");
-    }, [workouts, currentDay, updateHistoricalData, calculatePersonalBests, setWorkouts, showToast]);
+        // Réinitialiser la séance actuelle
+        setWorkouts(prevWorkouts => {
+            const updatedDays = { ...prevWorkouts.days };
+            updatedDays[currentDay] = {
+                name: 'Entraînement du jour',
+                exercises: [],
+                notes: '',
+                duration: null
+            };
+            return { ...prevWorkouts, days: updatedDays };
+        });
+
+        // Réinitialiser les états locaux
+        setExpandedExercise(null);
+        setIsAddingExercise(false);
+        setNewExerciseName('');
+        setProgressionAnalysisContent('');
+
+        showToast("Séance terminée et enregistrée ! Nouvelle séance prête.", "success");
+    }, [workouts, currentDay, updateHistoricalData, calculatePersonalBests, setWorkouts, showToast, setProgressionAnalysisContent]);
 
     const handleEditWorkoutName = useCallback(() => {
         if (editedWorkoutName.trim() === '') {
@@ -441,7 +462,7 @@ function MainWorkoutView({
         dragOverExerciseItem.current = null;
     };
 
-    // Filtrer les exercices du jour actuel (suppression de showDeletedExercises et searchTerm)
+    // Filtrer les exercices du jour actuel
     const currentWorkoutExercises = useMemo(() => {
         const exercises = workouts.days[currentDay]?.exercises || [];
         return exercises.filter(ex => !ex.deleted);
@@ -458,49 +479,24 @@ function MainWorkoutView({
                     date: typeof session.date.toDate === 'function' ?
                         session.date.toDate() : new Date(session.date),
                     volume: volume,
-                    maxWeight: Math.max(...exerciseEntry.sets.map(set => set.weight))
+                    maxWeight: Math.max(...exerciseEntry.sets.map(set => set.weight)),
+                    sets: exerciseEntry.sets
                 });
             }
         });
         return history.sort((a, b) => a.date - b.date);
     }, [historicalData]);
 
-    const copyPreviousWorkout = useCallback(() => {
-        const dayOrderIndex = workouts.dayOrder.indexOf(currentDay);
-        if (dayOrderIndex <= 0) {
-            showToast("Aucune séance précédente trouvée.", "warning");
-            return;
-        }
-
-        const previousDay = workouts.dayOrder[dayOrderIndex - 1];
-        const previousWorkoutData = workouts.days[previousDay];
-        
-        if (previousWorkoutData && previousWorkoutData.exercises.length > 0) {
-            const copiedExercises = previousWorkoutData.exercises
-                .filter(ex => !ex.deleted)
-                .map(exercise => ({
-                    ...exercise,
-                    id: Date.now() + Math.random(),
-                    sets: exercise.sets.map(set => ({
-                        ...set,
-                        id: Date.now() + Math.random()
-                    }))
-                }));
-
-            setWorkouts(prevWorkouts => {
-                const updatedDays = { ...prevWorkouts.days };
-                updatedDays[currentDay] = {
-                    name: previousWorkoutData.name ? 
-                        `Copie de ${previousWorkoutData.name}` : 'Entraînement du jour',
-                    exercises: copiedExercises
-                };
-                return { ...prevWorkouts, days: updatedDays };
-            });
-            showToast("Séance précédente copiée avec succès !", "success");
-        } else {
-            showToast("La séance précédente est vide ou n'existe pas.", "warning");
-        }
-    }, [workouts, currentDay, setWorkouts, showToast]);
+    // Formater la date pour l'affichage
+    const formatDisplayDate = useCallback((dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('fr-FR', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+    }, []);
 
     // Fonction pour rendre une carte d'exercice
     const renderWorkoutCard = useCallback((exercise, index) => {
@@ -596,6 +592,7 @@ function MainWorkoutView({
                                     onChange={(e) => updateSet(exercise.id, set.id, 'reps', e.target.value)}
                                     className="w-16 text-center rounded-md p-1 mr-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-600 text-white border-gray-500"
                                     min="0"
+                                    placeholder="Reps"
                                     aria-label={`Répétitions pour la série ${setIndex + 1}`}
                                 />
                                 <span className="text-gray-400">x</span>
@@ -606,13 +603,14 @@ function MainWorkoutView({
                                     className="w-20 text-center rounded-md p-1 mx-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-600 text-white border-gray-500"
                                     step="0.5"
                                     min="0"
+                                    placeholder="Poids"
                                     aria-label={`Poids pour la série ${setIndex + 1}`}
                                 />
                                 <span className="text-gray-400">kg</span>
                                 
-                                {settings.showEstimated1RM && set.reps > 0 && set.weight > 0 && (
+                                {settings.showEstimated1RM && set.reps > 0 && parseFloat(set.weight) > 0 && (
                                     <span className="ml-auto text-sm text-gray-300">
-                                        ~1RM: {getEstimated1RM(set.reps, set.weight).toFixed(0)}kg
+                                        ~1RM: {getEstimated1RM(set.reps, parseFloat(set.weight)).toFixed(0)}kg
                                     </span>
                                 )}
                                 
@@ -698,29 +696,12 @@ function MainWorkoutView({
                             </div>
                         )}
                     </h3>
-                    
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={copyPreviousWorkout}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm"
-                            title="Copier la séance précédente"
-                        >
-                            <Copy className="h-4 w-4" />
-                            Copier précédente
-                        </button>
-                    </div>
                 </div>
 
                 <div className="flex items-center justify-between mb-4">
-                    <input
-                        type="date"
-                        value={currentDay}
-                        onChange={(e) => setCurrentDay(e.target.value)}
-                        className="rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border-gray-600"
-                    />
-                    
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="workout-notes" className="text-sm font-medium text-gray-300">Notes de séance :</label>
+                    <div className="text-sm text-gray-300">
+                        <Calendar className="h-4 w-4 inline mr-2" />
+                        {formatDisplayDate(currentDay)}
                     </div>
                 </div>
 
