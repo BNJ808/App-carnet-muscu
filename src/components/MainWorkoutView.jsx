@@ -88,7 +88,7 @@ function MainWorkoutView({
     const dragExerciseItem = useRef(null);
     const dragOverExerciseItem = useRef(null);
 
-    // États pour la gestion des exercices favoris et récents
+    // États pour la gestion des exercices favoris
     const [favoriteExercises, setFavoriteExercises] = useState([]);
 
     // Récupérer les exercices récents des 3 dernières séances historiques
@@ -141,12 +141,6 @@ function MainWorkoutView({
         });
     }, []);
 
-    // Mise à jour des exercices récents - Plus nécessaire car calculé depuis historicalData
-    const updateRecentExercises = useCallback((exerciseName) => {
-        // Cette fonction n'est plus nécessaire car recentExercises est calculé automatiquement
-        // depuis les données historiques
-    }, []);
-
     // Fonction pour calculer l'estimation du 1RM
     const getEstimated1RM = useCallback((reps, weight) => {
         if (reps === 0 || weight === 0) return 0;
@@ -191,10 +185,9 @@ function MainWorkoutView({
             return { ...prevWorkouts, days: updatedDays };
         });
 
-        updateRecentExercises(exerciseName);
         showToast(`Exercice "${exerciseName}" ajouté !`, "success");
         setIsExerciseSelectorOpen(false);
-    }, [currentDay, setWorkouts, updateRecentExercises, showToast, settings]);
+    }, [currentDay, setWorkouts, showToast, settings]);
 
     const deleteExercise = useCallback((exerciseId) => {
         setWorkouts(prevWorkouts => {
@@ -360,11 +353,13 @@ function MainWorkoutView({
             return;
         }
 
-        // Enregistrer les données historiques et calculer les PBs
+        // Enregistrer la séance complète dans l'historique avec la durée
+        updateHistoricalData(currentWorkout);
+
+        // Calculer les PBs pour chaque exercice
         validExercises.forEach(exercise => {
             const validSets = exercise.sets.filter(set => set.reps > 0 && parseFloat(set.weight) > 0);
             if (validSets.length > 0) {
-                updateHistoricalData(exercise.name, validSets);
                 calculatePersonalBests(exercise.name, validSets);
             }
         });
