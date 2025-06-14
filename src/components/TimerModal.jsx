@@ -14,6 +14,7 @@ const TimerModal = ({
     startTimer,
     pauseTimer,
     resetTimer,
+    selectPreset,
     setTimerSeconds,
     formatTime
 }) => {
@@ -22,30 +23,26 @@ const TimerModal = ({
     const [selectedPreset, setSelectedPreset] = useState(90);
 
     useEffect(() => {
-        if (!timerIsRunning && timerSeconds === 0 && !timerIsFinished) {
-            setCustomMinutes(Math.floor(selectedPreset / 60));
-            setCustomSeconds(selectedPreset % 60);
-        } else if (!timerIsRunning) {
+        // Synchroniser le preset sélectionné avec timerSeconds
+        setSelectedPreset(timerSeconds);
+        if (!timerIsRunning) {
             setCustomMinutes(Math.floor(timerSeconds / 60));
             setCustomSeconds(timerSeconds % 60);
         }
-    }, [timerSeconds, timerIsRunning, timerIsFinished, selectedPreset]);
+    }, [timerSeconds, timerIsRunning]);
 
     const handlePresetClick = useCallback((seconds) => {
-        setTimerSeconds(seconds);
         setSelectedPreset(seconds);
+        selectPreset(seconds); // Utiliser selectPreset au lieu de startTimer
         setCustomMinutes(Math.floor(seconds / 60));
         setCustomSeconds(seconds % 60);
-        if (!timerIsRunning) {
-            startTimer();
-        }
-    }, [setTimerSeconds, startTimer, timerIsRunning]);
+    }, [selectPreset]);
 
     const handleCustomTimerStart = useCallback(() => {
         const totalSeconds = customMinutes * 60 + customSeconds;
         if (totalSeconds > 0) {
             setTimerSeconds(totalSeconds);
-            startTimer();
+            startTimer(totalSeconds);
         }
     }, [customMinutes, customSeconds, setTimerSeconds, startTimer]);
 
@@ -104,7 +101,7 @@ const TimerModal = ({
                     </p>
                     <div className="mt-4 flex justify-center gap-4">
                         <button
-                            onClick={timerIsRunning ? pauseTimer : startTimer}
+                            onClick={timerIsRunning ? pauseTimer : () => startTimer()}
                             className={`p-3 rounded-full ${timerIsRunning ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600'} text-white transition-colors shadow-lg`}
                             aria-label={timerIsRunning ? "Pause" : "Démarrer"}
                         >

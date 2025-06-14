@@ -205,9 +205,9 @@ const ImprovedWorkoutApp = () => {
         // Mettre à jour le preset sélectionné si un nouveau temps est fourni
         if (typeof seconds === 'number') {
             setSelectedTimerPreset(seconds);
+            setTimerSeconds(seconds); // Mettre à jour l'affichage immédiatement
         }
         
-        setTimerSeconds(timerDuration);
         setTimerIsRunning(true);
         setTimerIsFinished(false);
         
@@ -233,6 +233,13 @@ const ImprovedWorkoutApp = () => {
             });
         }, 1000);
     }, [timerSeconds, settings.notifications]);
+
+    // Nouvelle fonction pour juste sélectionner un preset sans démarrer
+    const selectPreset = useCallback((seconds) => {
+        setTimerSeconds(seconds);
+        setSelectedTimerPreset(seconds);
+        // Ne pas démarrer automatiquement le timer
+    }, []);
 
     const stopTimer = useCallback(() => {
         if (timerIntervalRef.current) {
@@ -595,6 +602,7 @@ const ImprovedWorkoutApp = () => {
                     startTimer={startTimer}
                     pauseTimer={stopTimer}
                     resetTimer={resetTimer}
+                    selectPreset={selectPreset}
                     setTimerSeconds={(seconds) => {
                         setTimerSeconds(seconds);
                         setSelectedTimerPreset(seconds);
