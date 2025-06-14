@@ -68,9 +68,10 @@ const ImprovedWorkoutApp = () => {
     });
 
     // États pour le minuteur global
-    const [timerSeconds, setTimerSeconds] = useState(0);
+    const [timerSeconds, setTimerSeconds] = useState(90); // Défaut à 1:30
     const [timerIsRunning, setTimerIsRunning] = useState(false);
     const [timerIsFinished, setTimerIsFinished] = useState(false);
+    const [selectedTimerPreset, setSelectedTimerPreset] = useState(90); // Preset sélectionné
     const timerIntervalRef = useRef(null);
 
     // AI States
@@ -201,6 +202,11 @@ const ImprovedWorkoutApp = () => {
         
         if (timerDuration <= 0) return; // Ne pas démarrer si pas de temps défini
         
+        // Mettre à jour le preset sélectionné si un nouveau temps est fourni
+        if (typeof seconds === 'number') {
+            setSelectedTimerPreset(seconds);
+        }
+        
         setTimerSeconds(timerDuration);
         setTimerIsRunning(true);
         setTimerIsFinished(false);
@@ -237,9 +243,9 @@ const ImprovedWorkoutApp = () => {
 
     const resetTimer = useCallback(() => {
         stopTimer();
-        setTimerSeconds(0);
+        setTimerSeconds(selectedTimerPreset); // Retourner au preset sélectionné
         setTimerIsFinished(false);
-    }, [stopTimer]);
+    }, [stopTimer, selectedTimerPreset]);
 
     // Fonctions de calcul pour les statistiques
     const getWorkoutStats = useCallback(() => {
@@ -589,7 +595,10 @@ const ImprovedWorkoutApp = () => {
                     startTimer={startTimer}
                     pauseTimer={stopTimer}
                     resetTimer={resetTimer}
-                    setTimerSeconds={setTimerSeconds}
+                    setTimerSeconds={(seconds) => {
+                        setTimerSeconds(seconds);
+                        setSelectedTimerPreset(seconds);
+                    }}
                     formatTime={(seconds) => {
                         // Vérifier que seconds est un nombre valide
                         const validSeconds = typeof seconds === 'number' && !isNaN(seconds) ? seconds : 0;
