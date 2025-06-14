@@ -75,90 +75,23 @@ const ImprovedWorkoutApp = () => {
 
     // AI States
     const [progressionAnalysisContent, setProgressionAnalysisContent] = useState('');
-    const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
-    const [aiSuggestions, setAiSuggestions] = useState([]);
+    const [selectedExerciseForProgression, setSelectedExerciseForProgression] = useState(null);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
+    const [aiSuggestions, setAiSuggestions] = useState([]);
 
     // Fonction pour afficher les toasts
-    const showToast = useCallback((message, type = 'info', duration = 3000, action = null) => {
-        setToast({ message, type, duration, action });
+    const showToast = useCallback((message, type = 'info') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3000);
     }, []);
 
-    // Fonction pour le minuteur
-    const startTimer = useCallback(() => {
-        setTimerIsRunning(true);
-        setTimerIsFinished(false);
-    }, []);
-
-    const pauseTimer = useCallback(() => {
-        setTimerIsRunning(false);
-    }, []);
-
-    const resetTimer = useCallback(() => {
-        setTimerSeconds(0);
-        setTimerIsRunning(false);
-        setTimerIsFinished(false);
-        if (timerIntervalRef.current) {
-            clearInterval(timerIntervalRef.current);
-            timerIntervalRef.current = null;
-        }
-    }, []);
-
-    const formatTime = useCallback((totalSeconds) => {
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }, []);
-
-    // Effet pour le minuteur
-    useEffect(() => {
-        if (timerIsRunning && timerSeconds > 0) {
-            if (timerIntervalRef.current) {
-                clearInterval(timerIntervalRef.current);
-            }
-            timerIntervalRef.current = setInterval(() => {
-                setTimerSeconds((prevSeconds) => {
-                    if (prevSeconds <= 1) {
-                        clearInterval(timerIntervalRef.current);
-                        timerIntervalRef.current = null;
-                        setTimerIsRunning(false);
-                        setTimerIsFinished(true);
-                        showToast("Le minuteur est terminé !", 'success');
-                        return 0;
-                    }
-                    return prevSeconds - 1;
-                });
-            }, 1000);
-        } else if (timerIsRunning && timerSeconds === 0) {
-            // If timer started at 0, immediately finish
-            setTimerIsRunning(false);
-            setTimerIsFinished(true);
-            showToast("Le minuteur est terminé !", 'success');
-            if (timerIntervalRef.current) {
-                clearInterval(timerIntervalRef.current);
-                timerIntervalRef.current = null;
-            }
-        } else if (!timerIsRunning && timerSeconds === 0 && timerIsFinished) {
-            // Do nothing if timer is finished and at 0
-        } else if (!timerIsRunning && timerIntervalRef.current) {
-            clearInterval(timerIntervalRef.current);
-            timerIntervalRef.current = null;
-        }
-
-        return () => {
-            if (timerIntervalRef.current) {
-                clearInterval(timerIntervalRef.current);
-            }
-        };
-    }, [timerIsRunning, timerSeconds, showToast]);
-
-
-    // Firebase Auth et Firestore
+    // Authentification
     useEffect(() => {
         const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
             if (!currentUser) {
                 try {
-                    await signInAnonymously(auth);
+                    const result = await signInAnonymously(auth);
+                    console.log("Utilisateur connecté anonymement:", result.user.uid);
                 } catch (error) {
                     console.error("Erreur de connexion anonyme:", error);
                     showToast("Erreur de connexion. Veuillez réessayer.", "error");
@@ -232,72 +165,100 @@ const ImprovedWorkoutApp = () => {
         }
     }, [user, showToast]);
 
-    // Effet pour sauvegarder les workouts, historicalData, personalBests, globalNotes et settings
+    // Sauvegarder automatiquement
     useEffect(() => {
-        if (user && workouts.days) { // S'assurer que workouts est initialisé
-            saveData({ workouts, historicalData, personalBests, globalNotes, settings });
+        if (user && settings.autoSave) {
+            const timeoutId = setTimeout(() => {
+                saveData({
+                    workouts,
+                    historicalData,
+                    personalBests,
+                    globalNotes,
+                    settings
+                });
+            }, 2000); // Délai de 2 secondes après la dernière modification
+
+            return () => clearTimeout(timeoutId);
         }
-    }, [workouts, historicalData, personalBests, globalNotes, settings, user, saveData]);
+    }, [workouts, historicalData, personalBests, globalNotes, settings, saveData, user]);
 
     // Fonctions utilitaires
-    const formatDate = useCallback((dateString) => {
-        const options = { year: 'numeric', month: 'long', day: 'numeric' };
-        // Si dateString est un objet Timestamp de Firebase
-        if (dateString && typeof dateString.toDate === 'function') {
-            return dateString.toDate().toLocaleDateString('fr-FR', options);
-        }
-        // Si dateString est une date ISO string ou un objet Date
-        try {
-            const date = new Date(dateString);
-            if (!isNaN(date)) {
-                return date.toLocaleDateString('fr-FR', options);
-            }
-        } catch (e) {
-            console.error("Invalid date string:", dateString, e);
-        }
-        return "Date invalide";
+    const formatDate = useCallback((date) => {
+        const dateObj = date instanceof Date ? date : 
+                       (date && typeof date.toDate === 'function') ? date.toDate() : new Date(date);
+        return dateObj.toLocaleDateString('fr-FR');
     }, []);
 
     const getSeriesDisplay = useCallback((series) => {
-        if (!series) return '';
-        return series.map(s => `${s.reps}x${s.weight}kg`).join(' | ');
+        if (!series || series.length === 0) return "Aucune série";
+        return series.map(set => `${set.reps} × ${set.weight}kg`).join(', ');
     }, []);
 
-    const calculateTotalVolume = useCallback((sessions) => {
-        return sessions.reduce((totalVol, session) => {
-            const sessionVolume = session.exercises.reduce((seshVol, exercise) => {
-                const exerciseVolume = exercise.sets.reduce((exVol, set) => exVol + (set.reps * set.weight), 0);
-                return seshVol + exerciseVolume;
-            }, 0);
-            return totalVol + sessionVolume;
-        }, 0);
-    }, []);
+    // Minuteur
+    const startTimer = useCallback((seconds) => {
+        setTimerSeconds(seconds);
+        setTimerIsRunning(true);
+        setTimerIsFinished(false);
+        
+        timerIntervalRef.current = setInterval(() => {
+            setTimerSeconds(prev => {
+                if (prev <= 1) {
+                    setTimerIsRunning(false);
+                    setTimerIsFinished(true);
+                    if (settings.notifications && 'Notification' in window) {
+                        new Notification("Temps de repos terminé !", {
+                            body: "Il est temps de reprendre l'entraînement !",
+                            icon: "/favicon.ico"
+                        });
+                    }
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+    }, [settings.notifications]);
 
-    const getWorkoutStats = useCallback(() => {
-        const stats = {
-            totalWorkouts: historicalData.length,
-            totalExercises: new Set(historicalData.flatMap(session => session.exercises.map(ex => ex.name))).size,
-            totalVolume: calculateTotalVolume(historicalData),
-            averageVolumePerWorkout: historicalData.length > 0 ? calculateTotalVolume(historicalData) / historicalData.length : 0,
-            averageDuration: 0, // This needs actual duration data
-        };
-
-        // Calculate average duration if available
-        const totalDuration = historicalData.reduce((sum, session) => {
-            if (session.duration) {
-                // Assuming duration is in minutes or seconds, normalize to minutes for average
-                return sum + session.duration;
-            }
-            return sum;
-        }, 0);
-
-        if (historicalData.length > 0 && totalDuration > 0) {
-            stats.averageDuration = totalDuration / historicalData.length;
+    const stopTimer = useCallback(() => {
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
         }
+        setTimerIsRunning(false);
+    }, []);
 
-        return stats;
-    }, [historicalData, calculateTotalVolume]);
+    const resetTimer = useCallback(() => {
+        stopTimer();
+        setTimerSeconds(0);
+        setTimerIsFinished(false);
+    }, [stopTimer]);
 
+    // Fonctions de calcul pour les statistiques
+    const getWorkoutStats = useCallback(() => {
+        const totalWorkouts = historicalData.length;
+        const totalExercises = new Set(historicalData.flatMap(session => 
+            session.exercises.filter(ex => !ex.deleted).map(ex => ex.name)
+        )).size;
+        
+        const totalVolume = historicalData.reduce((sum, session) => 
+            sum + session.exercises.filter(ex => !ex.deleted).reduce((sessionSum, ex) => 
+                sessionSum + ex.sets.reduce((setSum, set) => setSum + (set.reps * set.weight), 0), 0
+            ), 0
+        );
+        
+        const averageVolumePerWorkout = totalWorkouts > 0 ? totalVolume / totalWorkouts : 0;
+        
+        // Calcul de la durée moyenne
+        const sessionsWithDuration = historicalData.filter(session => session.duration && session.duration > 0);
+        const averageDuration = sessionsWithDuration.length > 0 ? 
+            sessionsWithDuration.reduce((sum, session) => sum + session.duration, 0) / sessionsWithDuration.length : 0;
+
+        return {
+            totalWorkouts,
+            totalExercises,
+            totalVolume,
+            averageVolumePerWorkout,
+            averageDuration
+        };
+    }, [historicalData]);
 
     const getExerciseVolumeData = useCallback(() => {
         const exerciseVolumeMap = {};
@@ -317,17 +278,14 @@ const ImprovedWorkoutApp = () => {
     const getDailyVolumeData = useCallback(() => {
         const dailyVolumeMap = {};
         historicalData.forEach(session => {
-            const date = formatDate(session.date); // Use formatDate for consistent keys
-            const sessionVolume = session.exercises.reduce((seshVol, exercise) => {
-                const exerciseVolume = exercise.sets.reduce((exVol, set) => exVol + (set.reps * set.weight), 0);
-                return seshVol + exerciseVolume;
-            }, 0);
-            dailyVolumeMap[date] = (dailyVolumeMap[date] || 0) + sessionVolume;
+            const dateKey = formatDate(session.date);
+            const dailyVolume = session.exercises.filter(ex => !ex.deleted).reduce((sum, ex) => 
+                sum + ex.sets.reduce((setSum, set) => setSum + (set.reps * set.weight), 0), 0
+            );
+            dailyVolumeMap[dateKey] = (dailyVolumeMap[dateKey] || 0) + dailyVolume;
         });
-
-        // Sort by date to ensure proper graph display
         return Object.entries(dailyVolumeMap)
-            .sort(([dateA], [dateB]) => new Date(dateA) - new Date(dateB))
+            .sort(([a], [b]) => new Date(a) - new Date(b))
             .map(([date, volume]) => ({ date, volume }));
     }, [historicalData, formatDate]);
 
@@ -418,115 +376,81 @@ const ImprovedWorkoutApp = () => {
             4.  **Planification:** Des idées pour structurer les entraînements futurs.
             5.  **Motivation/Mental:** Comment maintenir l'engagement.
 
-            Réponds en listant les suggestions directement, sans introduction ni conclusion générale, chaque suggestion étant un paragraphe distinct.`;
+            Limite tes suggestions à 5-7 conseils au total, chacun étant une phrase ou un court paragraphe actionnable.`;
 
             const result = await model.generateContent(prompt);
             const response = await result.response;
             const text = response.text();
-            // Split the text into an array of suggestions, assuming each paragraph is a suggestion
-            const suggestionsArray = text.split('\n\n').filter(s => s.trim() !== '');
-            setAiSuggestions(suggestionsArray);
+
+            // Convertir le texte en suggestions (diviser par ligne ou par section)
+            const suggestions = text.split('\n')
+                .filter(line => line.trim().length > 10)
+                .slice(0, 7);
+
+            setAiSuggestions(suggestions);
         } catch (error) {
             console.error("Erreur lors de l'analyse globale par l'IA:", error);
-            setAiSuggestions(["Désolé, une erreur est survenue lors de l'analyse de vos statistiques globales. Veuillez réessayer."]);
+            setAiSuggestions(["Désolé, une erreur est survenue lors de l'analyse de vos statistiques. Veuillez réessayer."]);
             showToast("Erreur de l'IA pour l'analyse globale.", "error");
         } finally {
             setIsLoadingAI(false);
         }
-    }, [model, getWorkoutStats, getExerciseVolumeData, getExerciseFrequencyData, personalBests, globalNotes, formatDate, showToast]);
+    }, [getWorkoutStats, getExerciseVolumeData, getExerciseFrequencyData, personalBests, formatDate, globalNotes, model, showToast]);
 
+    const deleteHistoricalSession = useCallback((sessionIndex) => {
+        setHistoricalData(prevData => {
+            const updatedData = [...prevData];
+            updatedData.splice(sessionIndex, 1);
+            return updatedData;
+        });
+        showToast("Séance supprimée de l'historique.", "info");
+    }, [showToast]);
 
-    const handleReactivateExercise = useCallback(async (exerciseName) => {
-        try {
-            const updatedHistoricalData = historicalData.map(session => ({
-                ...session,
-                exercises: session.exercises.map(exercise =>
-                    exercise.name === exerciseName ? { ...exercise, deleted: false } : exercise
-                )
-            }));
-
-            // Mettre à jour les `workouts` pour réactiver si l'exercice était dans un programme actif
-            const updatedWorkouts = { ...workouts };
-            let workoutChanged = false;
-            for (const dayKey of updatedWorkouts.dayOrder) {
-                const day = updatedWorkouts.days[dayKey];
-                if (day && day.exercises) {
-                    const exerciseIndex = day.exercises.findIndex(ex => ex.name === exerciseName);
-                    if (exerciseIndex !== -1 && day.exercises[exerciseIndex].deleted) {
-                        day.exercises[exerciseIndex].deleted = false;
-                        workoutChanged = true;
-                    }
-                }
+    const handleReactivateExercise = useCallback((sessionIndex, exerciseIndex) => {
+        setHistoricalData(prevData => {
+            const updatedData = [...prevData];
+            if (updatedData[sessionIndex] && updatedData[sessionIndex].exercises[exerciseIndex]) {
+                updatedData[sessionIndex].exercises[exerciseIndex].deleted = false;
             }
+            return updatedData;
+        });
+        showToast("Exercice réactivé.", "success");
+    }, [showToast]);
 
-            setHistoricalData(updatedHistoricalData);
-            if (workoutChanged) {
-                setWorkouts(updatedWorkouts);
+    // Gestion des paramètres avec correction pour les valeurs vides
+    const handleSettingsChange = useCallback((field, value) => {
+        setSettings(prev => {
+            // Pour les champs numériques, gérer les valeurs vides
+            if ((field === 'defaultSets' || field === 'defaultReps') && value === '') {
+                return { ...prev, [field]: '' };
             }
-            showToast(`L'exercice '${exerciseName}' a été réactivé.`, 'success');
-        } catch (error) {
-            console.error("Erreur lors de la réactivation de l'exercice:", error);
-            showToast("Erreur lors de la réactivation de l'exercice.", "error");
-        }
-    }, [historicalData, workouts, showToast]);
-
-
-    const deleteHistoricalSession = useCallback(async (sessionId) => {
-        try {
-            const updatedHistoricalData = historicalData.filter(session => session.id !== sessionId);
-            setHistoricalData(updatedHistoricalData);
-
-            // Optionnel: Mettre à jour les personalBests si la session supprimée contenait un PB
-            // Cela nécessiterait de recalculer tous les PBs, ou de marquer la session comme supprimée plutôt que de la retirer.
-            // Pour l'instant, on se contente de la suppression de l'historique.
-            showToast("Séance supprimée de l'historique.", "success", 3000, {
-                label: "Annuler",
-                onClick: () => {
-                    // Pour une annulation, il faudrait stocker la session supprimée temporairement
-                    // et la rajouter ici. Pour l'exemple, on laisse simple.
-                    showToast("L'annulation n'est pas encore implémentée pour la suppression de séance.", "info");
+            
+            // Pour les champs numériques avec valeur, s'assurer qu'elle est valide
+            if (field === 'defaultSets' || field === 'defaultReps') {
+                const numValue = Number(value);
+                if (isNaN(numValue) || numValue < 1) {
+                    return prev; // Ne pas mettre à jour si la valeur n'est pas valide
                 }
-            });
-        } catch (error) {
-            console.error("Erreur lors de la suppression de la session historique:", error);
-            showToast("Erreur lors de la suppression de la session historique.", "error");
-        }
-    }, [historicalData, showToast]);
-
+                return { ...prev, [field]: numValue };
+            }
+            
+            // Pour les autres champs (checkbox, etc.)
+            return { ...prev, [field]: value };
+        });
+    }, []);
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
-                <div className="text-lg font-medium">Chargement de votre profil...</div>
+            <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                <div className="text-white text-xl">Chargement...</div>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-screen bg-gray-900 text-white">
-            <header className="flex items-center justify-between p-4 shadow-md bg-gray-800">
-                <h1 className="text-2xl font-bold text-blue-400">
-                    Carnet Muscu
-                </h1>
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => setIsTimerModalOpen(true)}
-                        className="p-2 rounded-full bg-blue-500 hover:bg-blue-600 transition-colors"
-                        aria-label="Ouvrir le minuteur"
-                    >
-                        <Clock className="h-6 w-6 text-white" />
-                    </button>
-                    <button
-                        onClick={() => setIsSettingsModalOpen(true)}
-                        className="p-2 rounded-full transition-colors bg-gray-700 hover:bg-gray-600"
-                        aria-label="Ouvrir les paramètres"
-                    >
-                        <Settings className="h-6 w-6 text-white" />
-                    </button>
-                </div>
-            </header>
-
-            <main className="flex-1 overflow-y-auto p-4 pb-20">
+        <div className="min-h-screen bg-gray-900 text-white">
+            {/* Contenu principal */}
+            <div className="pb-20">
                 {currentView === 'workout' && (
                     <MainWorkoutView
                         workouts={workouts}
@@ -548,19 +472,7 @@ const ImprovedWorkoutApp = () => {
                         settings={settings}
                     />
                 )}
-                {currentView === 'timer' && (
-                    <TimerView
-                        timerSeconds={timerSeconds}
-                        timerIsRunning={timerIsRunning}
-                        timerIsFinished={timerIsFinished}
-                        startTimer={startTimer}
-                        pauseTimer={pauseTimer}
-                        resetTimer={resetTimer}
-                        setTimerSeconds={setTimerSeconds}
-                        formatTime={formatTime}
-                        showToast={showToast}
-                    />
-                )}
+
                 {currentView === 'history' && (
                     <HistoryView
                         historicalData={historicalData}
@@ -575,6 +487,19 @@ const ImprovedWorkoutApp = () => {
                         showToast={showToast}
                     />
                 )}
+
+                {currentView === 'timer' && (
+                    <TimerView
+                        timerSeconds={timerSeconds}
+                        timerIsRunning={timerIsRunning}
+                        timerIsFinished={timerIsFinished}
+                        startTimer={startTimer}
+                        stopTimer={stopTimer}
+                        resetTimer={resetTimer}
+                        setTimerSeconds={setTimerSeconds}
+                    />
+                )}
+
                 {currentView === 'stats' && (
                     <StatsView
                         workouts={workouts}
@@ -584,7 +509,7 @@ const ImprovedWorkoutApp = () => {
                         globalNotes={globalNotes}
                         setGlobalNotes={setGlobalNotes}
                         analyzeGlobalStatsWithAI={analyzeGlobalStatsWithAI}
-                        aiAnalysisLoading={aiAnalysisLoading}
+                        aiAnalysisLoading={isLoadingAI}
                         onGenerateAISuggestions={analyzeGlobalStatsWithAI}
                         aiSuggestions={aiSuggestions}
                         isLoadingAI={isLoadingAI}
@@ -596,191 +521,191 @@ const ImprovedWorkoutApp = () => {
                         showToast={showToast}
                     />
                 )}
-            </main>
+            </div>
 
-            {/* Barre de navigation inférieure */}
-            <BottomNavigationBar
-                currentView={currentView}
+            {/* Navigation inférieure */}
+            <BottomNavigationBar 
+                currentView={currentView} 
                 setCurrentView={setCurrentView}
+                timerSeconds={timerSeconds}
+                timerIsRunning={timerIsRunning}
+                setIsTimerModalOpen={setIsTimerModalOpen}
+                setIsSettingsModalOpen={setIsSettingsModalOpen}
             />
 
-            {/* Toast notification */}
+            {/* Toast */}
             {toast && (
                 <Toast
                     message={toast.message}
                     type={toast.type}
                     onClose={() => setToast(null)}
-                    action={toast.action}
-                    duration={toast.duration}
                 />
             )}
 
-            {/* Timer Modal */}
-            <TimerModal
-                isOpen={isTimerModalOpen}
-                onClose={() => setIsTimerModalOpen(false)}
-                timerSeconds={timerSeconds}
-                timerIsRunning={timerIsRunning}
-                timerIsFinished={timerIsFinished}
-                startTimer={startTimer}
-                pauseTimer={pauseTimer}
-                resetTimer={resetTimer}
-                setTimerSeconds={setTimerSeconds}
-                formatTime={formatTime}
-            />
+            {/* Modale du minuteur */}
+            {isTimerModalOpen && (
+                <TimerModal
+                    isOpen={isTimerModalOpen}
+                    onClose={() => setIsTimerModalOpen(false)}
+                    startTimer={startTimer}
+                />
+            )}
 
-            {/* Settings Modal */}
+            {/* Modale des paramètres */}
             {isSettingsModalOpen && (
-                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4 animate-fade-in">
-                    <div className="rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto border shadow-2xl relative bg-gray-800 border-gray-700">
-                        <button
-                            onClick={() => setIsSettingsModalOpen(false)}
-                            className="absolute top-4 right-4 transition-colors text-gray-400 hover:text-white"
-                            aria-label="Fermer les paramètres"
-                        >
-                            <X className="h-6 w-6" />
-                        </button>
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-700">
+                        <div className="p-6">
+                            <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-white">
+                                <Settings className="h-8 w-8 text-gray-400" /> 
+                                Paramètres
+                            </h2>
 
-                        <h2 className="text-3xl font-bold text-center mb-6 flex items-center justify-center gap-3 text-white">
-                            <Settings className="h-8 w-8 text-gray-400" /> 
-                            Paramètres
-                        </h2>
-
-                        <div className="space-y-6">
-                            {/* Section Affichage */}
-                            <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
-                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
-                                    <Eye className="h-5 w-5 text-green-400" /> 
-                                    Affichage
-                                </h3>
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-3">
-                                        <input
-                                            type="checkbox"
-                                            id="showEstimated1RM"
-                                            checked={settings.showEstimated1RM}
-                                            onChange={(e) => setSettings(prev => ({ ...prev, showEstimated1RM: e.target.checked }))}
-                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
-                                        />
-                                        <label htmlFor="showEstimated1RM" className="text-gray-300">
-                                            Afficher le 1RM estimé pour chaque série
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <input
-                                            type="checkbox"
-                                            id="showVolume"
-                                            checked={settings.showVolume}
-                                            onChange={(e) => setSettings(prev => ({ ...prev, showVolume: e.target.checked }))}
-                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
-                                        />
-                                        <label htmlFor="showVolume" className="text-gray-300">
-                                            Afficher le volume par exercice
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Section Entraînement */}
-                            <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
-                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
-                                    <Dumbbell className="h-5 w-5 text-purple-400" /> 
-                                    Entraînement
-                                </h3>
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2 text-gray-300">
-                                                Séries par défaut
-                                            </label>
+                            <div className="space-y-6">
+                                {/* Section Affichage */}
+                                <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
+                                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
+                                        <Eye className="h-5 w-5 text-green-400" /> 
+                                        Affichage
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-3">
                                             <input
-                                                type="number"
-                                                value={settings.defaultSets}
-                                                onChange={(e) => setSettings(prev => ({ ...prev, defaultSets: Number(e.target.value) }))}
-                                                className="w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border border-gray-600"
-                                                min="1"
-                                                max="10"
+                                                type="checkbox"
+                                                id="showEstimated1RM"
+                                                checked={settings.showEstimated1RM}
+                                                onChange={(e) => handleSettingsChange('showEstimated1RM', e.target.checked)}
+                                                className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
                                             />
+                                            <label htmlFor="showEstimated1RM" className="text-gray-300">
+                                                Afficher le 1RM estimé pour chaque série
+                                            </label>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2 text-gray-300">
-                                                Répétitions par défaut
-                                            </label>
+                                        <div className="flex items-center gap-3">
                                             <input
-                                                type="number"
-                                                value={settings.defaultReps}
-                                                onChange={(e) => setSettings(prev => ({ ...prev, defaultReps: Number(e.target.value) }))}
-                                                className="w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border border-gray-600"
-                                                min="1"
-                                                max="50"
+                                                type="checkbox"
+                                                id="showVolume"
+                                                checked={settings.showVolume}
+                                                onChange={(e) => handleSettingsChange('showVolume', e.target.checked)}
+                                                className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
                                             />
+                                            <label htmlFor="showVolume" className="text-gray-300">
+                                                Afficher le volume par exercice
+                                            </label>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Section Système */}
-                            <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
-                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
-                                    <Settings className="h-5 w-5 text-orange-400" /> 
-                                    Système
-                                </h3>
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-3">
-                                        <input
-                                            type="checkbox"
-                                            id="notifications"
-                                            checked={settings.notifications}
-                                            onChange={(e) => setSettings(prev => ({ ...prev, notifications: e.target.checked }))}
-                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
-                                        />
-                                        <label htmlFor="notifications" className="text-gray-300">
-                                            Activer les notifications
-                                        </label>
+                                {/* Section Entraînement */}
+                                <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
+                                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
+                                        <Dumbbell className="h-5 w-5 text-purple-400" /> 
+                                        Entraînement
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-2 text-gray-300">
+                                                    Séries par défaut
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={settings.defaultSets}
+                                                    onChange={(e) => handleSettingsChange('defaultSets', e.target.value)}
+                                                    className="w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border border-gray-600"
+                                                    min="1"
+                                                    max="10"
+                                                    placeholder="Nombre de séries"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-2 text-gray-300">
+                                                    Répétitions par défaut
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={settings.defaultReps}
+                                                    onChange={(e) => handleSettingsChange('defaultReps', e.target.value)}
+                                                    className="w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border border-gray-600"
+                                                    min="1"
+                                                    max="50"
+                                                    placeholder="Nombre de répétitions"
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        <input
-                                            type="checkbox"
-                                            id="autoSave"
-                                            checked={settings.autoSave}
-                                            onChange={(e) => setSettings(prev => ({ ...prev, autoSave: e.target.checked }))}
-                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
-                                        />
-                                        <label htmlFor="autoSave" className="text-gray-300">
-                                            Sauvegarde automatique
-                                        </label>
+                                </div>
+
+                                {/* Section Système */}
+                                <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
+                                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
+                                        <Settings className="h-5 w-5 text-orange-400" /> 
+                                        Système
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox"
+                                                id="notifications"
+                                                checked={settings.notifications}
+                                                onChange={(e) => handleSettingsChange('notifications', e.target.checked)}
+                                                className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
+                                            />
+                                            <label htmlFor="notifications" className="text-gray-300">
+                                                Activer les notifications
+                                            </label>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox"
+                                                id="autoSave"
+                                                checked={settings.autoSave}
+                                                onChange={(e) => handleSettingsChange('autoSave', e.target.checked)}
+                                                className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
+                                            />
+                                            <label htmlFor="autoSave" className="text-gray-300">
+                                                Sauvegarde automatique
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Boutons d'action */}
-                        <div className="flex gap-3 mt-8">
-                            <button
-                                onClick={() => {
-                                    setSettings({
-                                        showEstimated1RM: true,
-                                        notifications: true,
-                                        autoSave: true,
-                                        showVolume: true,
-                                        defaultSets: 3,
-                                        defaultReps: 10
-                                    });
-                                    showToast("Paramètres réinitialisés", "info");
-                                }}
-                                className="flex-1 font-medium py-3 px-4 rounded-lg transition-colors bg-gray-600 hover:bg-gray-700 text-white"
-                            >
-                                Réinitialiser
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setIsSettingsModalOpen(false);
-                                    showToast("Paramètres sauvegardés", "success");
-                                }}
-                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
-                            >
-                                Enregistrer
-                            </button>
+                            {/* Boutons d'action */}
+                            <div className="flex gap-3 mt-8">
+                                <button
+                                    onClick={() => {
+                                        setSettings({
+                                            showEstimated1RM: true,
+                                            notifications: true,
+                                            autoSave: true,
+                                            showVolume: true,
+                                            defaultSets: 3,
+                                            defaultReps: 10
+                                        });
+                                        showToast("Paramètres réinitialisés", "info");
+                                    }}
+                                    className="flex-1 font-medium py-3 px-4 rounded-lg transition-colors bg-gray-600 hover:bg-gray-700 text-white"
+                                >
+                                    Réinitialiser
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        // S'assurer que les valeurs numériques sont valides avant de fermer
+                                        const finalSettings = {
+                                            ...settings,
+                                            defaultSets: settings.defaultSets === '' ? 3 : Number(settings.defaultSets),
+                                            defaultReps: settings.defaultReps === '' ? 10 : Number(settings.defaultReps)
+                                        };
+                                        setSettings(finalSettings);
+                                        setIsSettingsModalOpen(false);
+                                        showToast("Paramètres sauvegardés", "success");
+                                    }}
+                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+                                >
+                                    Enregistrer
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

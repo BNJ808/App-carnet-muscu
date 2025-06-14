@@ -146,10 +146,24 @@ function MainWorkoutView({
 
     const handleSelectExercise = useCallback((exerciseName) => {
         const exerciseId = Date.now();
+        
+        // Créer le nombre correct de séries selon les paramètres
+        const defaultSets = settings.defaultSets || 3;
+        const defaultReps = settings.defaultReps || 10;
+        
+        const sets = [];
+        for (let i = 0; i < defaultSets; i++) {
+            sets.push({ 
+                id: Date.now() + i, 
+                reps: defaultReps, 
+                weight: '' 
+            });
+        }
+
         const newExercise = {
             id: exerciseId,
             name: exerciseName,
-            sets: [{ id: Date.now(), reps: settings.defaultReps || 10, weight: '' }],
+            sets: sets,
             notes: '',
             deleted: false
         };
@@ -518,7 +532,7 @@ function MainWorkoutView({
                     onClick={() => setExpandedExercise(isCurrentExerciseExpanded ? null : exercise.id)}
                 >
                     <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-semibold text-white">{exercise.name}</h3>
+                        <h3 className="text-lg font-semibold text-blue-400">{exercise.name}</h3>
                         {exercise.notes && (
                             <NotebookText className="h-4 w-4 text-blue-400" title="Contient des notes" />
                         )}
