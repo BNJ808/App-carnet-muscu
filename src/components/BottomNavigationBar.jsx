@@ -7,9 +7,8 @@ import { Dumbbell, History, BarChart3 } from 'lucide-react';
  * @param {object} props - Les props du composant.
  * @param {string} props.currentView - La vue actuellement sélectionnée.
  * @param {function} props.setCurrentView - Fonction pour changer la vue.
- * @param {string} props.currentTheme - Le thème actuel ('light' ou 'dark').
  */
-const BottomNavigationBar = ({ currentView, setCurrentView, currentTheme = 'dark' }) => {
+const BottomNavigationBar = ({ currentView, setCurrentView }) => {
     // Définition des éléments de navigation
     const navItems = [
         {
@@ -33,11 +32,7 @@ const BottomNavigationBar = ({ currentView, setCurrentView, currentTheme = 'dark
     ];
 
     return (
-        <nav className={`fixed bottom-0 left-0 right-0 border-t shadow-lg z-40 ${
-            currentTheme === 'light' 
-                ? 'bg-white border-gray-300' 
-                : 'bg-gray-900 border-gray-700'
-        }`}>
+        <nav className="fixed bottom-0 left-0 right-0 border-t shadow-lg z-40 bg-gray-900 border-gray-700">
             <div className="flex justify-around h-16">
                 {navItems.map((item) => (
                     <button
@@ -45,14 +40,8 @@ const BottomNavigationBar = ({ currentView, setCurrentView, currentTheme = 'dark
                         onClick={() => setCurrentView(item.view)}
                         className={`flex flex-col items-center justify-center text-sm p-2 rounded-lg transition-all duration-200 ease-in-out min-w-0 flex-1 mx-1 ${
                             currentView === item.view
-                                ? `${item.color} scale-105 ${
-                                    currentTheme === 'light' ? 'bg-gray-100' : 'bg-gray-800/50'
-                                }` // Styles pour l'élément sélectionné
-                                : `transition-colors ${
-                                    currentTheme === 'light' 
-                                        ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100' 
-                                        : 'text-gray-400 hover:text-white hover:bg-gray-800/30'
-                                }` // Styles pour les éléments non sélectionnés
+                                ? `${item.color} scale-105 bg-gray-800/50` // Styles pour l'élément sélectionné
+                                : `transition-colors text-gray-400 hover:text-white hover:bg-gray-800/30` // Styles pour les éléments non sélectionnés
                         }`}
                     >
                         <item.icon className={`h-6 w-6 sm:h-7 sm:w-7 mb-1 ${

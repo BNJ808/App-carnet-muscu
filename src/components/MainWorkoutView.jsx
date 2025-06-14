@@ -69,8 +69,7 @@ function MainWorkoutView({
     startTimer,
     setTimerSeconds,
     setCurrentView,
-    settings = {},
-    currentTheme = 'dark'
+    settings = {}
 }) {
     const today = useMemo(() => new Date().toISOString().split('T')[0], []);
     const [currentDay, setCurrentDay] = useState(today);
@@ -555,11 +554,7 @@ function MainWorkoutView({
                 onDragEnd={handleExerciseDragEnd}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleExerciseDrop}
-                className={`rounded-lg p-4 mb-4 border shadow-md transition-all duration-200 ease-in-out ${
-                    currentTheme === 'light' 
-                        ? 'bg-white border-gray-300' 
-                        : 'bg-gray-800 border-gray-700'
-                } ${exercise.deleted ? (currentTheme === 'light' ? 'opacity-60 border-red-500' : 'opacity-60 border-red-600') : ''} ${
+                className={`rounded-lg p-4 mb-4 border shadow-md transition-all duration-200 ease-in-out bg-gray-800 border-gray-700 ${exercise.deleted ? 'opacity-60 border-red-600' : ''} ${
                     isDraggingExercise && dragExerciseItem.current?.exerciseId === exercise.id 
                         ? 'opacity-30 border-dashed border-blue-400' 
                         : ''
@@ -571,15 +566,13 @@ function MainWorkoutView({
                 >
                     <h3 className={`text-lg font-semibold flex items-center gap-2 ${
                         exercise.deleted 
-                            ? (currentTheme === 'light' ? 'line-through text-red-600' : 'line-through text-red-300')
-                            : (currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400')
+                            ? 'line-through text-red-300'
+                            : 'text-blue-400'
                     }`}>
                         <Dumbbell className="h-5 w-5" />
                         {exercise.name}
                         {exercise.deleted && (
-                            <span className={`text-xs ml-2 ${
-                                currentTheme === 'light' ? 'text-red-600' : 'text-red-300'
-                            }`}>
+                            <span className="text-xs ml-2 text-red-300">
                                 (Supprimé)
                             </span>
                         )}
@@ -608,94 +601,62 @@ function MainWorkoutView({
                         </button>
                         
                         {settings.showVolume && (
-                            <span className={`text-sm ${
-                                currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                            }`}>
+                            <span className="text-sm text-gray-400">
                                 Vol: {getVolumeForExercise(exercise).toFixed(0)} kg
                             </span>
                         )}
                         
                         {currentExercisePB && (
-                            <div className={`text-xs flex items-center gap-1 ${
-                                currentTheme === 'light' ? 'text-yellow-600' : 'text-yellow-300'
-                            }`}>
+                            <div className="text-xs flex items-center gap-1 text-yellow-300">
                                 <Award className="h-4 w-4" />
                                 PB
                             </div>
                         )}
                         
                         {isCurrentExerciseExpanded ? (
-                            <ChevronUp className={`h-5 w-5 ${
-                                currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                            }`} />
+                            <ChevronUp className="h-5 w-5 text-gray-400" />
                         ) : (
-                            <ChevronDown className={`h-5 w-5 ${
-                                currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                            }`} />
+                            <ChevronDown className="h-5 w-5 text-gray-400" />
                         )}
                     </div>
                 </div>
 
                 {isCurrentExerciseExpanded && (
-                    <div className={`mt-4 border-t pt-4 space-y-3 ${
-                        currentTheme === 'light' ? 'border-gray-300' : 'border-gray-700'
-                    }`}>
+                    <div className="mt-4 border-t pt-4 space-y-3 border-gray-700">
                         {exercise.sets.map((set, setIndex) => (
-                            <div key={set.id} className={`flex items-center p-2 rounded-md ${
-                                currentTheme === 'light' ? 'bg-gray-100' : 'bg-gray-700'
-                            }`}>
-                                <span className={`font-medium w-12 flex-shrink-0 ${
-                                    currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                }`}>
+                            <div key={set.id} className="flex items-center p-2 rounded-md bg-gray-700">
+                                <span className="font-medium w-12 flex-shrink-0 text-gray-300">
                                     Série {setIndex + 1}:
                                 </span>
                                 <input
                                     type="number"
                                     value={set.reps}
                                     onChange={(e) => updateSet(exercise.id, set.id, 'reps', e.target.value)}
-                                    className={`w-16 text-center rounded-md p-1 mr-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                        currentTheme === 'light' 
-                                            ? 'bg-white text-gray-900 border border-gray-300' 
-                                            : 'bg-gray-600 text-white border-gray-500'
-                                    }`}
+                                    className="w-16 text-center rounded-md p-1 mr-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-600 text-white border-gray-500"
                                     min="0"
                                     aria-label={`Répétitions pour la série ${setIndex + 1}`}
                                 />
-                                <span className={`${
-                                    currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                                }`}>x</span>
+                                <span className="text-gray-400">x</span>
                                 <input
                                     type="number"
                                     value={set.weight}
                                     onChange={(e) => updateSet(exercise.id, set.id, 'weight', e.target.value)}
-                                    className={`w-20 text-center rounded-md p-1 mx-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                        currentTheme === 'light' 
-                                            ? 'bg-white text-gray-900 border border-gray-300' 
-                                            : 'bg-gray-600 text-white border-gray-500'
-                                    }`}
+                                    className="w-20 text-center rounded-md p-1 mx-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-600 text-white border-gray-500"
                                     step="2.5"
                                     min="0"
                                     aria-label={`Poids pour la série ${setIndex + 1}`}
                                 />
-                                <span className={`${
-                                    currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                                }`}>kg</span>
+                                <span className="text-gray-400">kg</span>
                                 
                                 {settings.showEstimated1RM && set.reps > 0 && set.weight > 0 && (
-                                    <span className={`ml-auto text-sm ${
-                                        currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                    }`}>
+                                    <span className="ml-auto text-sm text-gray-300">
                                         ~1RM: {getEstimated1RM(set.reps, set.weight).toFixed(0)}kg
                                     </span>
                                 )}
                                 
                                 <button
                                     onClick={() => deleteSet(exercise.id, set.id)}
-                                    className={`ml-2 p-1 rounded-full transition-colors ${
-                                        currentTheme === 'light' 
-                                            ? 'text-red-500 hover:text-red-600 hover:bg-gray-200' 
-                                            : 'text-red-400 hover:text-red-500 hover:bg-gray-600'
-                                    }`}
+                                    className="ml-2 p-1 rounded-full transition-colors text-red-400 hover:text-red-500 hover:bg-gray-600"
                                     aria-label="Supprimer la série"
                                 >
                                     <X className="h-4 w-4" />
@@ -710,18 +671,12 @@ function MainWorkoutView({
                         </button>
 
                         <div className="mt-4">
-                            <label htmlFor={`notes-${exercise.id}`} className={`block text-sm font-medium mb-1 ${
-                                currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                            }`}>Notes :</label>
+                            <label htmlFor={`notes-${exercise.id}`} className="block text-sm font-medium mb-1 text-gray-300">Notes :</label>
                             <textarea
                                 id={`notes-${exercise.id}`}
                                 value={exercise.notes}
                                 onChange={(e) => updateExerciseNotes(exercise.id, e.target.value)}
-                                className={`w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px] ${
-                                    currentTheme === 'light' 
-                                        ? 'bg-white text-gray-900 border border-gray-300' 
-                                        : 'bg-gray-700 text-white border-gray-600'
-                                }`}
+                                className="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px] bg-gray-700 text-white border-gray-600"
                                 placeholder="Notes sur l'exercice (sensations, difficultés, etc.)"
                                 rows="3"
                             ></textarea>
@@ -744,27 +699,23 @@ function MainWorkoutView({
                             </button>
                             {exerciseHistory.length > 1 && (
                                 <>
-                                    <h6 className={`text-md font-semibold mb-2 flex items-center gap-2 mt-4 ${
-                                        currentTheme === 'light' ? 'text-gray-900' : 'text-white'
-                                    }`}>
-                                        <LineChartIcon className={`h-5 w-5 ${
-                                            currentTheme === 'light' ? 'text-purple-600' : 'text-purple-400'
-                                        }`} /> 
+                                    <h6 className="text-md font-semibold mb-2 flex items-center gap-2 mt-4 text-white">
+                                        <LineChartIcon className="h-5 w-5 text-purple-400" /> 
                                         Progression du volume
                                     </h6>
                                     <ResponsiveContainer width="100%" height={200}>
                                         <LineChart data={exerciseHistory} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke={currentTheme === 'light' ? '#ccc' : '#444'} />
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#444" />
                                             <XAxis
                                                 dataKey="date"
                                                 type="number"
                                                 domain={['dataMin', 'dataMax']}
                                                 tickFormatter={(unixTime) => formatDate(new Date(unixTime))}
-                                                stroke={currentTheme === 'light' ? '#666' : '#999'}
+                                                stroke="#999"
                                                 tick={{ fontSize: 10 }}
                                                 minTickGap={30}
                                             />
-                                            <YAxis stroke={currentTheme === 'light' ? '#666' : '#999'} tick={{ fontSize: 10 }} />
+                                            <YAxis stroke="#999" tick={{ fontSize: 10 }} />
                                             <Tooltip labelFormatter={(label) => formatDate(new Date(label))} formatter={(value) => [`${value.toFixed(0)} kg`, 'Volume']} />
                                             <Line type="monotone" dataKey="volume" stroke="#8884d8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
                                         </LineChart>
@@ -788,7 +739,7 @@ function MainWorkoutView({
                 )}
             </div>
         );
-    }, [expandedExercise, personalBests, isAddingExercise, isDraggingExercise, currentDay, isLoadingAI, analyzeProgressionWithAI, deleteSet, updateSet, softDeleteExercise, updateExerciseNotes, toggleExpandExercise, getExerciseHistoryForGraph, getVolumeForExercise, getEstimated1RM, formatDate, handleExerciseDragStart, handleExerciseDragEnter, handleExerciseDragEnd, handleExerciseDrop, settings, currentTheme, showToast]);
+    }, [expandedExercise, personalBests, isAddingExercise, isDraggingExercise, currentDay, isLoadingAI, analyzeProgressionWithAI, deleteSet, updateSet, softDeleteExercise, updateExerciseNotes, toggleExpandExercise, getExerciseHistoryForGraph, getVolumeForExercise, getEstimated1RM, formatDate, handleExerciseDragStart, handleExerciseDragEnter, handleExerciseDragEnd, handleExerciseDrop, settings, showToast]);
 
     const handleCopyPreviousWorkout = useCallback(() => {
         const previousDayIndex = workouts.dayOrder.indexOf(currentDay) + 1;
@@ -825,26 +776,16 @@ function MainWorkoutView({
     return (
         <div className="container mx-auto p-4">
             <div className="flex justify-between items-center mb-6">
-                <h2 className={`text-3xl font-bold flex items-center gap-3 ${
-                    currentTheme === 'light' ? 'text-gray-900' : 'text-white'
-                }`}>
-                    <Dumbbell className={`h-8 w-8 ${
-                        currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400'
-                    }`} /> 
+                <h2 className="text-3xl font-bold flex items-center gap-3 text-white">
+                    <Dumbbell className="h-8 w-8 text-blue-400" /> 
                     Mon Entraînement
                 </h2>
             </div>
 
             {/* Navigation et gestion des jours */}
-            <div className={`rounded-lg p-4 mb-6 border shadow-xl ${
-                currentTheme === 'light' 
-                    ? 'bg-white border-gray-300' 
-                    : 'bg-gray-800 border-gray-700'
-            }`}>
+            <div className="bg-gray-800 border-gray-700 rounded-lg p-4 mb-6 border shadow-xl">
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className={`text-xl font-semibold ${
-                        currentTheme === 'light' ? 'text-gray-900' : 'text-white'
-                    }`}>
+                    <h3 className="text-xl font-semibold text-white">
                         {isEditingWorkoutName ? (
                             <input
                                 type="text"
@@ -852,37 +793,25 @@ function MainWorkoutView({
                                 onChange={(e) => setEditedWorkoutName(e.target.value)}
                                 onBlur={handleEditWorkoutName}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditWorkoutName(); }}
-                                className={`rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                    currentTheme === 'light' 
-                                        ? 'bg-gray-100 text-gray-900 border border-gray-300' 
-                                        : 'bg-gray-700 text-white border-gray-600'
-                                }`}
+                                className="rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border-gray-600"
                                 autoFocus
                                 aria-label="Éditer le nom de l'entraînement"
                             />
                         ) : (
-                            <span onClick={() => setIsEditingWorkoutName(true)} className={`cursor-pointer transition-colors flex items-center gap-2 ${
-                                currentTheme === 'light' ? 'hover:text-blue-600' : 'hover:text-blue-300'
-                            }`}>
+                            <span onClick={() => setIsEditingWorkoutName(true)} className="cursor-pointer transition-colors flex items-center gap-2 hover:text-blue-300">
                                 {workouts.days[currentDay]?.name || 'Entraînement du jour'} 
-                                <Pencil className={`h-4 w-4 ${
-                                    currentTheme === 'light' ? 'text-gray-500' : 'text-gray-500'
-                                }`} />
+                                <Pencil className="h-4 w-4 text-gray-500" />
                             </span>
                         )}
                     </h3>
-                    <p className={`text-sm ${
-                        currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                    }`}>
+                    <p className="text-sm text-gray-400">
                         {formatDate(currentDay)}
                     </p>
                 </div>
 
                 {/* Notes de séance et durée */}
                 <div className="mb-4">
-                    <label htmlFor="workout-notes" className={`block text-sm font-medium mb-1 ${
-                        currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                    }`}>Notes de la séance :</label>
+                    <label htmlFor="workout-notes" className="block text-sm font-medium mb-1 text-gray-300">Notes de la séance :</label>
                     <textarea
                         id="workout-notes"
                         value={workouts.days[currentDay]?.notes || ''}
@@ -896,18 +825,12 @@ function MainWorkoutView({
                                 }
                             }
                         }))}
-                        className={`w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px] ${
-                            currentTheme === 'light' 
-                                ? 'bg-gray-50 text-gray-900 border border-gray-300' 
-                                : 'bg-gray-700 text-white border-gray-600'
-                        }`}
+                        className="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[60px] bg-gray-700 text-white border-gray-600"
                         placeholder="Notes générales pour cette séance (humeur, énergie, etc.)"
                         rows="2"
                     ></textarea>
 
-                    <label htmlFor="workout-duration" className={`block text-sm font-medium mb-1 mt-3 ${
-                        currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                    }`}>Durée de la séance (minutes) :</label>
+                    <label htmlFor="workout-duration" className="block text-sm font-medium mb-1 mt-3 text-gray-300">Durée de la séance (minutes) :</label>
                     <input
                         type="number"
                         id="workout-duration"
@@ -922,40 +845,26 @@ function MainWorkoutView({
                                 }
                             }
                         }))}
-                        className={`w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                            currentTheme === 'light' 
-                                ? 'bg-gray-50 text-gray-900 border border-gray-300' 
-                                : 'bg-gray-700 text-white border-gray-600'
-                        }`}
+                        className="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border-gray-600"
                         placeholder="Ex: 60"
                         min="0"
                     />
                 </div>
 
-                <div className={`flex items-center justify-between mt-4 border-t pt-4 ${
-                    currentTheme === 'light' ? 'border-gray-300' : 'border-gray-700'
-                }`}>
+                <div className="flex items-center justify-between mt-4 border-t pt-4 border-gray-700">
                     <div className="flex items-center gap-2">
-                        <Search className={`h-5 w-5 ${
-                            currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                        }`} />
+                        <Search className="h-5 w-5 text-gray-400" />
                         <input
                             type="text"
                             placeholder="Filtrer exercices..."
-                            className={`rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-sm ${
-                                currentTheme === 'light' 
-                                    ? 'bg-gray-100 text-gray-900 border border-gray-300' 
-                                    : 'bg-gray-700 text-white border-gray-600'
-                            }`}
+                            className="rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-sm bg-gray-700 text-white border-gray-600"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
                     <button
                         onClick={() => setShowDeletedExercises(prev => !prev)}
-                        className={`flex items-center gap-2 transition-colors text-sm ${
-                            currentTheme === 'light' ? 'text-gray-700 hover:text-gray-900' : 'text-gray-300 hover:text-white'
-                        }`}
+                        className="flex items-center gap-2 transition-colors text-sm text-gray-300 hover:text-white"
                     >
                         {showDeletedExercises ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         {showDeletedExercises ? 'Masquer Supprimés' : 'Afficher Supprimés'}
@@ -966,20 +875,10 @@ function MainWorkoutView({
             {/* Liste des exercices */}
             <div className="space-y-4">
                 {currentWorkoutExercises.length === 0 ? (
-                    <div className={`rounded-lg p-8 text-center border ${
-                        currentTheme === 'light' 
-                            ? 'bg-white border-gray-300' 
-                            : 'bg-gray-800 border-gray-700'
-                    }`}>
-                        <Activity className={`h-12 w-12 mx-auto mb-4 ${
-                            currentTheme === 'light' ? 'text-gray-500' : 'text-gray-400'
-                        }`} />
-                        <p className={`mb-2 ${
-                            currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                        }`}>Aucun exercice pour aujourd'hui.</p>
-                        <p className={`text-sm ${
-                            currentTheme === 'light' ? 'text-gray-500' : 'text-gray-500'
-                        }`}>Ajoutez un exercice pour commencer votre entraînement !</p>
+                    <div className="bg-gray-800 border-gray-700 rounded-lg p-8 text-center border">
+                        <Activity className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                        <p className="mb-2 text-gray-400">Aucun exercice pour aujourd'hui.</p>
+                        <p className="text-sm text-gray-500">Ajoutez un exercice pour commencer votre entraînement !</p>
                     </div>
                 ) : (
                     currentWorkoutExercises.map((exercise, index) => renderWorkoutCard(exercise, index))
@@ -987,11 +886,7 @@ function MainWorkoutView({
             </div>
 
             {/* Ajouter un exercice */}
-            <div className={`rounded-lg p-4 mt-6 border shadow-xl ${
-                currentTheme === 'light' 
-                    ? 'bg-white border-gray-300' 
-                    : 'bg-gray-800 border-gray-700'
-            }`}>
+            <div className="bg-gray-800 border-gray-700 rounded-lg p-4 mt-6 border shadow-xl">
                 {isAddingExercise ? (
                     <div className="flex items-center gap-2">
                         <input
@@ -999,11 +894,7 @@ function MainWorkoutView({
                             value={newExerciseName}
                             onChange={(e) => setNewExerciseName(e.target.value)}
                             placeholder="Nom du nouvel exercice..."
-                            className={`flex-1 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                currentTheme === 'light' 
-                                    ? 'bg-gray-50 text-gray-900 border border-gray-300' 
-                                    : 'bg-gray-700 text-white border-gray-600'
-                            }`}
+                            className="flex-1 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border-gray-600"
                             onKeyDown={(e) => { if (e.key === 'Enter') addExercise(); }}
                             autoFocus
                             aria-label="Nom du nouvel exercice"
@@ -1034,11 +925,7 @@ function MainWorkoutView({
                         </button>
                         <button
                             onClick={() => setIsAddingExercise(true)}
-                            className={`font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                                currentTheme === 'light' 
-                                    ? 'bg-gray-300 hover:bg-gray-400 text-gray-900' 
-                                    : 'bg-gray-600 hover:bg-gray-700 text-white'
-                            }`}
+                            className="font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors bg-gray-600 hover:bg-gray-700 text-white"
                             aria-label="Créer un exercice personnalisé"
                             title="Exercice personnalisé"
                         >
@@ -1067,43 +954,26 @@ function MainWorkoutView({
                 recentExercises={recentExercises}
                 favoriteExercises={favoriteExercises}
                 onToggleFavorite={toggleFavoriteExercise}
-                currentTheme={currentTheme}
             />
 
             {/* Résultat de l'analyse IA */}
             {progressionAnalysisContent && (
-                <div className={`border rounded-lg p-4 relative mb-4 mt-6 ${
-                    currentTheme === 'light' 
-                        ? 'bg-blue-50 border-blue-200' 
-                        : 'bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20'
-                }`}>
-                    <h3 className={`text-xl font-semibold mb-3 flex items-center gap-2 ${
-                        currentTheme === 'light' ? 'text-gray-900' : 'text-white'
-                    }`}>
-                        <Sparkles className={`h-6 w-6 ${
-                            currentTheme === 'light' ? 'text-yellow-600' : 'text-yellow-400'
-                        }`} /> 
+                <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20 border rounded-lg p-4 relative mb-4 mt-6">
+                    <h3 className="text-xl font-semibold mb-3 flex items-center gap-2 text-white">
+                        <Sparkles className="h-6 w-6 text-yellow-400" /> 
                         Analyse IA
                         <button
                             onClick={() => setProgressionAnalysisContent('')}
-                            className={`ml-auto transition-colors ${
-                                currentTheme === 'light' 
-                                    ? 'text-gray-600 hover:text-gray-900' 
-                                    : 'text-gray-400 hover:text-white'
-                            }`}
+                            className="ml-auto transition-colors text-gray-400 hover:text-white"
                             aria-label="Effacer l'analyse IA"
                         >
                             <XCircle className="h-5 w-5" />
                         </button>
                     </h3>
-                    <div className={`text-sm whitespace-pre-wrap leading-relaxed ${
-                        currentTheme === 'light' ? 'text-gray-800' : 'text-white'
-                    }`}>
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed text-white">
                         {progressionAnalysisContent}
                     </div>
-                    <div className={`text-xs mt-4 ${
-                        currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                    }`}>
+                    <div className="text-xs mt-4 text-gray-400">
                         💡 Cette analyse est générée par IA et doit être considérée comme un conseil général.
                     </div>
                 </div>

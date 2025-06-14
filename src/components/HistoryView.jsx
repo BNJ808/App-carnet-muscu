@@ -294,11 +294,6 @@ const HistoryView = ({
                                                     <Sparkles className="h-6 w-6 text-yellow-400" /> Analyse IA pour {exercise.name}
                                                     <button
                                                         onClick={() => {
-                                                            // Assumons que cette fonction est gérée par le parent ou que progressionAnalysisContent
-                                                            // est lié à selectedExerciseForProgression et se réinitialise quand selectedExerciseForProgression est null.
-                                                            // Pour l'instant, on n'a pas de prop setProgressionAnalysisContent ici.
-                                                            // Si progressionAnalysisContent est global, il faut une prop pour le vider.
-                                                            // Pour cette démo, on le laisse tel quel.
                                                             setSelectedExerciseForProgression(null); // Cela masquera le contenu
                                                         }}
                                                         className="ml-auto text-gray-400 hover:text-white transition-colors"

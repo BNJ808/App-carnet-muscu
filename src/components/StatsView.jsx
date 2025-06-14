@@ -197,7 +197,6 @@ const StatsView = ({
                         </div>
                     )}
 
-
                     {/* Graphique de Volume Quotidien */}
                     {dailyVolumeData.length > 0 && (
                         <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700 shadow-xl">

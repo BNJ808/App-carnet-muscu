@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, onSnapshot, collection, query, limit, addDoc
 import {
     Undo2, Redo2, Settings, XCircle, CheckCircle, ChevronDown, ChevronUp, Pencil, Sparkles, ArrowUp, ArrowDown,
     Plus, Trash2, Play, Pause, RotateCcw, Search, Filter, Dumbbell, Clock, History, NotebookText,
-    LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3, Moon, Sun,
+    LineChart as LineChartIcon, Target, TrendingUp, Award, Calendar, BarChart3,
     Zap, Download, Upload, Share, Eye, EyeOff, Maximize2, Minimize2, Activity, X
 } from 'lucide-react';
 import * as GenerativeAIModule from '@google/generative-ai';
@@ -56,17 +56,13 @@ const ImprovedWorkoutApp = () => {
     const [toast, setToast] = useState(null);
     const [isTimerModalOpen, setIsTimerModalOpen] = useState(false); // État pour la modale du minuteur
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false); // État pour la modale des paramètres
-    const [currentTheme, setCurrentTheme] = useState('dark'); // Nouveau état pour le thème
 
     // États pour les paramètres
     const [settings, setSettings] = useState({
         showEstimated1RM: true, // Afficher le 1RM estimé
-        weightIncrement: 2.5, // Incrément de poids par défaut
-        theme: 'dark', // Thème (dark/light)
         notifications: true, // Notifications activées
         autoSave: true, // Sauvegarde automatique
         showVolume: true, // Afficher le volume par exercice
-        compactMode: false, // Mode compact pour l'affichage
         defaultSets: 3, // Nombre de séries par défaut pour nouveaux exercices
         defaultReps: 10 // Nombre de répétitions par défaut pour nouvelles séries
     });
@@ -82,27 +78,6 @@ const ImprovedWorkoutApp = () => {
     const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
     const [aiSuggestions, setAiSuggestions] = useState([]);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
-
-    // Effet pour appliquer le thème
-    useEffect(() => {
-        let theme = settings.theme;
-        
-        if (theme === 'auto') {
-            // Détecter le thème système
-            const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-            theme = mediaQuery.matches ? 'dark' : 'light';
-            
-            // Écouter les changements de thème système
-            const handleChange = (e) => {
-                setCurrentTheme(e.matches ? 'dark' : 'light');
-            };
-            
-            mediaQuery.addEventListener('change', handleChange);
-            return () => mediaQuery.removeEventListener('change', handleChange);
-        }
-        
-        setCurrentTheme(theme);
-    }, [settings.theme]);
 
     // Fonction pour afficher les toasts
     const showToast = useCallback((message, type = 'info', duration = 3000, action = null) => {
@@ -208,12 +183,9 @@ const ImprovedWorkoutApp = () => {
                     setGlobalNotes(data.globalNotes || '');
                     setSettings(data.settings || {
                         showEstimated1RM: true,
-                        weightIncrement: 2.5,
-                        theme: 'dark',
                         notifications: true,
                         autoSave: true,
                         showVolume: true,
-                        compactMode: false,
                         defaultSets: 3,
                         defaultReps: 10
                     });
@@ -227,12 +199,9 @@ const ImprovedWorkoutApp = () => {
                         globalNotes: '',
                         settings: {
                             showEstimated1RM: true,
-                            weightIncrement: 2.5,
-                            theme: 'dark',
                             notifications: true,
                             autoSave: true,
                             showVolume: true,
-                            compactMode: false,
                             defaultSets: 3,
                             defaultReps: 10
                         }
@@ -527,28 +496,16 @@ const ImprovedWorkoutApp = () => {
 
     if (loading) {
         return (
-            <div className={`flex items-center justify-center min-h-screen ${
-                currentTheme === 'light' ? 'bg-gray-100 text-gray-900' : 'bg-gray-900 text-white'
-            }`}>
+            <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
                 <div className="text-lg font-medium">Chargement de votre profil...</div>
             </div>
         );
     }
 
     return (
-        <div className={`flex flex-col h-screen ${
-            currentTheme === 'light' 
-                ? 'bg-gray-100 text-gray-900' 
-                : 'bg-gray-900 text-white'
-        }`}>
-            <header className={`flex items-center justify-between p-4 shadow-md ${
-                currentTheme === 'light' 
-                    ? 'bg-white border-b border-gray-200' 
-                    : 'bg-gray-800'
-            }`}>
-                <h1 className={`text-2xl font-bold ${
-                    currentTheme === 'light' ? 'text-blue-600' : 'text-blue-400'
-                }`}>
+        <div className="flex flex-col h-screen bg-gray-900 text-white">
+            <header className="flex items-center justify-between p-4 shadow-md bg-gray-800">
+                <h1 className="text-2xl font-bold text-blue-400">
                     Carnet Muscu
                 </h1>
                 <div className="flex items-center gap-4">
@@ -561,16 +518,10 @@ const ImprovedWorkoutApp = () => {
                     </button>
                     <button
                         onClick={() => setIsSettingsModalOpen(true)}
-                        className={`p-2 rounded-full transition-colors ${
-                            currentTheme === 'light' 
-                                ? 'bg-gray-200 hover:bg-gray-300' 
-                                : 'bg-gray-700 hover:bg-gray-600'
-                        }`}
+                        className="p-2 rounded-full transition-colors bg-gray-700 hover:bg-gray-600"
                         aria-label="Ouvrir les paramètres"
                     >
-                        <Settings className={`h-6 w-6 ${
-                            currentTheme === 'light' ? 'text-gray-700' : 'text-white'
-                        }`} />
+                        <Settings className="h-6 w-6 text-white" />
                     </button>
                 </div>
             </header>
@@ -595,7 +546,6 @@ const ImprovedWorkoutApp = () => {
                         setTimerSeconds={setTimerSeconds}
                         setCurrentView={setCurrentView}
                         settings={settings}
-                        currentTheme={currentTheme}
                     />
                 )}
                 {currentView === 'timer' && (
@@ -609,7 +559,6 @@ const ImprovedWorkoutApp = () => {
                         setTimerSeconds={setTimerSeconds}
                         formatTime={formatTime}
                         showToast={showToast}
-                        currentTheme={currentTheme}
                     />
                 )}
                 {currentView === 'history' && (
@@ -624,7 +573,6 @@ const ImprovedWorkoutApp = () => {
                         deleteHistoricalSession={deleteHistoricalSession}
                         isLoadingAI={isLoadingAI}
                         showToast={showToast}
-                        currentTheme={currentTheme}
                     />
                 )}
                 {currentView === 'stats' && (
@@ -646,7 +594,6 @@ const ImprovedWorkoutApp = () => {
                         getDailyVolumeData={getDailyVolumeData}
                         getExerciseFrequencyData={getExerciseFrequencyData}
                         showToast={showToast}
-                        currentTheme={currentTheme}
                     />
                 )}
             </main>
@@ -655,7 +602,6 @@ const ImprovedWorkoutApp = () => {
             <BottomNavigationBar
                 currentView={currentView}
                 setCurrentView={setCurrentView}
-                currentTheme={currentTheme}
             />
 
             {/* Toast notification */}
@@ -681,51 +627,30 @@ const ImprovedWorkoutApp = () => {
                 resetTimer={resetTimer}
                 setTimerSeconds={setTimerSeconds}
                 formatTime={formatTime}
-                currentTheme={currentTheme}
             />
 
             {/* Settings Modal */}
             {isSettingsModalOpen && (
-                <div className={`fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4 animate-fade-in`}>
-                    <div className={`rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto border shadow-2xl relative ${
-                        currentTheme === 'light' 
-                            ? 'bg-white border-gray-300' 
-                            : 'bg-gray-800 border-gray-700'
-                    }`}>
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4 animate-fade-in">
+                    <div className="rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto border shadow-2xl relative bg-gray-800 border-gray-700">
                         <button
                             onClick={() => setIsSettingsModalOpen(false)}
-                            className={`absolute top-4 right-4 transition-colors ${
-                                currentTheme === 'light' 
-                                    ? 'text-gray-600 hover:text-gray-900' 
-                                    : 'text-gray-400 hover:text-white'
-                            }`}
+                            className="absolute top-4 right-4 transition-colors text-gray-400 hover:text-white"
                             aria-label="Fermer les paramètres"
                         >
                             <X className="h-6 w-6" />
                         </button>
 
-                        <h2 className={`text-3xl font-bold text-center mb-6 flex items-center justify-center gap-3 ${
-                            currentTheme === 'light' ? 'text-gray-900' : 'text-white'
-                        }`}>
-                            <Settings className={`h-8 w-8 ${
-                                currentTheme === 'light' ? 'text-gray-600' : 'text-gray-400'
-                            }`} /> 
+                        <h2 className="text-3xl font-bold text-center mb-6 flex items-center justify-center gap-3 text-white">
+                            <Settings className="h-8 w-8 text-gray-400" /> 
                             Paramètres
                         </h2>
 
                         <div className="space-y-6">
                             {/* Section Affichage */}
-                            <div className={`rounded-lg p-4 border ${
-                                currentTheme === 'light' 
-                                    ? 'bg-gray-50 border-gray-200' 
-                                    : 'bg-gray-700/30 border-gray-600/50'
-                            }`}>
-                                <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${
-                                    currentTheme === 'light' ? 'text-gray-900' : 'text-white'
-                                }`}>
-                                    <Eye className={`h-5 w-5 ${
-                                        currentTheme === 'light' ? 'text-green-600' : 'text-green-400'
-                                    }`} /> 
+                            <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
+                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
+                                    <Eye className="h-5 w-5 text-green-400" /> 
                                     Affichage
                                 </h3>
                                 <div className="space-y-4">
@@ -737,9 +662,7 @@ const ImprovedWorkoutApp = () => {
                                             onChange={(e) => setSettings(prev => ({ ...prev, showEstimated1RM: e.target.checked }))}
                                             className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
                                         />
-                                        <label htmlFor="showEstimated1RM" className={
-                                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                        }>
+                                        <label htmlFor="showEstimated1RM" className="text-gray-300">
                                             Afficher le 1RM estimé pour chaque série
                                         </label>
                                     </div>
@@ -751,101 +674,43 @@ const ImprovedWorkoutApp = () => {
                                             onChange={(e) => setSettings(prev => ({ ...prev, showVolume: e.target.checked }))}
                                             className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
                                         />
-                                        <label htmlFor="showVolume" className={
-                                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                        }>
+                                        <label htmlFor="showVolume" className="text-gray-300">
                                             Afficher le volume par exercice
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <input
-                                            type="checkbox"
-                                            id="compactMode"
-                                            checked={settings.compactMode}
-                                            onChange={(e) => setSettings(prev => ({ ...prev, compactMode: e.target.checked }))}
-                                            className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
-                                        />
-                                        <label htmlFor="compactMode" className={
-                                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                        }>
-                                            Mode compact (affichage condensé)
                                         </label>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Section Entraînement */}
-                            <div className={`rounded-lg p-4 border ${
-                                currentTheme === 'light' 
-                                    ? 'bg-gray-50 border-gray-200' 
-                                    : 'bg-gray-700/30 border-gray-600/50'
-                            }`}>
-                                <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${
-                                    currentTheme === 'light' ? 'text-gray-900' : 'text-white'
-                                }`}>
-                                    <Dumbbell className={`h-5 w-5 ${
-                                        currentTheme === 'light' ? 'text-purple-600' : 'text-purple-400'
-                                    }`} /> 
+                            <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
+                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
+                                    <Dumbbell className="h-5 w-5 text-purple-400" /> 
                                     Entraînement
                                 </h3>
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className={`block text-sm font-medium mb-2 ${
-                                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                        }`}>
-                                            Incrément de poids par défaut (kg)
-                                        </label>
-                                        <select
-                                            value={settings.weightIncrement}
-                                            onChange={(e) => setSettings(prev => ({ ...prev, weightIncrement: Number(e.target.value) }))}
-                                            className={`w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                                currentTheme === 'light' 
-                                                    ? 'bg-white text-gray-900 border border-gray-300' 
-                                                    : 'bg-gray-700 text-white border border-gray-600'
-                                            }`}
-                                        >
-                                            <option value={0.5}>0.5 kg</option>
-                                            <option value={1}>1 kg</option>
-                                            <option value={1.25}>1.25 kg</option>
-                                            <option value={2.5}>2.5 kg</option>
-                                            <option value={5}>5 kg</option>
-                                        </select>
-                                    </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className={`block text-sm font-medium mb-2 ${
-                                                currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                            }`}>
+                                            <label className="block text-sm font-medium mb-2 text-gray-300">
                                                 Séries par défaut
                                             </label>
                                             <input
                                                 type="number"
                                                 value={settings.defaultSets}
                                                 onChange={(e) => setSettings(prev => ({ ...prev, defaultSets: Number(e.target.value) }))}
-                                                className={`w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                                    currentTheme === 'light' 
-                                                        ? 'bg-white text-gray-900 border border-gray-300' 
-                                                        : 'bg-gray-700 text-white border border-gray-600'
-                                                }`}
+                                                className="w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border border-gray-600"
                                                 min="1"
                                                 max="10"
                                             />
                                         </div>
                                         <div>
-                                            <label className={`block text-sm font-medium mb-2 ${
-                                                currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                            }`}>
+                                            <label className="block text-sm font-medium mb-2 text-gray-300">
                                                 Répétitions par défaut
                                             </label>
                                             <input
                                                 type="number"
                                                 value={settings.defaultReps}
                                                 onChange={(e) => setSettings(prev => ({ ...prev, defaultReps: Number(e.target.value) }))}
-                                                className={`w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                                    currentTheme === 'light' 
-                                                        ? 'bg-white text-gray-900 border border-gray-300' 
-                                                        : 'bg-gray-700 text-white border border-gray-600'
-                                                }`}
+                                                className="w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white border border-gray-600"
                                                 min="1"
                                                 max="50"
                                             />
@@ -855,17 +720,9 @@ const ImprovedWorkoutApp = () => {
                             </div>
 
                             {/* Section Système */}
-                            <div className={`rounded-lg p-4 border ${
-                                currentTheme === 'light' 
-                                    ? 'bg-gray-50 border-gray-200' 
-                                    : 'bg-gray-700/30 border-gray-600/50'
-                            }`}>
-                                <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${
-                                    currentTheme === 'light' ? 'text-gray-900' : 'text-white'
-                                }`}>
-                                    <Settings className={`h-5 w-5 ${
-                                        currentTheme === 'light' ? 'text-orange-600' : 'text-orange-400'
-                                    }`} /> 
+                            <div className="rounded-lg p-4 border bg-gray-700/30 border-gray-600/50">
+                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
+                                    <Settings className="h-5 w-5 text-orange-400" /> 
                                     Système
                                 </h3>
                                 <div className="space-y-4">
@@ -877,9 +734,7 @@ const ImprovedWorkoutApp = () => {
                                             onChange={(e) => setSettings(prev => ({ ...prev, notifications: e.target.checked }))}
                                             className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
                                         />
-                                        <label htmlFor="notifications" className={
-                                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                        }>
+                                        <label htmlFor="notifications" className="text-gray-300">
                                             Activer les notifications
                                         </label>
                                     </div>
@@ -891,31 +746,9 @@ const ImprovedWorkoutApp = () => {
                                             onChange={(e) => setSettings(prev => ({ ...prev, autoSave: e.target.checked }))}
                                             className="form-checkbox h-5 w-5 text-blue-500 rounded border-gray-600 bg-gray-700 focus:ring-blue-500"
                                         />
-                                        <label htmlFor="autoSave" className={
-                                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                        }>
+                                        <label htmlFor="autoSave" className="text-gray-300">
                                             Sauvegarde automatique
                                         </label>
-                                    </div>
-                                    <div>
-                                        <label className={`block text-sm font-medium mb-2 ${
-                                            currentTheme === 'light' ? 'text-gray-700' : 'text-gray-300'
-                                        }`}>
-                                            Thème
-                                        </label>
-                                        <select
-                                            value={settings.theme}
-                                            onChange={(e) => setSettings(prev => ({ ...prev, theme: e.target.value }))}
-                                            className={`w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                                currentTheme === 'light' 
-                                                    ? 'bg-white text-gray-900 border border-gray-300' 
-                                                    : 'bg-gray-700 text-white border border-gray-600'
-                                            }`}
-                                        >
-                                            <option value="dark">Sombre</option>
-                                            <option value="light">Clair</option>
-                                            <option value="auto">Automatique</option>
-                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -927,22 +760,15 @@ const ImprovedWorkoutApp = () => {
                                 onClick={() => {
                                     setSettings({
                                         showEstimated1RM: true,
-                                        weightIncrement: 2.5,
-                                        theme: 'dark',
                                         notifications: true,
                                         autoSave: true,
                                         showVolume: true,
-                                        compactMode: false,
                                         defaultSets: 3,
                                         defaultReps: 10
                                     });
                                     showToast("Paramètres réinitialisés", "info");
                                 }}
-                                className={`flex-1 font-medium py-3 px-4 rounded-lg transition-colors ${
-                                    currentTheme === 'light' 
-                                        ? 'bg-gray-300 hover:bg-gray-400 text-gray-900' 
-                                        : 'bg-gray-600 hover:bg-gray-700 text-white'
-                                }`}
+                                className="flex-1 font-medium py-3 px-4 rounded-lg transition-colors bg-gray-600 hover:bg-gray-700 text-white"
                             >
                                 Réinitialiser
                             </button>
