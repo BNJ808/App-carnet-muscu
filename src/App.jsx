@@ -449,6 +449,32 @@ const ImprovedWorkoutApp = () => {
 
     return (
         <div className="min-h-screen bg-gray-900 text-white">
+            {/* Barre de navigation supérieure */}
+            <header className="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center">
+                <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Dumbbell className="h-6 w-6 text-blue-400" />
+                    Mon Carnet
+                </h1>
+                <div className="flex items-center gap-2">
+                    {/* Bouton Timer */}
+                    <button
+                        onClick={() => setIsTimerModalOpen(true)}
+                        className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+                        aria-label="Ouvrir le minuteur"
+                    >
+                        <Clock className="h-5 w-5" />
+                    </button>
+                    {/* Bouton Paramètres */}
+                    <button
+                        onClick={() => setIsSettingsModalOpen(true)}
+                        className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+                        aria-label="Ouvrir les paramètres"
+                    >
+                        <Settings className="h-5 w-5" />
+                    </button>
+                </div>
+            </header>
+
             {/* Contenu principal */}
             <div className="pb-20">
                 {currentView === 'workout' && (
